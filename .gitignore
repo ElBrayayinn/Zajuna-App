@@ -1,0 +1,33 @@
+node_modules/
+dist/
+out/
+release/
+tmp/
+.angular/
+.vite/
+.DS_Store
+Thumbs.db
+
+# Datos locales y secretos
+storage/data/
+storage/evidences/
+storage/reports/
+storage/backups/
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+
+# Go
+core/bin/
+core/bin/playwright/
+core/tmp/
+bin/
+.visual-artifacts/
+
+# IDE
+.idea/
+.vscode/
+*.swp
