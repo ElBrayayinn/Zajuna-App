@@ -13,11 +13,26 @@ import (
 	"time"
 
 	"github.com/zajuna-app/core/internal/capture"
+	"github.com/zajuna-app/core/internal/checklist"
 	"github.com/zajuna-app/core/internal/coursemaps"
 	"github.com/zajuna-app/core/internal/jobs"
 	"github.com/zajuna-app/core/internal/storage/sqlite"
 	"github.com/zajuna-app/core/internal/zajuna"
 )
+
+func TestFilterCaptureTargetsKeepsAUnitWhenAnAliasIsRequested(t *testing.T) {
+	targets := []checklist.CaptureTarget{{
+		ItemCode:         "1.1.1",
+		CoveredItemCodes: []string{"1.1.1", "1.1.2"},
+	}}
+	filtered := filterCaptureTargets(targets, []string{"1.1.2"})
+	if len(filtered) != 1 || filtered[0].ItemCode != "1.1.1" {
+		t.Fatalf("expected the shared unit to survive alias filtering: %#v", filtered)
+	}
+	if captureTargetCoverageCount(filtered) != 2 {
+		t.Fatalf("expected both logical criteria to remain covered: %#v", filtered)
+	}
+}
 
 func TestCaptureChecklistWorkerCapturesDirectedTargetSmoke(t *testing.T) {
 	if os.Getenv("ZAJUNA_RUN_BROWSER_SMOKE") != "1" {
@@ -84,4 +99,3 @@ func TestCaptureChecklistWorkerCapturesDirectedTargetSmoke(t *testing.T) {
 		t.Fatalf("directed screenshot missing: %v", err)
 	}
 }
-

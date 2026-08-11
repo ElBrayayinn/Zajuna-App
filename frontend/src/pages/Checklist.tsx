@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   useActivities,
   useCapture,
@@ -146,6 +146,8 @@ function ActivitySelectorSection({
   onSave: () => void
   isSaving: boolean
 }) {
+  const [activityQuery, setActivityQuery] = useState('')
+  const [activityFilter, setActivityFilter] = useState<'all' | 'technical' | 'review'>('all')
   if (!data) return null
   if (data.mapReady === false) {
     return (
@@ -166,6 +168,12 @@ function ActivitySelectorSection({
   }
   const activities = data.activities || []
   const selected = selectedIds.size
+  const normalizedActivityQuery = activityQuery.trim().toLowerCase()
+  const visibleActivities = activities.filter((activity) => {
+    const matchesQuery = !normalizedActivityQuery || [activity.id, activity.title, activity.phaseName].some((value) => String(value || '').toLowerCase().includes(normalizedActivityQuery))
+    const matchesFilter = activityFilter === 'all' || (activityFilter === 'technical' ? activity.technical : !activity.technical)
+    return matchesQuery && matchesFilter
+  })
   return (
     <section className="card">
       <div className="card-pad">
@@ -184,9 +192,23 @@ function ActivitySelectorSection({
         ) : (
           <div className="activity-warning">Selecciona al menos una actividad antes de preparar las evidencias.</div>
         )}
+        <div className="activity-toolbar">
+          <input
+            type="search"
+            value={activityQuery}
+            onChange={(event) => setActivityQuery(event.target.value)}
+            placeholder="Buscar por codigo, nombre o fase"
+            aria-label="Buscar actividades por codigo, nombre o fase"
+          />
+          <select aria-label="Filtrar tipo de actividad" value={activityFilter} onChange={(event) => setActivityFilter(event.target.value as typeof activityFilter)}>
+            <option value="all">Todas</option>
+            <option value="technical">Técnicas</option>
+            <option value="review">Por revisar</option>
+          </select>
+        </div>
         <div className="activity-list">
-          {activities.length ? (
-            activities.map((activity) => (
+          {visibleActivities.length ? (
+            visibleActivities.map((activity) => (
               <label className="activity-row" key={activity.id}>
                 <input
                   type="checkbox"
@@ -211,7 +233,7 @@ function ActivitySelectorSection({
           )}
         </div>
         <div className="activity-actions">
-          <span className="helper">{activities.length} actividades encontradas</span>
+          <span className="helper">Mostrando {visibleActivities.length} de {activities.length} actividades</span>
           <button className="button small" onClick={onSave} disabled={isSaving}>
             Guardar selección
           </button>
@@ -444,7 +466,10 @@ function RouteReviewSection({
       groups.set(key, group)
     }
     group.slots += 1
-    if (!group.itemCodes.includes(target.itemCode)) group.itemCodes.push(target.itemCode)
+    const coveredCodes = target.coveredItemCodes?.length ? target.coveredItemCodes : [target.itemCode]
+    coveredCodes.forEach((itemCode) => {
+      if (!group.itemCodes.includes(itemCode)) group.itemCodes.push(itemCode)
+    })
     if (target.name && !group.names.includes(target.name)) group.names.push(target.name)
   })
   const allEntries = [...groups.values()]
@@ -468,6 +493,11 @@ function RouteReviewSection({
             <p className="helper" style={{ marginTop: 6 }}>
               Confirma las secciones que usarás como evidencia. Se agrupan las rutas que comparten una misma captura.
             </p>
+            {targetsData.summary ? (
+              <p className="helper" style={{ marginTop: 6 }}>
+                {targetsData.summary.captureUnitCount ?? allEntries.length} unidades físicas · {targetsData.summary.coverageCount ?? targets.length} criterios cubiertos
+              </p>
+            ) : null}
             {reviewsError ? <p className="helper" role="alert" style={{ color: 'var(--no)', marginTop: 7 }}>No pudimos cargar tus revisiones guardadas. Puedes consultar las rutas, pero espera antes de guardar cambios.</p> : null}
           </div>
           <span className="badge">
@@ -608,6 +638,7 @@ function PreviewModal({
 
 export function Checklist() {
   const toast = useToast()
+  const [searchParams] = useSearchParams()
   const dashboardQuery = useDashboard()
   const dashboard = dashboardQuery.data
 
@@ -624,7 +655,7 @@ export function Checklist() {
   const discoverCourseMaps = useDiscoverCourseMaps()
   const deleteEvidence = useDeleteEvidence()
 
-  const [category, setCategory] = useState('all')
+  const [category, setCategory] = useState(() => searchParams.get('category') || 'all')
   const [routeReviewOpen, setRouteReviewOpen] = useState(false)
   const [routeFilter, setRouteFilter] = useState<'all' | RouteReviewStatus>('all')
   const [routeQuery, setRouteQuery] = useState('')
@@ -632,6 +663,7 @@ export function Checklist() {
   const [manualEdits, setManualEdits] = useState<Record<string, { manualUrl?: string; manualSelector?: string }>>({})
   const [selectedActivityIds, setSelectedActivityIds] = useState<Set<string>>(new Set())
   const [syncedActivitiesFicha, setSyncedActivitiesFicha] = useState<string | undefined>(undefined)
+  const itemsSectionRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (activitiesQuery.data && dashboard?.activeFichaId && dashboard.activeFichaId !== syncedActivitiesFicha) {
@@ -688,6 +720,16 @@ export function Checklist() {
       { itemCode, fichaId: dashboard.activeFichaId, status },
       { onError: (error) => toast(friendlyError(error.message), true) },
     )
+  }
+
+  function handleCategoryChange(nextCategory: string) {
+    setCategory(nextCategory)
+    window.requestAnimationFrame(() => {
+      const section = itemsSectionRef.current
+      if (!section) return
+      const top = section.getBoundingClientRect().top + window.scrollY - 24
+      window.scrollTo({ top, behavior: 'smooth' })
+    })
   }
 
   function handleToggleActivity(id: string) {
@@ -803,7 +845,7 @@ export function Checklist() {
               type="button"
               aria-pressed={category === 'all'}
               className={`checklist-category-item ${category === 'all' ? 'active' : ''}`}
-              onClick={() => setCategory('all')}
+              onClick={() => handleCategoryChange('all')}
             >
               <strong>Todas</strong>
               <small>{total}</small>
@@ -814,7 +856,7 @@ export function Checklist() {
                 type="button"
                 aria-pressed={category === entry.code}
                 className={`checklist-category-item ${category === entry.code ? 'active' : ''}`}
-                onClick={() => setCategory(entry.code)}
+                onClick={() => handleCategoryChange(entry.code)}
               >
                 <strong>{entry.label || `Categoría ${entry.code}`}</strong>
                 <small>
@@ -880,16 +922,16 @@ export function Checklist() {
 
           <div className="checklist-filter-bar">
             <div className="checklist-filter-tabs">
-              <button type="button" aria-pressed={category === 'all'} className={`checklist-filter-tab ${category === 'all' ? 'active' : ''}`} onClick={() => setCategory('all')}>
+              <button type="button" aria-pressed={category === 'all'} className={`checklist-filter-tab ${category === 'all' ? 'active' : ''}`} onClick={() => handleCategoryChange('all')}>
                 Todas {total}
               </button>
-              <button type="button" aria-pressed={category === 'pending'} className={`checklist-filter-tab ${category === 'pending' ? 'active' : ''}`} onClick={() => setCategory('pending')}>
+              <button type="button" aria-pressed={category === 'pending'} className={`checklist-filter-tab ${category === 'pending' ? 'active' : ''}`} onClick={() => handleCategoryChange('pending')}>
                 Pendientes {pending}
               </button>
-              <button type="button" aria-pressed={category === 'no'} className={`checklist-filter-tab ${category === 'no' ? 'active' : ''}`} onClick={() => setCategory('no')}>
+              <button type="button" aria-pressed={category === 'no'} className={`checklist-filter-tab ${category === 'no' ? 'active' : ''}`} onClick={() => handleCategoryChange('no')}>
                 No cumplidas {failed}
               </button>
-              <button type="button" aria-pressed={category === 'empty'} className={`checklist-filter-tab ${category === 'empty' ? 'active' : ''}`} onClick={() => setCategory('empty')}>
+              <button type="button" aria-pressed={category === 'empty'} className={`checklist-filter-tab ${category === 'empty' ? 'active' : ''}`} onClick={() => handleCategoryChange('empty')}>
                 Sin evidencia {emptyEvidenceCount}
               </button>
             </div>
@@ -933,7 +975,7 @@ export function Checklist() {
             />
           )}
 
-          <section className="card checklist-items-card">
+          <section ref={itemsSectionRef} className="card checklist-items-card">
             <div className="checklist-items-head">
               <div>
                 <h3>Ítems del checklist</h3>

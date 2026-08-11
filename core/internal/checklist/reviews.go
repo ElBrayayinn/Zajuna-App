@@ -37,6 +37,12 @@ func ValidRouteReviewStatus(value string) bool {
 // RouteKey is deliberately derived from the same fields that the UI uses to
 // group targets. It stays stable when several checklist items share a capture.
 func RouteKey(target CaptureTarget) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d",
+		strings.TrimSpace(target.GroupName), canonicalRouteURL(target.URL), strings.TrimSpace(target.RouteKind),
+		strings.TrimSpace(target.CSSSelector), strings.TrimSpace(target.ActivityID), target.PhaseSection, target.SlotNumber)
+}
+
+func legacyRouteKey(target CaptureTarget) string {
 	return fmt.Sprintf("%s|%s|%s", strings.TrimSpace(target.GroupName), strings.TrimSpace(target.URL), strings.TrimSpace(target.RouteKind))
 }
 
@@ -45,9 +51,13 @@ func RouteKey(target CaptureTarget) string {
 // URL and selector, while a correction can replace either field.
 func ApplyRouteReviews(targets []CaptureTarget, reviews []RouteReview) []CaptureTarget {
 	byKey := make(map[string]RouteReview, len(reviews))
+	legacyByKey := make(map[string]RouteReview, len(reviews))
 	for _, review := range reviews {
 		if strings.TrimSpace(review.RouteKey) != "" {
 			byKey[review.RouteKey] = review
+			// Existing reviews used a coarser key. Keep them effective after the
+			// capture unit key gains selector/activity/slot identity.
+			legacyByKey[review.RouteKey] = review
 		}
 	}
 	result := make([]CaptureTarget, len(targets))
@@ -55,7 +65,11 @@ func ApplyRouteReviews(targets []CaptureTarget, reviews []RouteReview) []Capture
 	for index := range result {
 		result[index].RouteKey = RouteKey(result[index])
 		result[index].ReviewStatus = RouteReviewPending
-		if review, ok := byKey[result[index].RouteKey]; ok {
+		review, ok := byKey[result[index].RouteKey]
+		if !ok {
+			review, ok = legacyByKey[legacyRouteKey(result[index])]
+		}
+		if ok {
 			result[index].ReviewStatus = review.Status
 			if strings.TrimSpace(review.ManualURL) != "" {
 				result[index].URL = strings.TrimSpace(review.ManualURL)

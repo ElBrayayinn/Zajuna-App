@@ -44,6 +44,7 @@ export function Evidences() {
   const rebuildGroups = useRebuildEvidenceGroups()
   const uploadEvidence = useUploadEvidence()
   const deleteEvidence = useDeleteEvidence()
+  const setItemStatus = useSetItemStatus()
   const toast = useToast()
 
   const [query, setQuery] = useState('')
@@ -109,6 +110,28 @@ export function Evidences() {
     })
   }
 
+  const handleMarkRelatedYes = async () => {
+    if (!activeFichaId || !relatedItems.length || setItemStatus.isPending) return
+    try {
+      await Promise.all(
+        relatedItems
+          .filter((item) => item.status !== 'SI')
+          .map((item) => setItemStatus.mutateAsync({ itemCode: item.itemCode, fichaId: activeFichaId, status: 'SI' })),
+      )
+      toast('Marcamos como Sí las tareas que ya tienen evidencia asociada.')
+    } catch (error) {
+      toast(friendlyError(error instanceof Error ? error.message : String(error)), true)
+    }
+  }
+
+  const previewIndex = preview ? flatEvidences.findIndex((evidence) => evidence.id === preview.id) : -1
+  const showPrevious = () => {
+    if (previewIndex > 0) setPreview(flatEvidences[previewIndex - 1])
+  }
+  const showNext = () => {
+    if (previewIndex >= 0 && previewIndex < flatEvidences.length - 1) setPreview(flatEvidences[previewIndex + 1])
+  }
+
   return (
     <div className="grid main-grid">
       <div className="grid">
@@ -141,7 +164,12 @@ export function Evidences() {
                   Estas son las tareas que ya tienen una evidencia local asociada.
                 </p>
               </div>
-              <span className="badge">{relatedItems.length}</span>
+              <div className="inline evidence-related-actions">
+                <span className="badge">{relatedItems.length} con evidencia</span>
+                <button className="button ghost small" type="button" onClick={handleMarkRelatedYes} disabled={!relatedItems.length || setItemStatus.isPending}>
+                  {setItemStatus.isPending ? 'Guardando…' : 'Marcar relacionadas como Sí'}
+                </button>
+              </div>
             </div>
             <div className="task-list" style={{ marginTop: 14 }}>
               {relatedItems.length ? (
@@ -197,7 +225,7 @@ export function Evidences() {
           </div>
         </section>
       </aside>
-      {preview && <PreviewModal evidence={preview} onClose={() => setPreview(null)} onDelete={handleDelete} />}
+      {preview && <PreviewModal evidence={preview} index={previewIndex} total={flatEvidences.length} onPrevious={showPrevious} onNext={showNext} onClose={() => setPreview(null)} onDelete={handleDelete} />}
     </div>
   )
 }
@@ -266,8 +294,8 @@ function EvidenceMiniatures({
               const selected = selectedIds.has(evidence.id)
               return (
                 <article key={evidence.id} className={`evidence-miniature${selected ? ' selected' : ''}`}>
-                  <button className="evidence-miniature-select" type="button" aria-pressed={selected} onClick={() => toggle(evidence.id)}>
-                    <span className="evidence-miniature-preview">
+                  <div className="evidence-miniature-select" onClick={() => toggle(evidence.id)}>
+                    <span className="evidence-miniature-preview" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); onPreview(evidence) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onPreview(evidence) }}>
                       {image ? <img src={evidenceDownloadUrl(evidence.id)} alt="" loading="lazy" /> : <span className="evidence-format-icon">{format.toUpperCase() || 'FILE'}</span>}
                       <span className="evidence-select-mark" aria-hidden="true">{selected ? '✓' : ''}</span>
                     </span>
@@ -275,7 +303,7 @@ function EvidenceMiniatures({
                       <strong>{evidence.name || 'Evidencia local'}</strong>
                       <small>{String(evidence.format || 'archivo').toUpperCase()} · {formatDate(evidence.capturedAt)}</small>
                     </span>
-                  </button>
+                  </div>
                   <button className="evidence-miniature-open" type="button" onClick={() => onPreview(evidence)}>Vista previa</button>
                 </article>
               )
@@ -380,9 +408,9 @@ function EvidenceGallery({
           </div>
         ) : null}
         <div className="gallery-summary">
-          <strong>{matches.length}</strong>
-          <span>grupos visibles · {total} archivos relacionados</span>
-          <span className="badge">{groups.length} en total</span>
+          <div className="gallery-summary-stat"><strong>{matches.length}</strong><span>grupos visibles</span></div>
+          <div className="gallery-summary-stat"><strong>{total}</strong><span>archivos relacionados</span></div>
+          <div className="gallery-summary-stat"><strong>{groups.length}</strong><span>grupos totales</span></div>
         </div>
         <div className="evidence-gallery-grid">
           {visible.length ? (
@@ -524,10 +552,18 @@ function Task({
 
 function PreviewModal({
   evidence,
+  index,
+  total,
+  onPrevious,
+  onNext,
   onClose,
   onDelete,
 }: {
   evidence: Evidence
+  index: number
+  total: number
+  onPrevious: () => void
+  onNext: () => void
   onClose: () => void
   onDelete: (id: string) => void
 }) {
@@ -541,6 +577,8 @@ function PreviewModal({
     closeRef.current?.focus()
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowLeft') onPrevious()
+      if (event.key === 'ArrowRight') onNext()
       if (event.key !== 'Tab') return
       const dialog = closeRef.current?.closest('[role="dialog"]')
       const focusable = Array.from(dialog?.querySelectorAll<HTMLElement>('button, a[href], iframe, input, select, textarea, [tabindex]:not([tabindex="-1"])') || []).filter((element) => !element.hasAttribute('disabled'))
@@ -560,7 +598,7 @@ function PreviewModal({
       document.removeEventListener('keydown', handleKeyDown)
       previous?.focus?.()
     }
-  }, [onClose])
+  }, [onClose, onNext, onPrevious])
 
   return (
     <div id="evidence-modal" className="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidence-preview-title">
@@ -579,6 +617,11 @@ function PreviewModal({
           ) : (
             <img src={src} alt={evidence.name} />
           )}
+        </div>
+        <div className="evidence-dialog-navigation" aria-label="Navegar evidencias">
+          <button className="button ghost small" type="button" onClick={onPrevious} disabled={index <= 0}>← Anterior</button>
+          <span className="helper">{index + 1} de {total}</span>
+          <button className="button ghost small" type="button" onClick={onNext} disabled={index < 0 || index >= total - 1}>Siguiente →</button>
         </div>
         <div className="evidence-dialog-foot">
           <span className="helper">

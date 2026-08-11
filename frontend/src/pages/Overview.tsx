@@ -235,6 +235,8 @@ export function Overview() {
     label: category.label || category.code || 'Categoría',
     total: Number(category.total) || 0,
     yes: Number(category.yes) || 0,
+    no: Number(category.no) || 0,
+    pending: Number(category.pending) || 0,
     value: clamp(Math.round(((Number(category.yes) || 0) / Math.max(Number(category.total) || 1, 1)) * 100), 0, 100),
   }))
 
@@ -373,15 +375,16 @@ export function Overview() {
         </article>
 
         <article className="metric-card">
-          <div className="metric-label">Rutas descubiertas</div>
+          <div className="metric-label">Actividades seleccionadas</div>
           <div className="metric-value-row">
-            <strong className="metric-value">{routeCount}</strong>
+            <strong className="metric-value">{selectedActivityCount}</strong>
+            <span className="metric-pill">a mi cargo</span>
           </div>
           <div className="metric-tags">
-            <span className="metric-tag">{selectedActivityCount} actividades activas</span>
-            <span className="metric-tag">{routeCount} en el mapa</span>
+            <span className="metric-tag">Seleccion del profesor</span>
+            <span className="metric-tag">{routeCount > 0 ? 'Mapa disponible' : 'Mapa pendiente'}</span>
           </div>
-          <div className="metric-note">Mapa del curso {dashboard.ficha.courseId || 'local'}</div>
+          <div className="metric-note">Alcance de trabajo · curso {dashboard.ficha.courseId || 'local'}</div>
         </article>
 
         <article className="metric-card focused">
@@ -403,6 +406,33 @@ export function Overview() {
           </div>
         </article>
       </div>
+
+      {currentJob && (
+        <section className="card active-work-card" aria-live="polite">
+          <div className="active-work-copy">
+            <div className="eyebrow">Proceso en ejecución</div>
+            <h3>{friendlyJobType(currentJob.type)}</h3>
+            <p className="helper">La aplicación está trabajando en segundo plano. Puedes continuar revisando la ficha mientras termina.</p>
+            <JobEntry job={currentJob} />
+          </div>
+          <div className="active-work-events">
+            <div className="side-title">
+              <strong>Últimos avances</strong>
+              <Link className="button ghost small" to={`/trabajos/${encodeURIComponent(currentJob.id)}`}>Ver detalles</Link>
+            </div>
+            {currentJobEventsQuery.data?.length ? (
+              <ol className="mini-job-timeline">
+                {currentJobEventsQuery.data.slice(-3).map((event, index) => (
+                  <li key={`${event.createdAt}-${index}`}>
+                    <span aria-hidden="true" />
+                    <div><strong>{event.stage || 'Actualización'}</strong><small>{friendlyJobMessage(event.message)}</small></div>
+                  </li>
+                ))}
+              </ol>
+            ) : <p className="helper">Esperando el primer avance del proceso.</p>}
+          </div>
+        </section>
+      )}
 
       <div className="overview-columns">
         <div className="overview-main">
@@ -443,7 +473,7 @@ export function Overview() {
             </div>
             <div className="category-summary">
               <div className="category-summary-title">Cumplimiento por categoría</div>
-              <div className="category-bars">
+              <div className="category-bars legacy-category-bars" aria-hidden="true">
                 {bars.length ? (
                   bars.map((bar) => (
                     <span key={bar.code} title={`${bar.label}: ${bar.yes} de ${bar.total} (${bar.value}%)`}>
@@ -462,7 +492,32 @@ export function Overview() {
                   </span>
                 )}
               </div>
-              <div className="category-legend">
+            <div className="category-grid" aria-label="Estado de cumplimiento por categoria">
+                {bars.length ? bars.map((bar) => {
+                  const status = bar.yes === bar.total ? 'Completa' : bar.no > 0 ? 'Requiere revision' : 'Pendiente'
+                  const statusClass = bar.yes === bar.total ? 'complete' : bar.no > 0 ? 'attention' : 'pending'
+                  return (
+                    <button
+                      key={bar.code}
+                      type="button"
+                      className={`category-card ${statusClass}`}
+                      title={`Abrir ${bar.label} en el checklist`}
+                      onClick={() => navigate(`/checklist?category=${encodeURIComponent(bar.code)}`)}
+                    >
+                      <span className="category-card-head">
+                        <strong>{bar.code}</strong>
+                        <span className="category-card-status">{status}</span>
+                      </span>
+                      <span className="category-card-label">{bar.label}</span>
+                      <span className="category-card-progress" aria-hidden="true">
+                        <i style={{ width: `${bar.value}%` }} />
+                      </span>
+                      <span className="category-card-meta">{bar.yes} de {bar.total} cumplidas · {bar.pending} pendientes</span>
+                    </button>
+                  )
+                }) : <div className="empty">Todavia no hay categorias disponibles.</div>}
+              </div>
+              <div className="category-legend legacy-category-legend" aria-hidden="true">
                 {categories.map((category) => category.label || category.code || '').join(' · ')}
               </div>
             </div>
