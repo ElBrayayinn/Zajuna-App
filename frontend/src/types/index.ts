@@ -249,6 +249,7 @@ export interface Report {
 
 export interface RouteTarget {
   itemCode: string
+  coveredItemCodes?: string[]
   groupName: string
   url?: string
   routeKind: 'course' | 'page' | 'phase' | 'forum' | 'assign'
@@ -278,6 +279,8 @@ export interface TargetsResponse {
     unresolvedItems?: number
     slotCount?: number
     maxSlotCount?: number
+    captureUnitCount?: number
+    coverageCount?: number
   }
 }
 

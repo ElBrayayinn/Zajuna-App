@@ -322,3 +322,75 @@
       .onboarding-step strong { color:var(--navy); font-size:12px; }
       .onboarding-step small { margin-top:3px; color:var(--muted); font-size:10.5px; line-height:1.35; }
       @media (max-width:640px) { .onboarding-steps { grid-template-columns:1fr; } }
+/* Review feedback: keep navigation stable and make operational status legible. */
+.sidebar { width:248px; min-width:248px; max-width:248px; }
+.breadcrumb-link { color:var(--muted); text-decoration:none; }
+.breadcrumb-link:hover { color:var(--brand-action); text-decoration:underline; }
+.breadcrumb .current { white-space:nowrap; }
+.legacy-category-bars, .legacy-category-legend { display:none; }
+.category-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:16px; }
+.category-card { min-width:0; padding:12px; border:1px solid var(--line); border-radius:9px; color:var(--ink); background:#fbfcfc; text-align:left; transition:border-color .18s ease,background .18s ease,transform .18s ease; }
+.category-card:hover { border-color:#a9c7d3; background:#fff; transform:translateY(-1px); }
+.category-card:focus-visible { outline:3px solid var(--navy); outline-offset:2px; }
+.category-card-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.category-card-head strong { color:var(--navy); font:700 11px/1 "IBM Plex Mono",monospace; }
+.category-card-status { color:var(--pending); font-size:10px; font-weight:700; }
+.category-card.complete .category-card-status { color:var(--brand-action); }
+.category-card.attention .category-card-status { color:var(--no); }
+.category-card-label { display:block; min-height:30px; margin-top:8px; color:var(--navy); font-size:11.5px; font-weight:650; line-height:1.3; }
+.category-card-progress { display:block; height:5px; margin-top:10px; overflow:hidden; border-radius:99px; background:#e6edf0; }
+.category-card-progress i { display:block; height:100%; border-radius:inherit; background:var(--pending); }
+.category-card.complete .category-card-progress i { background:var(--brand); }
+.category-card.attention .category-card-progress i { background:var(--no); }
+.category-card-meta { display:block; margin-top:7px; color:var(--muted); font-size:10px; line-height:1.35; }
+.active-work-card { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr); gap:24px; padding:22px; border-color:#b9d8aa; box-shadow:0 0 0 4px rgba(57,169,0,.08); }
+.active-work-copy h3 { margin-top:7px; font-size:18px; }
+.active-work-copy > .helper { max-width:650px; margin-top:7px; }
+.active-work-copy > .job { margin-top:16px; padding:14px 0 0; border-top:1px solid #edf2f4; border-bottom:0; }
+.active-work-events { padding-left:20px; border-left:1px solid var(--line); }
+.active-work-events .side-title { margin-bottom:10px; }
+.active-work-events .side-title > strong { color:var(--navy); font-size:13px; }
+.active-work-events .mini-job-timeline { margin-top:0; }
+@media (max-width:980px) { .sidebar { width:248px; min-width:248px; max-width:248px; } .active-work-card { grid-template-columns:1fr; } .active-work-events { padding-top:18px; padding-left:0; border-top:1px solid var(--line); border-left:0; } }
+@media (max-width:640px) { .active-work-card { padding:18px; } .category-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.ficha-actions { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-top:20px; padding-top:18px; border-top:1px solid #edf2f4; }
+.ficha-action-group { display:flex; min-width:190px; flex-direction:column; align-items:flex-start; gap:6px; }
+.ficha-action-label { color:var(--muted); font:600 9px/1 "IBM Plex Mono",monospace; letter-spacing:.08em; text-transform:uppercase; }
+.ficha-actions .route-discovery-action { min-width:250px; align-items:flex-start; }
+.ficha-actions .route-discovery-action { flex-direction:column; gap:6px; }
+.ficha-actions .route-action-status { max-width:240px; }
+.checklist-actions { flex-wrap:wrap; justify-content:flex-end; gap:9px; }
+.checklist-actions .route-discovery-action { order:4; flex-basis:100%; flex-direction:column; align-items:flex-end; gap:6px; justify-content:flex-end; }
+.overview-side .route-discovery-action { width:100%; flex-direction:column; align-items:stretch; gap:6px; margin-top:14px; }
+.overview-side .route-discovery-action .button { width:100%; }
+.overview-side .route-action-status { display:block; }
+.activity-toolbar { display:grid; grid-template-columns:minmax(0,1fr) 150px; gap:8px; margin-top:14px; }
+.activity-toolbar input,.activity-toolbar select { min-height:36px; padding:8px 10px; border:1px solid var(--line); border-radius:7px; color:var(--navy); background:#fff; font-size:11.5px; }
+.activity-toolbar input:focus,.activity-toolbar select:focus { border-color:var(--navy); outline:2px solid rgba(0,50,77,.14); }
+.checklist-items-card { scroll-margin-top:20px; }
+.gallery-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:15px; padding:12px; border:1px solid var(--line); border-radius:9px; background:#fbfcfc; }
+.gallery-summary-stat { display:flex; min-width:0; flex-direction:column; gap:4px; padding:0 12px; border-right:1px solid var(--line); }
+.gallery-summary-stat:last-child { border-right:0; }
+.gallery-summary-stat strong { color:var(--navy); font:800 20px/1 "Plus Jakarta Sans",Inter,sans-serif; }
+.gallery-summary-stat span { color:var(--muted); font-size:10.5px; }
+.evidence-related-actions { align-items:flex-end; flex-wrap:wrap; justify-content:flex-end; }
+.evidence-related-actions .button { white-space:nowrap; }
+.evidence-miniature-select { cursor:pointer; }
+.evidence-miniature-preview { cursor:zoom-in; }
+.evidence-miniature-preview:focus-visible { outline:3px solid var(--navy); outline-offset:-3px; }
+.evidence-dialog-navigation { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 18px; border-top:1px solid var(--line); background:#fbfcfc; }
+.evidence-dialog-navigation .helper { min-width:80px; text-align:center; }
+.processes-layout { grid-template-columns:minmax(0,1.35fr) minmax(300px,.65fr); align-items:start; }
+.process-filters { display:flex; flex-wrap:wrap; gap:6px; }
+.process-summary-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:18px; }
+.process-summary-grid > div { min-width:0; padding:13px; border:1px solid var(--line); border-radius:9px; background:#fbfcfc; }
+.process-summary-grid strong { display:block; overflow:hidden; color:var(--navy); font:800 20px/1.1 "Plus Jakarta Sans",Inter,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
+.process-summary-grid span { display:block; margin-top:6px; color:var(--navy); font-size:11px; font-weight:700; }
+.process-summary-grid small { display:block; margin-top:3px; color:var(--muted); font-size:10px; line-height:1.35; }
+.process-job-list { display:grid; gap:10px; margin-top:18px !important; }
+.process-job-card { margin:0; padding:15px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.process-job-card:hover { border-color:#b9d4df; box-shadow:0 4px 12px rgba(0,50,77,.06); }
+.status-guide-list { display:grid; gap:8px; margin-top:14px; }
+.status-guide-list .route-note { margin:0; padding:12px 13px; line-height:1.5; }
+@media (max-width:980px) { .processes-layout { grid-template-columns:1fr; } .process-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .checklist-actions .route-discovery-action { justify-content:flex-start; } }
+@media (max-width:640px) { .ficha-actions { align-items:stretch; flex-direction:column; } .ficha-action-group { width:100%; } .ficha-actions .route-discovery-action { width:100%; min-width:0; } .ficha-actions .route-discovery-action .button { width:100%; } .activity-toolbar { grid-template-columns:1fr; } .gallery-summary { grid-template-columns:1fr; } .gallery-summary-stat { padding:0 0 9px; border-right:0; border-bottom:1px solid var(--line); } .gallery-summary-stat:last-child { padding-bottom:0; border-bottom:0; } .evidence-related-actions { align-items:flex-start; justify-content:flex-start; } .process-summary-grid { grid-template-columns:1fr 1fr; } .evidence-dialog-navigation { padding:10px; } }

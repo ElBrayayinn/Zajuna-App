@@ -27,7 +27,7 @@ function JobRow({ job }: { job: Job }) {
   const chipClass = `status-chip ${statusClassName}${isWaiting ? ' waiting-pulse' : ''}`
 
   return (
-    <article className="job">
+    <article className="job process-job-card">
       <div className="job-top">
         <strong>{friendlyJobType(job.type)}</strong>
         <span className={chipClass}>
@@ -35,9 +35,7 @@ function JobRow({ job }: { job: Job }) {
           {status}
         </span>
       </div>
-      <small>
-        {friendlyJobMessage(job.message || job.stage)} · {progress}%
-      </small>
+      <small>{friendlyJobMessage(job.message || job.stage)} · {progress}%</small>
       <div className={`progress${isRunning ? ' running' : ''}`}>
         <i style={{ width: `${progress}%` }} />
       </div>
@@ -68,64 +66,55 @@ export function Processes() {
     cancelled: 0,
   }
   jobs.forEach((job) => {
-    if (job.status in jobCounts) {
-      jobCounts[job.status] = (jobCounts[job.status] ?? 0) + 1
-    }
+    if (job.status in jobCounts) jobCounts[job.status] = (jobCounts[job.status] ?? 0) + 1
   })
 
   const filteredJobs = jobFilter === 'all' ? jobs : jobs.filter((job) => job.status === jobFilter)
+  const latestJob = jobs[0]
 
   return (
-    <div className="grid">
-      <section className="card">
+    <div className="grid processes-layout">
+      <section className="card processes-card">
         <div className="card-pad">
           <div className="side-title">
             <div>
-              <h3>Procesos recientes</h3>
+              <div className="eyebrow">Actividad local</div>
+              <h3 style={{ marginTop: 7 }}>Procesos recientes</h3>
               <p className="helper" style={{ marginTop: 5 }}>
-                Aquí puedes seguir la actualización de fichas, la revisión de rutas, las capturas y los reportes.
+                Sigue la actualización de fichas, la revisión de rutas, las capturas y los reportes desde un mismo lugar.
               </p>
             </div>
-          <button className="button ghost small" onClick={() => jobsQuery.refetch()}>
-              Actualizar
-            </button>
+            <button className="button ghost small" onClick={() => jobsQuery.refetch()}>Actualizar</button>
           </div>
-          <div className="checklist-filter-tabs" style={{ marginTop: 14 }}>
+          <div className="checklist-filter-tabs process-filters" style={{ marginTop: 18 }}>
             {JOB_FILTER_CHIPS.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                className={`checklist-filter-tab ${jobFilter === value ? 'active' : ''}`}
-                aria-pressed={jobFilter === value}
-                onClick={() => setJobFilter(value)}
-              >
+              <button key={value} type="button" className={`checklist-filter-tab ${jobFilter === value ? 'active' : ''}`} aria-pressed={jobFilter === value} onClick={() => setJobFilter(value)}>
                 {label} {value === 'all' ? jobs.length : (jobCounts[value] ?? 0)}
               </button>
             ))}
           </div>
-          <div className="job-list" style={{ marginTop: 15 }}>
-            {filteredJobs.length ? (
-              filteredJobs.map((job) => <JobRow key={job.id} job={job} />)
-            ) : (
-              <div className="empty">No hay procesos con este filtro.</div>
-            )}
+          <div className="process-summary-grid">
+            <div><strong>{jobCounts.running || 0}</strong><span>En curso</span><small>Trabajos activos ahora</small></div>
+            <div><strong>{jobCounts.waiting_user || 0}</strong><span>Revisión</span><small>Decisiones pendientes</small></div>
+            <div><strong>{jobCounts.failed || 0}</strong><span>Fallidos</span><small>Requieren diagnóstico</small></div>
+            <div><strong>{latestJob ? friendlyJobStatus(latestJob.status) : '—'}</strong><span>Último estado</span><small>{latestJob ? friendlyJobType(latestJob.type) : 'Sin procesos'}</small></div>
+          </div>
+          <div className="job-list process-job-list">
+            {filteredJobs.length ? filteredJobs.map((job) => <JobRow key={job.id} job={job} />) : <div className="empty">No hay procesos con este filtro.</div>}
           </div>
         </div>
       </section>
-      <section className="card">
+      <section className="card status-guide-card">
         <div className="card-pad">
-          <h3>¿Qué significa cada estado?</h3>
-          <div className="route-note" style={{ marginTop: 12 }}>
-            <strong>En espera:</strong> el proceso está pendiente de turno.
-          </div>
-          <div className="route-note">
-            <strong>En curso:</strong> la aplicación está trabajando.
-          </div>
-          <div className="route-note">
-            <strong>Necesita tu revisión:</strong> debes confirmar una ruta o resolver una verificación.
-          </div>
-          <div className="route-note">
-            <strong>Listo:</strong> el resultado quedó guardado en este equipo.
+          <div className="eyebrow">Lectura rápida</div>
+          <h3 style={{ marginTop: 7 }}>¿Qué significa cada estado?</h3>
+          <div className="status-guide-list">
+            <div className="route-note"><strong>En espera:</strong> el trabajo fue aceptado y espera que el núcleo local le asigne turno. No es un error.</div>
+            <div className="route-note"><strong>En curso:</strong> la aplicación está ejecutando la tarea. El porcentaje y la barra muestran su avance.</div>
+            <div className="route-note"><strong>Necesita tu revisión:</strong> la aplicación encontró una decisión que no debe resolver sola; abre el detalle y confirma o corrige.</div>
+            <div className="route-note"><strong>Reintentando:</strong> hubo un fallo temporal y el proceso volverá a intentarlo automáticamente.</div>
+            <div className="route-note"><strong>Listo:</strong> el resultado quedó guardado en este equipo y puedes revisar sus evidencias o reportes.</div>
+            <div className="route-note"><strong>Fallido:</strong> el trabajo terminó sin completar todo. Abre “Ver detalle” para conocer el primer error y el siguiente paso.</div>
           </div>
         </div>
       </section>
