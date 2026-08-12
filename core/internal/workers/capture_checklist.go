@@ -120,6 +120,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if input.MaxTargets > 0 && len(targets) > input.MaxTargets {
 		targets = targets[:input.MaxTargets]
 	}
+	summary.CaptureUnitCount = len(targets)
+	summary.CoverageCount = captureTargetCoverageCount(targets)
 	if len(targets) == 0 {
 		return jobs.Result{ErrorCode: "checklist_map_empty", ErrorMessage: "el mapa no tiene rutas asociadas a los items seleccionados del checklist"}
 	}
@@ -169,11 +171,14 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 
 	captured := 0
+	evidenceRecords := 0
 	failed := 0
 	failures := make([]string, 0)
 	targetItemCodes := make(map[string]bool)
 	for _, target := range targets {
-		targetItemCodes[target.ItemCode] = true
+		for _, itemCode := range coveredItemCodes(target) {
+			targetItemCodes[itemCode] = true
+		}
 	}
 	for index, target := range targets {
 		if err := ctx.Err(); err != nil {
@@ -237,19 +242,25 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			"selector": captureResult.Selector, "selectorFallbacks": target.CSSSelectorFallbacks, "selectorMatched": captureResult.SelectorMatched,
 			"labelHint": target.LabelHint, "routeKind": target.RouteKind, "groupName": target.GroupName, "revealSelectors": target.RevealSelectors, "hideSelectors": target.HideSelectors, "viewportWidth": target.ViewportWidth, "viewportHeight": target.ViewportHeight, "fullPage": target.FullPage, "phaseSection": target.PhaseSection, "jobId": job.ID,
 			"activityId": target.ActivityID, "activityTitle": target.ActivityTitle, "technical": target.Technical, "ownerOnly": target.OwnerOnly,
+			"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
 		})
-		evidenceID := artifactID("evidence", input.FichaID, target.ItemCode+"#"+strconv.Itoa(target.SlotNumber), "")
-		if err := w.evidence.CreateEvidence(ctx, evidence.Record{
-			ID: evidenceID, FichaID: input.FichaID, ItemCode: target.ItemCode, SlotNumber: target.SlotNumber,
-			Name: target.Name, FilePath: outputPath, Format: "png", Source: "capture-checklist", SHA256: hash,
-			Metadata: metadata, CapturedAt: time.Now().UTC(),
-		}); err != nil {
-			failed++
-			failures = append(failures, target.ItemCode+": no se pudo registrar la evidencia")
-			continue
+		capturedAt := time.Now().UTC()
+		for _, itemCode := range coveredItemCodes(target) {
+			evidenceID := artifactID("evidence", input.FichaID, itemCode+"#"+strconv.Itoa(target.SlotNumber), "")
+			if err := w.evidence.CreateEvidence(ctx, evidence.Record{
+				ID: evidenceID, FichaID: input.FichaID, ItemCode: itemCode, SlotNumber: target.SlotNumber,
+				Name: target.Name, FilePath: outputPath, Format: "png", Source: "capture-checklist", SHA256: hash,
+				Metadata: metadata, CapturedAt: capturedAt,
+			}); err != nil {
+				failed++
+				failures = append(failures, itemCode+": no se pudo registrar la evidencia")
+				continue
+			}
+			evidenceRecords++
+			_ = reporter.Event(ctx, "evidence_alias_created", "Criterio asociado a la misma captura", map[string]any{"itemCode": itemCode, "slotNumber": target.SlotNumber, "evidenceId": evidenceID, "captureUnitKey": target.RouteKey})
 		}
 		captured++
-		_ = reporter.Event(ctx, "evidence_captured", "Evidencia guardada", map[string]any{"itemCode": target.ItemCode, "slotNumber": target.SlotNumber, "evidenceId": evidenceID, "selectorMatched": captureResult.SelectorMatched})
+		_ = reporter.Event(ctx, "evidence_captured", "Evidencia guardada", map[string]any{"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target), "slotNumber": target.SlotNumber, "selectorMatched": captureResult.SelectorMatched})
 	}
 	groupCount := 0
 	if groupStore, ok := w.evidence.(evidence.GroupStore); ok {
@@ -272,7 +283,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 	return jobs.Result{Output: map[string]any{
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
-		"failed": failed, "unresolved": summary.UnresolvedItems, "slotCount": len(targets),
+		"failed": failed, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
 		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
 	}}
 }
@@ -302,11 +313,35 @@ func filterCaptureTargets(targets []checklist.CaptureTarget, itemCodes []string)
 	}
 	filtered := make([]checklist.CaptureTarget, 0, len(targets))
 	for _, target := range targets {
-		if allowed[target.ItemCode] {
+		if allowed[target.ItemCode] || anyAllowedCoverage(target, allowed) {
 			filtered = append(filtered, target)
 		}
 	}
 	return filtered
+}
+
+func coveredItemCodes(target checklist.CaptureTarget) []string {
+	if len(target.CoveredItemCodes) == 0 {
+		return []string{target.ItemCode}
+	}
+	return target.CoveredItemCodes
+}
+
+func anyAllowedCoverage(target checklist.CaptureTarget, allowed map[string]bool) bool {
+	for _, itemCode := range coveredItemCodes(target) {
+		if allowed[itemCode] {
+			return true
+		}
+	}
+	return false
+}
+
+func captureTargetCoverageCount(targets []checklist.CaptureTarget) int {
+	count := 0
+	for _, target := range targets {
+		count += len(coveredItemCodes(target))
+	}
+	return count
 }
 
 func safePathPart(value string) string {

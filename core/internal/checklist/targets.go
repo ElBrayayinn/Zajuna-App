@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zajuna-app/core/internal/coursemaps"
@@ -27,6 +28,7 @@ type CaptureSpec struct {
 
 type CaptureTarget struct {
 	ItemCode             string   `json:"itemCode"`
+	CoveredItemCodes     []string `json:"coveredItemCodes,omitempty"`
 	GroupName            string   `json:"groupName"`
 	Name                 string   `json:"name"`
 	URL                  string   `json:"url"`
@@ -51,11 +53,13 @@ type CaptureTarget struct {
 }
 
 type CapturePlanSummary struct {
-	ItemCount       int `json:"itemCount"`
-	ResolvedItems   int `json:"resolvedItems"`
-	UnresolvedItems int `json:"unresolvedItems"`
-	SlotCount       int `json:"slotCount"`
-	MaxSlotCount    int `json:"maxSlotCount"`
+	ItemCount        int `json:"itemCount"`
+	ResolvedItems    int `json:"resolvedItems"`
+	UnresolvedItems  int `json:"unresolvedItems"`
+	SlotCount        int `json:"slotCount"`
+	MaxSlotCount     int `json:"maxSlotCount"`
+	CaptureUnitCount int `json:"captureUnitCount"`
+	CoverageCount    int `json:"coverageCount"`
 }
 
 func CaptureSpecs() []CaptureSpec {
@@ -144,7 +148,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				name := fmt.Sprintf("%s — %s", spec.Name, activity.Title)
 				activitySelector := activityCaptureSelector(activity.ID)
 				targets = append(targets, CaptureTarget{
-					ItemCode: spec.ItemCode, GroupName: spec.GroupName, Name: name,
+					ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName, Name: name,
 					URL: record.CourseURL, SlotNumber: index + 1,
 					ActivityID: activity.ID, ActivityTitle: activity.Title, PhaseSection: activity.PhaseSection, Technical: activity.Technical,
 					CSSSelector:          activitySelector,
@@ -205,7 +209,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			ownerOnly := ownerOnlyForItem(spec.ItemCode)
 			selector := captureSelectorForItem(spec.ItemCode, spec.GroupName, spec.CSSSelector)
 			targets = append(targets, CaptureTarget{
-				ItemCode: spec.ItemCode, GroupName: spec.GroupName,
+				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,
 				Name: name, URL: urls[index], SlotNumber: index + 1,
 				ActivityID: activityID, ActivityTitle: activityTitle, Technical: technical,
 				CSSSelector: selector, CSSSelectorFallbacks: captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector),
@@ -220,7 +224,125 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 		}
 		summary.SlotCount += addedCount
 	}
+	targets = deduplicateCaptureTargets(targets)
+	summary.CaptureUnitCount = len(targets)
+	for _, target := range targets {
+		summary.CoverageCount += len(target.CoveredItemCodes)
+	}
 	return targets, summary, nil
+}
+
+// deduplicateCaptureTargets collapses only byte-for-byte equivalent capture
+// configurations. The checklist items remain visible through
+// CoveredItemCodes, while the worker can render one physical artifact and
+// persist logical aliases for every covered criterion.
+func deduplicateCaptureTargets(targets []CaptureTarget) []CaptureTarget {
+	if len(targets) < 2 {
+		for index := range targets {
+			targets[index].CoveredItemCodes = normalizedCoveredItemCodes(targets[index].ItemCode, targets[index].CoveredItemCodes)
+		}
+		return targets
+	}
+	result := make([]CaptureTarget, 0, len(targets))
+	byKey := make(map[string]int, len(targets))
+	for _, target := range targets {
+		target.CoveredItemCodes = normalizedCoveredItemCodes(target.ItemCode, target.CoveredItemCodes)
+		key := captureUnitKey(target)
+		if existingIndex, ok := byKey[key]; ok {
+			result[existingIndex].CoveredItemCodes = mergeCoveredItemCodes(
+				result[existingIndex].CoveredItemCodes,
+				target.CoveredItemCodes,
+			)
+			continue
+		}
+		byKey[key] = len(result)
+		result = append(result, target)
+	}
+	return result
+}
+
+func captureUnitKey(target CaptureTarget) string {
+	return strings.Join([]string{
+		strings.TrimSpace(target.GroupName),
+		captureShareKey(target.ItemCode, target.GroupName),
+		canonicalRouteURL(target.URL),
+		strings.TrimSpace(target.RouteKind),
+		strings.TrimSpace(target.CSSSelector),
+		strings.Join(target.CSSSelectorFallbacks, "\x00"),
+		strings.Join(target.RevealSelectors, "\x00"),
+		strings.Join(target.HideSelectors, "\x00"),
+		strings.TrimSpace(target.LabelHint),
+		strings.TrimSpace(target.ActivityID),
+		strconv.Itoa(target.PhaseSection),
+		strconv.Itoa(target.SlotNumber),
+		strconv.Itoa(target.ViewportWidth),
+		strconv.Itoa(target.ViewportHeight),
+		strconv.FormatBool(target.FullPage),
+		strconv.FormatBool(target.RequireSelector),
+		strconv.FormatBool(target.OwnerOnly),
+	}, "\x1f")
+}
+
+// captureShareKey is intentionally allow-listed. A matching URL and selector
+// is not enough to prove that two checklist criteria are interchangeable: for
+// example, grading and deadline checks may use the same activity context but
+// still require different semantic validators. The allow-list covers
+// genuinely shared visual contexts and leaves the rest item-specific.
+func captureShareKey(itemCode, groupName string) string {
+	switch groupName {
+	case "cronograma_general", "cronograma_vigente", "perfil_instructor", "sesiones_semanales":
+		return groupName
+	default:
+		return strings.TrimSpace(groupName) + "|" + strings.TrimSpace(itemCode)
+	}
+}
+
+func normalizedCoveredItemCodes(primary string, codes []string) []string {
+	merged := make([]string, 0, len(codes)+1)
+	if primary = strings.TrimSpace(primary); primary != "" {
+		merged = append(merged, primary)
+	}
+	for _, code := range codes {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		found := false
+		for _, existing := range merged {
+			if existing == code {
+				found = true
+				break
+			}
+		}
+		if !found {
+			merged = append(merged, code)
+		}
+	}
+	return sortItemCodes(merged)
+}
+
+func mergeCoveredItemCodes(left, right []string) []string {
+	merged := append([]string{}, left...)
+	return normalizedCoveredItemCodes("", append(merged, right...))
+}
+
+func sortItemCodes(codes []string) []string {
+	order := make(map[string]int, len(Items()))
+	for index, item := range Items() {
+		order[item.ItemCode] = index
+	}
+	sort.SliceStable(codes, func(i, j int) bool {
+		left, leftOK := order[codes[i]]
+		right, rightOK := order[codes[j]]
+		if leftOK && rightOK && left != right {
+			return left < right
+		}
+		if leftOK != rightOK {
+			return leftOK
+		}
+		return codes[i] < codes[j]
+	})
+	return codes
 }
 
 func activityBoundItem(itemCode string) bool {

@@ -22,6 +22,7 @@ function FichaTableRow({
   percentage,
   evidenceCount,
   onSelect,
+  onOpen,
   disabled,
 }: {
   ficha: Ficha
@@ -29,6 +30,7 @@ function FichaTableRow({
   percentage: number
   evidenceCount: number
   onSelect: (fichaId: string) => void
+  onOpen: () => void
   disabled: boolean
 }) {
   return (
@@ -58,9 +60,9 @@ function FichaTableRow({
       <button
         className={`button ${isActive ? '' : 'secondary'} small`.trim()}
         disabled={disabled}
-        onClick={() => onSelect(ficha.id)}
+        onClick={() => (isActive ? onOpen() : onSelect(ficha.id))}
       >
-        {isActive ? 'Abrir' : 'Seleccionar'}
+        {isActive ? 'Abrir resumen' : 'Seleccionar'}
       </button>
     </div>
   )
@@ -184,14 +186,20 @@ export function Fichas() {
             <span>Actividades seleccionadas</span>
           </div>
         </div>
-        <div className="inline" style={{ marginTop: 18 }}>
+        <div className="ficha-actions" aria-label="Acciones de la ficha activa">
           <button className="button navy small" onClick={handleOpenChecklist}>
             Abrir checklist
           </button>
-          <RouteDiscoveryAction compact variant="primary" />
-          <button className="button ghost small" disabled={!active || capture.isPending} onClick={handleCapture}>
-            Preparar evidencias
-          </button>
+          <div className="ficha-action-group">
+            <span className="ficha-action-label">Paso 1 · mapa del curso</span>
+            <RouteDiscoveryAction compact variant="primary" />
+          </div>
+          <div className="ficha-action-group">
+            <span className="ficha-action-label">Paso 2 · captura</span>
+            <button className="button ghost small" disabled={!active || capture.isPending} onClick={handleCapture}>
+              Preparar evidencias
+            </button>
+          </div>
         </div>
       </section>
       <section className="card">
@@ -233,6 +241,7 @@ export function Fichas() {
                   percentage={percentage}
                   evidenceCount={activeEvidenceCount}
                   onSelect={handleSelect}
+                  onOpen={() => navigate('/resumen')}
                   disabled={setActiveFicha.isPending}
                 />
               )

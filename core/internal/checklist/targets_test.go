@@ -46,6 +46,26 @@ func TestBuildCaptureTargetsUsesItemCodesAndEvidenceSlots(t *testing.T) {
 	}
 }
 
+func TestBuildCaptureTargetsSharesOneUnitAcrossCompatibleScheduleItems(t *testing.T) {
+	record := coursemaps.Record{
+		ByItemCode: map[string]json.RawMessage{
+			"1.1.1": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=10"`),
+			"1.1.2": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=10"`),
+		},
+		Routes: []coursemaps.Route{{Kind: "page", URL: "https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=10"}},
+	}
+	targets, summary, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(targets) != 1 || summary.CaptureUnitCount != 1 || summary.CoverageCount != 2 {
+		t.Fatalf("expected one physical unit with two logical criteria, targets=%#v summary=%#v", targets, summary)
+	}
+	if len(targets[0].CoveredItemCodes) != 2 || targets[0].CoveredItemCodes[0] != "1.1.1" || targets[0].CoveredItemCodes[1] != "1.1.2" {
+		t.Fatalf("unexpected coverage metadata: %#v", targets[0].CoveredItemCodes)
+	}
+}
+
 func TestBuildCaptureTargetsBindsDatesToSelectedActivity(t *testing.T) {
 	record := coursemaps.Record{
 		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080",

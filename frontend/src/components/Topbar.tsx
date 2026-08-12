@@ -1,5 +1,5 @@
 import { type RefObject } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from './Icon'
 import { findNavItem } from '../lib/nav'
 import { useDashboard, useJobs, useNotifications, useSetupStatus } from '../hooks/api'
@@ -57,23 +57,26 @@ export function Topbar({ mobileMenuOpen, onToggleMobileMenu, menuButtonRef }: To
       >
         <span aria-hidden="true">☰</span>
       </button>
-      <div className="breadcrumb">
-        <span>{navItem?.group || 'Operación'}</span>
+      <nav className="breadcrumb" aria-label="Ubicación actual">
+        {navItem?.path === '/resumen' ? (
+          <span>{navItem?.group || 'Operación'}</span>
+        ) : (
+          <Link className="breadcrumb-link" to="/resumen">{navItem?.group || 'Operación'}</Link>
+        )}
         <span aria-hidden="true">/</span>
         {mid && (
           <>
-            <span className="mid">{mid}</span>
+            {location.pathname.startsWith('/checklist') ? (
+              <Link className="mid breadcrumb-link" to="/fichas">{mid}</Link>
+            ) : (
+              <span className="mid">{mid}</span>
+            )}
             <span aria-hidden="true">/</span>
           </>
         )}
-        <span className="current">{navItem?.label || 'Resumen'}</span>
-      </div>
+        <span className="current" aria-current="page">{navItem?.label || 'Resumen'}</span>
+      </nav>
       <div className="header-actions">
-        <div className="global-search" role="search">
-          <Icon name="search" size={14} />
-          <span>Buscar ficha, tarea o evidencia</span>
-          <kbd>Ctrl K</kbd>
-        </div>
         <button className="header-icon" type="button" aria-label={unreadNotifications || needsReview ? `Notificaciones · ${unreadNotifications || 1} sin leer` : 'Notificaciones'} onClick={() => navigate('/notificaciones')}>
           <Icon name="bell" size={15} />
           <i id="notif-alert-dot" hidden={!unreadNotifications && !needsReview} aria-hidden="true" />
