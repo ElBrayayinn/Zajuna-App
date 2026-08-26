@@ -11,8 +11,6 @@ const targets = [
   { id: 'windows-arm64', goos: 'windows', goarch: 'arm64', binary: 'zajuna-core.exe' },
   { id: 'linux-x64', goos: 'linux', goarch: 'amd64', binary: 'zajuna-core' },
   { id: 'linux-arm64', goos: 'linux', goarch: 'arm64', binary: 'zajuna-core' },
-  { id: 'macos-x64', goos: 'darwin', goarch: 'amd64', binary: 'zajuna-core' },
-  { id: 'macos-arm64', goos: 'darwin', goarch: 'arm64', binary: 'zajuna-core' },
 ];
 
 fs.mkdirSync(outputRoot, { recursive: true });

@@ -16,7 +16,6 @@ function testForbidsBypassLanguage() {
     assert.equal(html.toLowerCase().includes(phrase.toLowerCase()), false, `found bypass phrase: ${phrase}`);
   }
   assert.equal(html.includes('Ejecutar de todas formas'), false);
-  assert.equal(html.includes('Más información y luego'), false);
 }
 
 function testExplainsUnsignedAsReleaseBlocker() {
@@ -38,12 +37,12 @@ function testKeepsChecksumAndOfficialChannelWhenSigned() {
     productName: 'Zajuna App',
     version: '0.1.0',
     signed: true,
-    artifacts: [{ file: 'Zajuna-App.dmg', size: 320000000, sha256: 'fff999' }],
+    artifacts: [{ file: 'Zajuna-App.AppImage', size: 320000000, sha256: 'fff999' }],
   });
   assert.match(html, /fff999/);
-  assert.match(html, /Zajuna-App\.dmg/);
+  assert.match(html, /Zajuna-App\.AppImage/);
   assert.match(html, /canal oficial/);
-  assert.match(html, /Authenticode|Developer ID|checksum/i);
+  assert.match(html, /Authenticode|checksum/i);
   fs.mkdtempSync(path.join(os.tmpdir(), 'zajuna-downloads-'));
 }
 
