@@ -29,10 +29,13 @@ function requestedArch() {
 
 const platform = requestedPlatform();
 const arch = requestedArch();
+if (platform === 'mac') {
+  console.error('macOS ya no es una plataforma de distribuciÃ³n compatible: solo se generan instaladores Windows (NSIS) y Linux (AppImage).');
+  process.exit(1);
+}
 const targetId = {
   win: { x64: 'windows-x64', arm64: 'windows-arm64' },
   linux: { x64: 'linux-x64', arm64: 'linux-arm64' },
-  mac: { x64: 'macos-x64', arm64: 'macos-arm64' },
 }[platform]?.[arch];
 
 if (!targetId) {
@@ -76,7 +79,6 @@ const config = {
   extraResources: [{ from: path.relative(projectRoot, stagingDir).replaceAll(path.sep, '/'), to: 'core' }],
   directories: { output: 'dist' },
   win: { target: 'nsis' },
-  mac: { target: 'dmg' },
   linux: { target: 'AppImage' },
 };
 fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

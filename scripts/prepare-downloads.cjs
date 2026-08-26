@@ -8,11 +8,6 @@ const outputPath = path.join(distRoot, 'downloads.html');
 const BYPASS_PHRASES = [
   'Ejecutar de todas formas',
   'Run anyway',
-  'Open Anyway',
-  'Open anyway',
-  'Más información y luego',
-  'Disable Gatekeeper',
-  'xattr -c',
   'chmod +x y ejecutar igual',
 ];
 
@@ -66,7 +61,7 @@ function renderDownloadsPage(manifest = loadManifest()) {
     : `<section class="blocker">
         <h2>Release bloqueado: artefacto no firmado</h2>
         <p>El instalador actual no tiene firma digital. Eso es un bloqueo de publicación, no un paso de instalación.</p>
-        <p>No ignores las advertencias de Windows, Gatekeeper de macOS ni del escritorio Linux. Espera el canal oficial firmado o verifica el SHA256 del manifiesto solo si tu equipo de entrega te pidió validar un candidato interno.</p>
+        <p>No ignores las advertencias de Windows ni del escritorio Linux. Espera el canal oficial firmado o verifica el SHA256 del manifiesto solo si tu equipo de entrega te pidió validar un candidato interno.</p>
       </section>`;
 
   return `<!DOCTYPE html>
@@ -83,8 +78,8 @@ function renderDownloadsPage(manifest = loadManifest()) {
   <ol>
     <li>Descarga el instalador desde el canal oficial del equipo de entrega.</li>
     <li>Abre el manifiesto y comprueba que el SHA256 del archivo coincide exactamente.</li>
-    <li>En Windows, verifica el editor/Authenticode. En macOS, verifica Developer ID y notarización. En Linux, usa el AppImage junto al checksum publicado.</li>
-    <li>Si el sistema operativo muestra una advertencia de archivo no reconocido, detente. No eludas SmartScreen ni Gatekeeper.</li>
+    <li>En Windows, verifica el editor/Authenticode. En Linux, usa el AppImage junto al checksum publicado.</li>
+    <li>Si el sistema operativo muestra una advertencia de archivo no reconocido, detente. No eludas SmartScreen ni las protecciones del escritorio Linux.</li>
   </ol>
   <h2>Artefactos</h2>
   ${artifactRows(manifest.artifacts || [])}
