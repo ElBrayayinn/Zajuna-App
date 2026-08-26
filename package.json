@@ -25,6 +25,8 @@
     "test:downloads": "node scripts/prepare-downloads.test.cjs",
     "test:smoke:packaged": "node scripts/smoke-packaged.cjs",
     "test:smoke:external-browser": "node scripts/smoke-external-browser.cjs",
+    "smoke:native": "node scripts/smoke-native.cjs",
+    "test:smoke:native": "node scripts/smoke-native.test.cjs",
     "test:core": "go -C core test ./...",
     "test:e2e:core": "go -C core test ./cmd/zajuna-core -run TestLocalE2ESetupCaptureReportBackup -v",
     "test:visual:core": "powershell -NoProfile -Command \"$env:ZAJUNA_PLAYWRIGHT_DIR=(Join-Path (Get-Location) 'core/bin/playwright'); $env:ZAJUNA_RUN_BROWSER_SMOKE='1'; go -C core test ./cmd/zajuna-core -run TestDashboardBrowserSmoke -v\"",
