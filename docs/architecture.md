@@ -96,14 +96,14 @@ frontend build → sync web → Go targets → Chromium del runner nativo
 → staging target → electron-builder → smoke → manifest/SBOM
 ```
 
-El staging se valida contra el host: no se permite generar un instalador macOS
-o Linux desde Windows con Chromium incorrecto. Los cores cross-compiled sí se
-generan para x64 y ARM64, pero el instalador debe probarse nativamente.
+El staging se valida contra el host: no se permite generar un instalador Linux
+desde Windows con Chromium incorrecto. Los cores cross-compiled se generan para
+Windows/Linux x64 y ARM64, pero el instalador debe probarse nativamente.
 
 ## Riesgos aún abiertos
 
-- Firma digital y notarización (MDL-29).
-- Smoke nativo de DMG/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29).
+- Firma Authenticode de Windows (MDL-29).
+- Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29).
 - Prueba manual WCAG con lector de pantalla (MDL-32).
 - E2E autenticado con cuenta de prueba real (MDL-33).
 - Gate de release con matriz y acta (MDL-34).

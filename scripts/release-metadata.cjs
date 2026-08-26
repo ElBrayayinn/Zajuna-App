@@ -7,6 +7,10 @@ const distRoot = path.join(projectRoot, 'dist');
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
 const lockPath = path.join(projectRoot, 'package-lock.json');
 
+function isReleaseArtifact(name) {
+  return /\.exe$/i.test(name) || /\.AppImage$/i.test(name);
+}
+
 function sha256(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
@@ -34,6 +38,7 @@ function writeMetadata() {
   const artifacts = fs.readdirSync(distRoot, { withFileTypes: true })
     .filter((entry) => entry.isFile())
     .filter((entry) => !['release-manifest.json', 'sbom.cyclonedx.json'].includes(entry.name))
+    .filter((entry) => isReleaseArtifact(entry.name))
     .map((entry) => {
       const filePath = path.join(distRoot, entry.name);
       return {

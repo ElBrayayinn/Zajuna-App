@@ -13,8 +13,9 @@ ejecuta, modifica ni se distribuye con la aplicación.
 
 ## 1. Objetivo y límites
 
-Zajuna App es una aplicación de escritorio instalable para Windows, macOS y
-Linux. Todo el procesamiento principal ocurre localmente:
+Zajuna App es una aplicación de escritorio instalable para Windows y Linux.
+macOS no es un target de distribución mientras no existan credenciales
+Developer ID. Todo el procesamiento principal ocurre localmente:
 
 - Electron funciona como launcher silencioso y supervisor del ciclo de vida.
 - Un core Go escucha únicamente en loopback y sirve API + frontend.
@@ -109,10 +110,9 @@ Vite build
   → smoke /api/health + manifest SHA256 + SBOM CycloneDX
 ```
 
-Targets Go generados actualmente: Windows x64/ARM64, Linux x64/ARM64 y macOS
-x64/ARM64. Los instaladores DMG/AppImage deben construirse y probarse en sus
-respectivos runners nativos porque Chromium y la firma son específicos de cada
-sistema.
+Targets Go generados actualmente: Windows x64/ARM64 y Linux x64/ARM64. Los
+instaladores NSIS/AppImage deben construirse y probarse en sus respectivos
+runners nativos porque Chromium y la firma son específicos de cada sistema.
 
 ## 3. Bloques realizados
 
@@ -165,8 +165,8 @@ sistema.
 
 | Prioridad | Tarea | Motivo |
 |---|---|---|
-| P0 | Firma digital de instaladores y ejecutables (MDL-29). | Evitar advertencias de Windows/macOS y asegurar procedencia. |
-| P0 | Smoke nativo de DMG/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | La estación actual solo valida Windows. |
+| P0 | Firma Authenticode del instalador Windows (MDL-29). | Asegurar procedencia sin exponer credenciales. |
+| P0 | Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | Requiere evidencia fresca de los runners Windows/Linux. |
 | P1 | Pasada manual WCAG con teclado, NVDA y VoiceOver (MDL-32). | El smoke automatizado no sustituye un lector de pantalla. |
 | P0 | Corregir la regla del ítem 3.1 y los selectores de cronograma y menú de curso (MDL-33). | El E2E vivo del 2026-08-26 capturó 11 de 12 objetivos en dos cursos reales; los mismos 5-6 cayeron al fallback en ambos, así que las reglas están mal, no los cursos. |
 | P1 | Gate de release con matriz y acta (MDL-34). | No afirmar versión lista sin logs/artefactos frescos. |

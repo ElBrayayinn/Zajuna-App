@@ -12,9 +12,7 @@ const executable = path.resolve(
       ? path.join(projectRoot, 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'Electron')
       : process.platform === 'win32'
         ? path.join(projectRoot, 'dist', 'win-unpacked', 'Zajuna App.exe')
-        : process.platform === 'darwin'
-          ? path.join(projectRoot, 'dist', 'mac', 'Zajuna App.app', 'Contents', 'MacOS', 'Zajuna App')
-          : path.join(projectRoot, 'dist', 'linux-unpacked', 'Zajuna App')),
+        : path.join(projectRoot, 'dist', 'linux-unpacked', 'Zajuna App')),
 );
 
 function sleep(ms) {
