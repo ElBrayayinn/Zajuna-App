@@ -168,7 +168,7 @@ sistema.
 | P0 | Firma digital de instaladores y ejecutables (MDL-29). | Evitar advertencias de Windows/macOS y asegurar procedencia. |
 | P0 | Smoke nativo de DMG/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | La estación actual solo valida Windows. |
 | P1 | Pasada manual WCAG con teclado, NVDA y VoiceOver (MDL-32). | El smoke automatizado no sustituye un lector de pantalla. |
-| P1 | Revisar la regla del ítem 3.1 y los selectores de cronograma con un instructor (MDL-33). | El E2E vivo del 2026-08-26 capturó 11 de 12 objetivos; 5 solo coincidieron con un fallback más grueso. |
+| P0 | Corregir la regla del ítem 3.1 y los selectores de cronograma y menú de curso (MDL-33). | El E2E vivo del 2026-08-26 capturó 11 de 12 objetivos en dos cursos reales; los mismos 5-6 cayeron al fallback en ambos, así que las reglas están mal, no los cursos. |
 | P1 | Gate de release con matriz y acta (MDL-34). | No afirmar versión lista sin logs/artefactos frescos. |
 | P2 | Completar workflows administrativos y adaptadores externos opcionales. | No bloquean el runtime local principal. |
 
@@ -217,9 +217,9 @@ El instalador Windows actual incluye core Go y Chromium/Playwright, responde a
 
 El detalle de Linear está en [`hardening-2026-08-20.md`](hardening-2026-08-20.md).
 
-1. Revisar con un instructor las reglas que el curso real dejó sin resolver y
-   repetir el registro de selectores en otro curso (MDL-33); el registro vive en
-   `docs/evidence/mdl-33-selectors.json`.
+1. Corregir con un instructor las reglas que fallaron igual en los dos cursos
+   reales y volver a correr el registro (MDL-33); los registros viven en
+   `docs/evidence/mdl-33-selectors.json` y `mdl-33-selectors-curso-b.json`.
 2. Firmar instaladores y correr smoke nativo en Windows, macOS y Linux (MDL-29).
 3. Pasada manual WCAG con teclado, zoom 200 % y NVDA/VoiceOver (MDL-32).
 4. Gate de release con matriz y acta; no marcar Done sin artefactos (MDL-34).

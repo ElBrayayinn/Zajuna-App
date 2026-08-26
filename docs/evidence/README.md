@@ -5,7 +5,8 @@ que la aplicación encontró en un curso real, no una expectativa de laboratorio
 
 | Archivo | Origen | Contenido |
 |---|---|---|
-| `mdl-33-selectors.json` | `TestAuthenticatedZajunaE2E` con `ZAJUNA_SELECTOR_REPORT` | Registro de selectores y reglas de captura por curso real (MDL-33). |
+| `mdl-33-selectors.json` | `TestAuthenticatedZajunaE2E` con `ZAJUNA_SELECTOR_REPORT` | Registro de selectores y reglas de captura del curso A real (MDL-33). |
+| `mdl-33-selectors-curso-b.json` | Igual, con `ZAJUNA_SELECTOR_FICHA_INDEX=1` | Mismo registro en un segundo curso real, para separar una regla frágil de una particularidad del curso. |
 
 ## Qué no contienen
 

@@ -147,13 +147,23 @@ func TestAuthenticatedZajunaE2E(t *testing.T) {
 	}
 
 	if os.Getenv("ZAJUNA_MAPS_E2E") == "1" || os.Getenv("ZAJUNA_CAPTURE_E2E") == "1" {
-		mapCourseID := ""
-		if len(fichas) > 0 {
-			mapCourseID, _ = fichas[0]["courseId"].(string)
+		// The account owns several fichas. ZAJUNA_SELECTOR_FICHA_INDEX picks which
+		// one to map and register, so the same run can be repeated on a second
+		// real course to tell a fragile rule from a course-specific layout.
+		fichaIndex := 0
+		if configured := strings.TrimSpace(os.Getenv("ZAJUNA_SELECTOR_FICHA_INDEX")); configured != "" {
+			parsed, err := strconv.Atoi(configured)
+			if err != nil || parsed < 0 || parsed >= len(fichas) {
+				t.Fatalf("ZAJUNA_SELECTOR_FICHA_INDEX must be between 0 and %d, got %q", len(fichas)-1, configured)
+			}
+			fichaIndex = parsed
 		}
+		selectedFicha := fichas[fichaIndex]
+		mapCourseID, _ := selectedFicha["courseId"].(string)
 		if mapCourseID == "" {
 			t.Fatal("the authenticated sync returned no course id for map E2E")
 		}
+		t.Logf("Zajuna authenticated E2E: using ficha %d of %d (course %s)", fichaIndex+1, len(fichas), mapCourseID)
 		mapsInput := `{"documentType":"` + escapeJSON(documentType) + `","courseIds":["` + escapeJSON(mapCourseID) + `"],"maxDepth":1,"maxPages":20,"maxLinksPerPage":150}`
 		mapsResponse := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/course-maps/discover", mapsInput)
 		if mapsResponse.StatusCode != http.StatusAccepted {
@@ -211,7 +221,7 @@ func TestAuthenticatedZajunaE2E(t *testing.T) {
 			}
 			t.Logf("Zajuna authenticated capture E2E: route captured locally")
 
-			registerZajunaSelectors(t, server, store, fichas[0], username, documentType)
+			registerZajunaSelectors(t, server, store, selectedFicha, username, documentType)
 		}
 	}
 }
