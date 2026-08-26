@@ -26,12 +26,18 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       <nav className="sidebar-nav">
         <div className="sidebar-label">Operación</div>
         {OPERATION_ITEMS.map((item) => (
-          <NavLink key={item.path} to={item.path} onClick={onClose} className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}>
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={onClose}
+            className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
+            aria-label={item.path === '/fichas' ? `Fichas, ${fichas?.length || 0}` : undefined}
+          >
             <span className="sidebar-icon">
               <Icon name={item.icon} size={16} />
             </span>
             <span className="nav-label">{item.label}</span>
-            {item.path === '/fichas' && <span className="nav-count">{fichas?.length || 0}</span>}
+            {item.path === '/fichas' && <span className="nav-count" aria-hidden="true">{fichas?.length || 0}</span>}
             {item.path === '/trabajos' && <i id="nav-job-dot" className="live-dot" hidden={!hasActiveJob} aria-hidden="true" />}
           </NavLink>
         ))}
