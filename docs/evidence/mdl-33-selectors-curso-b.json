@@ -1,0 +1,333 @@
+{
+  "generatedAt": "2026-08-26T16:17:13.8646719Z",
+  "captureOutcome": "capture_partial_failure: captura incompleta: 11 guardadas, 1 con error. Primer error: 3.1: el selector requerido no apareció en la página destino: #region-main .course-content .section (candidatos=0, selectores=#region-main .course-content .section raw=284 hint=0 | #region-main .course-content raw=1 hint=0 | #region-main raw=1 hint=0 | #page-user-profile raw=0 hint=0 | .course-content raw=1 hint=0 | #page-content raw=1 hint=0)",
+  "captureUnits": 11,
+  "itemsCovered": 20,
+  "matchedUnits": 11,
+  "fallbackChainUnits": 6,
+  "fullPageUnits": 0,
+  "selectorUsage": [
+    {
+      "selector": "#region-main",
+      "matched": 5,
+      "fallback": 0
+    },
+    {
+      "selector": "#page-content",
+      "matched": 1,
+      "fallback": 0
+    },
+    {
+      "selector": "#page-user-profile",
+      "matched": 1,
+      "fallback": 0
+    },
+    {
+      "selector": "#region-main .course-content #module-2899981",
+      "matched": 1,
+      "fallback": 0
+    },
+    {
+      "selector": "#region-main .course-content #module-2899987",
+      "matched": 1,
+      "fallback": 0
+    },
+    {
+      "selector": "#region-main .course-content #module-2899990",
+      "matched": 1,
+      "fallback": 0
+    },
+    {
+      "selector": "#region-main .gradereport-grader-table",
+      "matched": 1,
+      "fallback": 0
+    }
+  ],
+  "observations": [
+    {
+      "captureUnitKey": "calificaciones|/zajuna/grade/report/grader/index.php?id=39967|grading|#region-main .gradereport-grader-table||0|1",
+      "routePath": "/zajuna/grade/report/grader/index.php?id=39967",
+      "routeKind": "grading",
+      "groupName": "calificaciones",
+      "itemCodes": [
+        "5.1"
+      ],
+      "primarySelector": "#region-main .gradereport-grader-table",
+      "selector": "#region-main .gradereport-grader-table",
+      "selectorMatched": true,
+      "fallbacks": [
+        "#region-main .gradereport-grader-table",
+        "#region-main table",
+        "#region-main",
+        "#region-main .course-content",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "labelHint": "calificaciones"
+    },
+    {
+      "captureUnitKey": "configuracion|/zajuna/course/view.php?id=39967|course|#region-main .course-content #module-2899987|2899987|9|1",
+      "routePath": "/zajuna/course/view.php?id=39967",
+      "routeKind": "course",
+      "groupName": "configuracion",
+      "phaseSection": 9,
+      "activityId": "2899987",
+      "itemCodes": [
+        "6.1"
+      ],
+      "primarySelector": "#region-main .course-content #module-2899987",
+      "selector": "#region-main .course-content #module-2899987",
+      "selectorMatched": true,
+      "fallbacks": [
+        "#region-main .course-content #module-2899987",
+        "#region-main .course-content li#module-2899987 .activity-item",
+        "#region-main .course-content .activity-item:has(a[href*=\"id=2899987\"])",
+        "#region-main .course-content li#module-2899987",
+        "#region-main .course-content a[href*=\"id=2899987\"]"
+      ],
+      "revealSelectors": [
+        "#collapssesection9"
+      ],
+      "technical": true
+    },
+    {
+      "captureUnitKey": "configuracion|/zajuna/course/view.php?id=39967|course|#region-main .course-content #module-2899990|2899990|9|2",
+      "routePath": "/zajuna/course/view.php?id=39967",
+      "routeKind": "course",
+      "groupName": "configuracion",
+      "phaseSection": 9,
+      "activityId": "2899990",
+      "itemCodes": [
+        "6.1"
+      ],
+      "primarySelector": "#region-main .course-content #module-2899990",
+      "selector": "#region-main .course-content #module-2899990",
+      "selectorMatched": true,
+      "fallbacks": [
+        "#region-main .course-content #module-2899990",
+        "#region-main .course-content li#module-2899990 .activity-item",
+        "#region-main .course-content .activity-item:has(a[href*=\"id=2899990\"])",
+        "#region-main .course-content li#module-2899990",
+        "#region-main .course-content a[href*=\"id=2899990\"]"
+      ],
+      "revealSelectors": [
+        "#collapssesection9"
+      ],
+      "technical": true
+    },
+    {
+      "captureUnitKey": "configuracion|/zajuna/course/view.php?id=39967|course|#region-main .course-content #module-2899981|2899981|9|3",
+      "routePath": "/zajuna/course/view.php?id=39967",
+      "routeKind": "course",
+      "groupName": "configuracion",
+      "phaseSection": 9,
+      "activityId": "2899981",
+      "itemCodes": [
+        "6.1"
+      ],
+      "primarySelector": "#region-main .course-content #module-2899981",
+      "selector": "#region-main .course-content #module-2899981",
+      "selectorMatched": true,
+      "fallbacks": [
+        "#region-main .course-content #module-2899981",
+        "#region-main .course-content li#module-2899981 .activity-item",
+        "#region-main .course-content .activity-item:has(a[href*=\"id=2899981\"])",
+        "#region-main .course-content li#module-2899981",
+        "#region-main .course-content a[href*=\"id=2899981\"]"
+      ],
+      "revealSelectors": [
+        "#collapssesection9"
+      ],
+      "technical": true
+    },
+    {
+      "captureUnitKey": "cronograma_general|/zajuna/mod/page/view.php?id=2900029|page|#region-main .course-content:has(iframe[src*=\"docs.google.com/spreadsheets\"]), #region-main .course-content||0|1",
+      "routePath": "/zajuna/mod/page/view.php?forceview=1\u0026id=2900029",
+      "routeKind": "page",
+      "groupName": "cronograma_general",
+      "itemCodes": [
+        "1.1.1",
+        "1.1.2",
+        "1.1.3",
+        "1.1.4",
+        "1.1.5"
+      ],
+      "primarySelector": "#region-main .course-content:has(iframe[src*=\"docs.google.com/spreadsheets\"]), #region-main .course-content",
+      "selector": "#region-main",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content:has(iframe[src*=\"docs.google.com/spreadsheets\"]), #region-main .course-content",
+        "#region-main .course-content",
+        "#region-main",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "viewport": "2560x1200",
+      "fullPage": true
+    },
+    {
+      "captureUnitKey": "cronograma_vigente|/zajuna/mod/page/view.php?id=4220146|phase|#region-main .course-content .section||0|1",
+      "routePath": "/zajuna/mod/page/view.php?forceview=1\u0026id=4220146",
+      "routeKind": "phase",
+      "groupName": "cronograma_vigente",
+      "itemCodes": [
+        "1.2.1",
+        "1.2.2",
+        "1.2.3",
+        "1.2.4",
+        "1.2.5",
+        "1.2.6",
+        "1.2.7"
+      ],
+      "primarySelector": "#region-main .course-content .section",
+      "selector": "#region-main",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content .section",
+        "#region-main .course-content",
+        "#region-main",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "viewport": "2560x1200",
+      "fullPage": true
+    },
+    {
+      "captureUnitKey": "cronograma_vigente|/zajuna/mod/page/view.php?id=4220151|phase|#region-main .course-content .section||0|3",
+      "routePath": "/zajuna/mod/page/view.php?forceview=1\u0026id=4220151",
+      "routeKind": "phase",
+      "groupName": "cronograma_vigente",
+      "itemCodes": [
+        "1.2.1",
+        "1.2.2",
+        "1.2.3",
+        "1.2.4",
+        "1.2.5",
+        "1.2.6",
+        "1.2.7"
+      ],
+      "primarySelector": "#region-main .course-content .section",
+      "selector": "#region-main",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content .section",
+        "#region-main .course-content",
+        "#region-main",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "viewport": "2560x1200",
+      "fullPage": true
+    },
+    {
+      "captureUnitKey": "cronograma_vigente|/zajuna/mod/page/view.php?id=4220157|phase|#region-main .course-content .section||0|4",
+      "routePath": "/zajuna/mod/page/view.php?forceview=1\u0026id=4220157",
+      "routeKind": "phase",
+      "groupName": "cronograma_vigente",
+      "itemCodes": [
+        "1.2.1",
+        "1.2.2",
+        "1.2.3",
+        "1.2.4",
+        "1.2.5",
+        "1.2.6",
+        "1.2.7"
+      ],
+      "primarySelector": "#region-main .course-content .section",
+      "selector": "#region-main",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content .section",
+        "#region-main .course-content",
+        "#region-main",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "viewport": "2560x1200",
+      "fullPage": true
+    },
+    {
+      "captureUnitKey": "cronograma_vigente|/zajuna/mod/page/view.php?id=4856063|phase|#region-main .course-content .section||0|2",
+      "routePath": "/zajuna/mod/page/view.php?forceview=1\u0026id=4856063",
+      "routeKind": "phase",
+      "groupName": "cronograma_vigente",
+      "itemCodes": [
+        "1.2.1",
+        "1.2.2",
+        "1.2.3",
+        "1.2.4",
+        "1.2.5",
+        "1.2.6",
+        "1.2.7"
+      ],
+      "primarySelector": "#region-main .course-content .section",
+      "selector": "#region-main",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content .section",
+        "#region-main .course-content",
+        "#region-main",
+        "#page-user-profile",
+        ".course-content",
+        "#page-content"
+      ],
+      "viewport": "2560x1200",
+      "fullPage": true
+    },
+    {
+      "captureUnitKey": "menu_curso|/zajuna/course/view.php?id=39967|course|#region-main .course-content||0|1",
+      "routePath": "/zajuna/course/view.php?id=39967",
+      "routeKind": "course",
+      "groupName": "menu_curso",
+      "itemCodes": [
+        "4.1"
+      ],
+      "primarySelector": "#region-main .course-content",
+      "selector": "#page-content",
+      "selectorMatched": true,
+      "usedFallback": true,
+      "fallbacks": [
+        "#region-main .course-content",
+        ".course-content",
+        "#region-main",
+        "#page-user-profile",
+        "#page-content"
+      ],
+      "labelHint": "secciones"
+    },
+    {
+      "captureUnitKey": "perfil_instructor|/zajuna/user/profile.php|profile|#page-user-profile||0|1",
+      "routePath": "/zajuna/user/profile.php",
+      "routeKind": "profile",
+      "groupName": "perfil_instructor",
+      "itemCodes": [
+        "2.1.1",
+        "2.1.2",
+        "2.1.3",
+        "2.1.4",
+        "2.1.5"
+      ],
+      "primarySelector": "#page-user-profile",
+      "selector": "#page-user-profile",
+      "selectorMatched": true,
+      "fallbacks": [
+        "#page-user-profile",
+        "#region-main",
+        "#region-main .course-content",
+        ".course-content",
+        "#page-content"
+      ],
+      "fullPage": true
+    }
+  ]
+}

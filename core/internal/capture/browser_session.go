@@ -84,9 +84,9 @@ func (r Runtime) OpenBrowserSession(ctx context.Context, credentials BrowserCred
 		return nil, blockedErr
 	}
 	loginBody, _ := page.Locator("body").InnerText()
-	if isChallengePage(page.URL(), pageTitle(page), loginBody) {
+	if reason := pageChallengeReason(page, page.URL(), pageTitle(page), loginBody); reason != "" {
 		session.Close()
-		return nil, ErrChallengePage
+		return nil, fmt.Errorf("%w: %s", ErrChallengePage, reason)
 	}
 	loginForm := learnerLoginForm(page)
 	if err := selectDocumentType(loginForm, credentials.DocumentType); err != nil {
@@ -115,9 +115,9 @@ func (r Runtime) OpenBrowserSession(ctx context.Context, credentials BrowserCred
 		return nil, blockedErr
 	}
 	body, _ := page.Locator("body").InnerText()
-	if isChallengePage(page.URL(), pageTitle(page), body) {
+	if reason := pageChallengeReason(page, page.URL(), pageTitle(page), body); reason != "" {
 		session.Close()
-		return nil, ErrChallengePage
+		return nil, fmt.Errorf("%w: %s", ErrChallengePage, reason)
 	}
 	if isZajunaLoginPage(page.URL(), pageTitle(page), body) {
 		session.Close()
@@ -283,36 +283,17 @@ func pageTitle(page playwright.Page) string {
 	return title
 }
 
+// isZajunaLoginPage recognises the authentication screen. Verified against the
+// live site on 2026-08-26: the learner form (form#login__form-cursos) is served
+// from the site root, so the URL alone is not enough and the visible labels are
+// matched with accents folded, in case the page renders without them.
 func isZajunaLoginPage(rawURL, title, body string) bool {
 	lowerURL := strings.ToLower(rawURL)
-	lowerBody := strings.ToLower(title + "\n" + body)
 	if strings.Contains(lowerURL, "/login/") || strings.Contains(lowerURL, "login_user") {
 		return true
 	}
-	return strings.Contains(lowerBody, "número de documento") &&
-		strings.Contains(lowerBody, "contraseña") &&
-		strings.Contains(lowerBody, "iniciar sesión")
-}
-
-func isChallengePage(rawURL, title, body string) bool {
-	content := strings.ToLower(rawURL + "\n" + title + "\n" + body)
-	markers := []string{
-		"g-recaptcha",
-		"h-captcha",
-		"hcaptcha",
-		"recaptcha",
-		"captcha",
-		"autenticación de dos factores",
-		"autenticacion de dos factores",
-		"two-factor",
-		"two factor",
-		"código de verificación",
-		"codigo de verificacion",
-	}
-	for _, marker := range markers {
-		if strings.Contains(content, marker) {
-			return true
-		}
-	}
-	return false
+	content := normalizeSpanish(title + "\n" + body)
+	return strings.Contains(content, "numero de documento") &&
+		strings.Contains(content, "contrasena") &&
+		strings.Contains(content, "iniciar sesion")
 }

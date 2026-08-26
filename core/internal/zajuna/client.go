@@ -143,9 +143,12 @@ func (c *Client) Login(ctx context.Context, credentials Credentials) (Session, e
 		return Session{}, fmt.Errorf("%w: login HTTP %d", ErrAuthentication, initialResponse.StatusCode)
 	}
 
-	// The current learner form authenticates directly and redirects. Older
-	// deployments returned an intermediate form with logintoken/josso, so keep
-	// that compatibility path without requiring tokens from the direct flow.
+	// Verified against the live site on 2026-08-26: lg.php answers HTTP 200 with
+	// a hidden auto-submitting bridge form that carries josso, logintoken,
+	// typeDocument, username and an already-hashed password. Moodle only accepts
+	// that hashed value, so the bridge fields win over the raw credentials. A
+	// deployment that authenticates in one step simply omits logintoken and
+	// falls through to the redirect below.
 	if loginToken := hiddenValue(initialBody, "logintoken"); loginToken != "" {
 		loginForm := url.Values{
 			"logintoken":   {loginToken},
@@ -320,22 +323,29 @@ var inputAttributePattern = regexp.MustCompile(`(?is)([a-z_:][a-z0-9_.:-]*)\s*=\
 
 func hiddenValue(body string, wanted string) string {
 	for _, tag := range inputTagPattern.FindAllString(body, -1) {
-		attributes := map[string]string{}
-		for _, match := range inputAttributePattern.FindAllStringSubmatch(tag, -1) {
-			value := match[2]
-			if value == "" {
-				value = match[3]
-			}
-			if value == "" {
-				value = match[4]
-			}
-			attributes[strings.ToLower(match[1])] = html.UnescapeString(value)
-		}
+		attributes := inputAttributes(tag)
 		if strings.EqualFold(attributes["name"], wanted) {
 			return attributes["value"]
 		}
 	}
 	return ""
+}
+
+// inputAttributes decodes one <input> tag. Zajuna's login bridge quotes some
+// attributes with single quotes, so every quoting style is accepted.
+func inputAttributes(tag string) map[string]string {
+	attributes := map[string]string{}
+	for _, match := range inputAttributePattern.FindAllStringSubmatch(tag, -1) {
+		value := match[2]
+		if value == "" {
+			value = match[3]
+		}
+		if value == "" {
+			value = match[4]
+		}
+		attributes[strings.ToLower(match[1])] = html.UnescapeString(value)
+	}
+	return attributes
 }
 
 func firstNonEmpty(values ...string) string {
@@ -360,29 +370,6 @@ func metaRedirect(body string) string {
 func looksLikeLoginPage(body string) bool {
 	lower := strings.ToLower(body)
 	return strings.Contains(lower, "login__form-cursos") || strings.Contains(lower, "form_login_user")
-}
-
-func looksLikeChallengePage(body string) bool {
-	lower := strings.ToLower(body)
-	markers := []string{
-		"g-recaptcha",
-		"h-captcha",
-		"hcaptcha",
-		"recaptcha",
-		"captcha",
-		"autenticación de dos factores",
-		"autenticacion de dos factores",
-		"two-factor",
-		"two factor",
-		"código de verificación",
-		"codigo de verificacion",
-	}
-	for _, marker := range markers {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 func mustURL(raw string) *url.URL {

@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zajuna-app/core/internal/capture"
 	"github.com/zajuna-app/core/internal/coursemaps"
+	"github.com/zajuna-app/core/internal/evidence"
 	"github.com/zajuna-app/core/internal/jobs"
 	"github.com/zajuna-app/core/internal/storage/sqlite"
 	"github.com/zajuna-app/core/internal/workers"
@@ -77,6 +80,13 @@ func TestAuthenticatedZajunaE2E(t *testing.T) {
 	if err := runtime.Register(captureWorker); err != nil {
 		t.Fatal(err)
 	}
+	checklistCaptureWorker, err := workers.NewCaptureChecklistWorker(capture.Resolve(os.Getenv("ZAJUNA_PLAYWRIGHT_DIR")), dataDir, client, credentials, store, store, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Register(checklistCaptureWorker); err != nil {
+		t.Fatal(err)
+	}
 	runtime.Start(context.Background())
 	defer runtime.Close()
 	server := httptest.NewServer(newRouterWithServices(dataDir, credentials, runtime, store, nil))
@@ -137,13 +147,23 @@ func TestAuthenticatedZajunaE2E(t *testing.T) {
 	}
 
 	if os.Getenv("ZAJUNA_MAPS_E2E") == "1" || os.Getenv("ZAJUNA_CAPTURE_E2E") == "1" {
-		mapCourseID := ""
-		if len(fichas) > 0 {
-			mapCourseID, _ = fichas[0]["courseId"].(string)
+		// The account owns several fichas. ZAJUNA_SELECTOR_FICHA_INDEX picks which
+		// one to map and register, so the same run can be repeated on a second
+		// real course to tell a fragile rule from a course-specific layout.
+		fichaIndex := 0
+		if configured := strings.TrimSpace(os.Getenv("ZAJUNA_SELECTOR_FICHA_INDEX")); configured != "" {
+			parsed, err := strconv.Atoi(configured)
+			if err != nil || parsed < 0 || parsed >= len(fichas) {
+				t.Fatalf("ZAJUNA_SELECTOR_FICHA_INDEX must be between 0 and %d, got %q", len(fichas)-1, configured)
+			}
+			fichaIndex = parsed
 		}
+		selectedFicha := fichas[fichaIndex]
+		mapCourseID, _ := selectedFicha["courseId"].(string)
 		if mapCourseID == "" {
 			t.Fatal("the authenticated sync returned no course id for map E2E")
 		}
+		t.Logf("Zajuna authenticated E2E: using ficha %d of %d (course %s)", fichaIndex+1, len(fichas), mapCourseID)
 		mapsInput := `{"documentType":"` + escapeJSON(documentType) + `","courseIds":["` + escapeJSON(mapCourseID) + `"],"maxDepth":1,"maxPages":20,"maxLinksPerPage":150}`
 		mapsResponse := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/course-maps/discover", mapsInput)
 		if mapsResponse.StatusCode != http.StatusAccepted {
@@ -200,8 +220,98 @@ func TestAuthenticatedZajunaE2E(t *testing.T) {
 				t.Fatalf("capture did not report authenticated=true: %#v", captureOutput)
 			}
 			t.Logf("Zajuna authenticated capture E2E: route captured locally")
+
+			registerZajunaSelectors(t, server, store, selectedFicha, username, documentType)
 		}
 	}
+}
+
+// registerZajunaSelectors closes the MDL-33 P1 item: it drives the real
+// checklist capture against a live course and writes down which Zajuna selector
+// actually produced each piece of evidence. Set ZAJUNA_SELECTOR_REPORT to the
+// artefact path to commit the register; without it the report is written beside
+// the temporary data directory and only summarised in the log.
+func registerZajunaSelectors(t *testing.T, server *httptest.Server, store *sqlite.Store, ficha map[string]any, username, documentType string) {
+	t.Helper()
+	fichaID, _ := ficha["id"].(string)
+	if fichaID == "" {
+		t.Fatal("the authenticated sync returned no ficha id for the selector register")
+	}
+	// The checklist capture refuses to run until the operator has said which
+	// activities belong to the instructor, so the register reproduces that step
+	// against the real course map instead of bypassing it.
+	selectRealCourseActivities(t, server, fichaID)
+
+	maxTargets := 12
+	if configured := strings.TrimSpace(os.Getenv("ZAJUNA_SELECTOR_MAX_TARGETS")); configured != "" {
+		parsed, err := strconv.Atoi(configured)
+		if err != nil || parsed <= 0 || parsed > 200 {
+			t.Fatalf("ZAJUNA_SELECTOR_MAX_TARGETS must be between 1 and 200, got %q", configured)
+		}
+		maxTargets = parsed
+	}
+	input := `{"fichaId":"` + escapeJSON(fichaID) + `","username":"` + escapeJSON(username) +
+		`","documentType":"` + escapeJSON(documentType) + `","maxTargets":` + strconv.Itoa(maxTargets) + `}`
+	response := doJSON(t, server.Client(), http.MethodPost, server.URL+"/api/checklist/capture", input)
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("checklist capture status = %d, body = %s", response.StatusCode, response.Body)
+	}
+	var created jobView
+	decodeJSON(t, response.Body, &created)
+	// A real course exposes hundreds of routes, so allow more time than the
+	// single-route capture above.
+	completed := waitForE2EJobTimeout(t, server.Client(), server.URL, created.ID, 20*time.Minute)
+	// A live course can legitimately leave one rule unmatched, and the register
+	// exists to record exactly that. Only a run that saved nothing is a failure.
+	outcome := string(completed.Status)
+	switch {
+	case completed.Status == jobs.StatusCompleted:
+	case completed.ErrorCode == "capture_partial_failure":
+		outcome = completed.ErrorCode + ": " + completed.ErrorMessage
+		t.Logf("Zajuna selector register: partial capture recorded as a finding: %s", completed.ErrorMessage)
+	default:
+		t.Fatalf("checklist capture ended with status %s, code = %s, message = %s", completed.Status, completed.ErrorCode, completed.ErrorMessage)
+	}
+
+	records, err := store.ListEvidencesByFicha(context.Background(), fichaID, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) == 0 {
+		t.Fatal("the checklist capture produced no evidence to register selectors from")
+	}
+	report := evidence.BuildSelectorReport(fichaID, time.Now(), records)
+	report.CaptureOutcome = evidence.RouteOnly(outcome)
+	if report.CaptureUnits == 0 {
+		t.Fatal("the selector register came out empty")
+	}
+	if report.MatchedUnits == 0 {
+		t.Fatalf("no selector matched on the real course; the register would document only fallbacks: %+v", report.Usage)
+	}
+	encoded, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The ficha id identifies a real SENA group, so it never reaches the
+	// committed artefact.
+	report.FichaID = ""
+	if target := strings.TrimSpace(os.Getenv("ZAJUNA_SELECTOR_REPORT")); target != "" {
+		anonymised, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, append(anonymised, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("Zajuna selector register written to %s", target)
+	} else {
+		t.Logf("Zajuna selector register (set ZAJUNA_SELECTOR_REPORT to persist it):\n%s", encoded)
+	}
+	t.Logf("Zajuna selector register: %d capture units, %d checklist items, %d matched (%d via a coarser fallback), %d fell back to full page",
+		report.CaptureUnits, report.ItemsCovered, report.MatchedUnits, report.FallbackChainUnits, report.FullPageUnits)
 }
 
 func waitForE2EJobTimeout(t *testing.T, client *http.Client, baseURL, id string, timeout time.Duration) jobView {
@@ -235,4 +345,54 @@ func hasJobStage(events []jobs.Event, wanted string) bool {
 func escapeJSON(value string) string {
 	encoded, _ := json.Marshal(value)
 	return strings.Trim(string(encoded), `"`)
+}
+
+// selectRealCourseActivities mirrors the operator step that scopes the
+// checklist to the instructor's own activities. ZAJUNA_SELECTOR_ACTIVITIES caps
+// how many are selected so one run stays bounded on a course with hundreds of
+// routes.
+func selectRealCourseActivities(t *testing.T, server *httptest.Server, fichaID string) {
+	t.Helper()
+	listResponse := doJSON(t, server.Client(), http.MethodGet, server.URL+"/api/checklist/activities?fichaId="+url.QueryEscape(fichaID), "")
+	if listResponse.StatusCode != http.StatusOK {
+		t.Fatalf("checklist activities status = %d, body = %s", listResponse.StatusCode, listResponse.Body)
+	}
+	var view struct {
+		MapReady   bool `json:"mapReady"`
+		Activities []struct {
+			ID        string `json:"id"`
+			Technical bool   `json:"technical"`
+		} `json:"activities"`
+	}
+	decodeJSON(t, listResponse.Body, &view)
+	if !view.MapReady || len(view.Activities) == 0 {
+		t.Fatalf("the real course map exposed no activities to select: mapReady=%v count=%d", view.MapReady, len(view.Activities))
+	}
+	limit := 6
+	if configured := strings.TrimSpace(os.Getenv("ZAJUNA_SELECTOR_ACTIVITIES")); configured != "" {
+		parsed, err := strconv.Atoi(configured)
+		if err != nil || parsed <= 0 {
+			t.Fatalf("ZAJUNA_SELECTOR_ACTIVITIES must be a positive number, got %q", configured)
+		}
+		limit = parsed
+	}
+	ids := make([]string, 0, limit)
+	for _, activity := range view.Activities {
+		if len(ids) >= limit {
+			break
+		}
+		if activity.ID != "" {
+			ids = append(ids, activity.ID)
+		}
+	}
+	encodedIDs, err := json.Marshal(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putResponse := doJSON(t, server.Client(), http.MethodPut, server.URL+"/api/checklist/activities",
+		`{"fichaId":"`+escapeJSON(fichaID)+`","selectedActivityIds":`+string(encodedIDs)+`}`)
+	if putResponse.StatusCode != http.StatusOK {
+		t.Fatalf("checklist activity selection status = %d, body = %s", putResponse.StatusCode, putResponse.Body)
+	}
+	t.Logf("Zajuna selector register: %d of %d real activities selected", len(ids), len(view.Activities))
 }

@@ -16,7 +16,7 @@ es una dependencia de ejecución.
 | Capacidad | Implementación local | Estado | Próxima acción |
 |---|---|---|---|
 | Setup inicial | `POST /api/setup`, config no sensible + keyring, perfil visible tras sync | Completado | Probar reconfiguración/eliminación y nombre del perfil en cliente. |
-| Secretos y sesión | `core/internal/secrets`, cliente HTTP y Chromium | Completado | CAPTCHA/MFA abortan; falta E2E vivo (MDL-33). |
+| Secretos y sesión | `core/internal/secrets`, cliente HTTP y Chromium | Completado | E2E vivo del 2026-08-26: login de dos pasos verificado, detección de CAPTCHA/MFA estructural (MDL-33). |
 | Sincronizar fichas | `SyncFichasWorker` + SQLite | Validación | Ejecutar con cuenta de prueba y varios cursos. |
 | Checklist 62 ítems | Catálogo local, 15 categorías, estados y slots | Completado | Validar reglas por curso. |
 | Detalle de ítem | `/checklist/:itemCode`, historial y evidencias | Completado | Revisar casos sin targets o con errores. |

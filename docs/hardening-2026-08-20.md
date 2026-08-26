@@ -30,7 +30,7 @@ lector de pantalla.
 | [MDL-28](https://linear.app/medialab-sena/issue/MDL-28) | M0 | `scripts/prepare-downloads.cjs` genera la guía de descargas. El artefacto sin firma es un bloqueo de release, no un paso para eludir SmartScreen/Gatekeeper. |
 | [MDL-30](https://linear.app/medialab-sena/issue/MDL-30) | M1 | Transiciones CAS de jobs, un worker por id, recuperación de `running`/`retrying`/`queued` al arrancar. |
 | [MDL-31](https://linear.app/medialab-sena/issue/MDL-31) | M1 | Backup con SHA256 y schema. `integrity_check` en staging. Swap atómico y rollback si `sqlite.Open` falla. |
-| [MDL-33](https://linear.app/medialab-sena/issue/MDL-33) | M1 | CAPTCHA/MFA abortan (`zajuna_challenge_required`). Sesión vencida no captura en anónimo. Falta E2E vivo. |
+| [MDL-33](https://linear.app/medialab-sena/issue/MDL-33) | M1 | CAPTCHA/MFA abortan (`zajuna_challenge_required`). Sesión vencida no captura en anónimo. E2E vivo ejecutado el 2026-08-26: ver [`mdl-33-2026-08-26.md`](mdl-33-2026-08-26.md). |
 
 ## Issues que siguen abiertas (Todo)
 

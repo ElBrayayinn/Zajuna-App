@@ -2,6 +2,7 @@
 
 El documento completo de migración está en [`desktop-migration.md`](desktop-migration.md).
 El cierre de la jornada 2026-08-20 está en [`hardening-2026-08-20.md`](hardening-2026-08-20.md).
+La validación autenticada del 2026-08-26 está en [`mdl-33-2026-08-26.md`](mdl-33-2026-08-26.md).
 Este roadmap solo muestra el estado de trabajo y las tareas que faltan.
 
 ## Estado actual
@@ -65,12 +66,16 @@ firma nativa, WCAG manual y gate de release. Ver Linear MDL-25.
 2. Crear y probar DMG macOS y AppImage Linux en máquinas nativas (MDL-29).
 3. Probar instalación limpia, actualización, desinstalación y ausencia de
    procesos huérfanos (MDL-29).
-4. Ejecutar flujo autenticado con cuenta de prueba en Windows (MDL-33, E2E vivo).
+4. Corregir con un instructor la regla del ítem 3.1 y los selectores de
+   `cronograma_general`, `cronograma_vigente` y `menu_curso`. Dos cursos reales
+   distintos fallan igual, así que no es particularidad del curso: falta decidir
+   cuál es el recorte correcto de la evidencia (MDL-33).
 
 ### P1 — Antes de beta amplia
 
 1. Ejecutar pruebas manuales WCAG: teclado, zoom 200 %, NVDA y VoiceOver (MDL-32).
-2. Registrar selectores y reglas por curso real en el E2E autenticado (MDL-33).
+2. Volver a correr el registro de selectores después de corregir esas reglas,
+   para confirmar que dejan de caer al fallback (MDL-33).
 3. Repetir revisión OWASP y el gate de integración (MDL-34).
 
 ### P2 — Evolución posterior
