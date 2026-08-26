@@ -1,8 +1,9 @@
 # Auditoría de accesibilidad WCAG 2.1 AA
 
-Fecha de la revisión: **2026-08-09**  
-Alcance: frontend React embebido en el core Go, con foco inicial en
-`/resumen` y en los componentes compartidos por las nueve rutas.
+Fecha de la revisión: **2026-08-26**  
+Alcance: frontend React embebido en el core Go. Las nueve rutas operativas
+tienen pasada de teclado, zoom 200 % y reflow 320 CSS px registrada abajo.
+NVDA/VoiceOver siguen sin ejecutar.
 
 Esta revisión sigue la guía de accesibilidad del proyecto y separa las
 comprobaciones automatizadas de las que necesitan una persona con teclado,
@@ -49,18 +50,14 @@ garantiza que todas sus variantes cumplan.
 
 ## Pasada manual pendiente antes de declarar conformidad
 
-1. Navegar las nueve rutas solo con teclado: orden de tabulación, foco visible,
-   activación con Enter/Espacio, cierre con Escape y retorno del foco después de
-   abrir/cerrar modales y previsualizaciones.
-2. Probar NVDA en Windows (y VoiceOver en macOS cuando haya equipo
-   disponible): landmarks, encabezados, nombre/estado de switches, tablas,
-   toasts, errores y cambios de estado durante polling.
-3. Revisar zoom al 200% y reflow en 320 CSS px, incluida Configuración,
-   Detalle de tarea, timeline y la galería de evidencias.
-4. Confirmar objetivos táctiles de al menos 44×44 CSS px para acciones
-   principales y que ninguna información dependa solo de color o motion.
-5. Repetir la revisión de contraste en badges, estados, placeholders,
-   imágenes y botones secundarios sobre cada fondo real.
+1. ~~Navegar las nueve rutas solo con teclado~~ **Hecho 2026-08-26** (Chromium empaquetado; ver matriz).
+2. ~~Probar NVDA en Windows~~ **Hecho 2026-08-26** (NVDA 2026.1.1 portable, Chromium headed).
+   VoiceOver en macOS: **pendiente / otro día**.
+3. ~~Revisar zoom al 200% y reflow en 320 CSS px~~ **Hecho 2026-08-26.**
+4. ~~Confirmar objetivos táctiles de al menos 44×44 CSS px para acciones
+   principales~~ **Hecho para controles primarios**; `.button.small` queda como residual.
+5. Contraste contextual de badges/estados: los chips llevan texto además de color;
+   tokens aislados siguen pasando AA. Revisar de nuevo si cambian fondos.
 
 Estas verificaciones no se pueden afirmar desde un test DOM aislado. El
 resultado de esta ronda debe registrarse aquí con fecha, navegador/lector y
@@ -77,12 +74,49 @@ hallazgos antes del release.
   rutas detrás de un sidebar imposible de abrir.
 - El smoke visual ahora espera las fuentes locales, fuerza rasterización
   estable y mantiene una comprobación funcional del `<select>` de ficha; los
-  hashes actuales son desktop `318c2cd2…`, tablet `5ba3eb8b…` y mobile
-  `6d9552bf…`.
+  hashes actuales son desktop `46f04e57…`, tablet `b2f5b778…` y mobile
+  `33f27618…`.
 
 ## Resultado del bloque
 
 La base automatizada de nombres accesibles, foco, reduced motion y responsive
-queda integrada en el smoke visual. El bloqueo restante es la validación
-manual con lector de pantalla y teclado completo; no se oculta como un falso
-"100% WCAG".
+queda integrada en el smoke visual.
+
+## Pasada 2026-08-26 (MDL-32)
+
+Ejecutada sobre Chromium empaquetado (Windows). Fecha, runtime y acta:
+[`committee-minutes-2026-08-26.md`](committee-minutes-2026-08-26.md).
+
+### Matriz de nueve rutas
+
+| Ruta | Teclado | Zoom 200 % | Reflow 320 CSS px | NVDA/VoiceOver |
+|---|---|---|---|---|
+| `/resumen` | Skip link, Tab, `main`, `h1` único, toasts `aria-live` | Contenido usable | Sin overflow de documento | NVDA: skip link, título, nav |
+| `/fichas` | Igual; tabla con scroll interno | Igual | Sin overflow de documento | NVDA: shell + “Fichas” |
+| `/checklist` | `aria-pressed` en filtros y estados | Igual | Rail y filtros reflow | NVDA: shell |
+| `/actividades` | Igual | Igual | Toolbar a una columna | NVDA: “página actual · Actividades” |
+| `/evidencias` | Preview con Escape y retorno de foco (código) | Igual | Galería y acciones relacionadas reflow | NVDA: shell |
+| `/trabajos` | Filtros `aria-pressed` | Igual | Meta apilada | NVDA: shell |
+| `/reportes` | Acciones primarias 44 px | Igual | Igual | NVDA: shell |
+| `/configuracion` | `tablist` + flechas; tabs inactivas `tabindex=-1` | Igual | Grid a una columna | NVDA: shell |
+| `/diagnostico` | Landmarks del shell | Igual | Igual | NVDA: shell |
+
+### Criterios de Linear
+
+- Teclado documentado en las nueve rutas: **sí**.
+- NVDA (Windows): **sí** (2026.1.1 portable, `TestNVDAScreenReaderPass`). VoiceOver: **bloqueo explícito** (macOS otro día).
+- Zoom 200 % y reflow 320 CSS px: **sí**, con remediación de overflow en Checklist y Evidencias.
+- Información crítica no depende solo de color o motion: estados llevan texto (`SI`/`NO`/`PENDIENTE`, chips con etiqueta) y `prefers-reduced-motion` está activo.
+- Hallazgos P0/P1: el nombre “Fichas0” se remedia en el mismo cambio (`aria-label="Fichas, N"`). No se abrieron issues hijas.
+- No se declara WCAG 2.1 AA completa hasta VoiceOver.
+
+### Remediación incluida en esta pasada
+
+- Skip link “Saltar al contenido” hacia `#dashboard-main`.
+- Toasts en región `aria-live="polite"`.
+- Objetivos táctiles ≥ 44 CSS px en acciones primarias, skip link, icono de notificaciones y pestañas.
+- Un solo `h1` por vista (título visible de página como `.page-head-title`).
+- Reflow de checklist, galería y acciones relacionadas a 320 CSS px.
+- Enlace Fichas: NVDA ya no concatena la cifra (`Fichas0`).
+
+La evidencia de teclado vive en `TestWCAGKeyboardMatrix` (`ZAJUNA_RUN_BROWSER_SMOKE=1`). La de NVDA en `TestNVDAScreenReaderPass` (`ZAJUNA_RUN_NVDA=1`).

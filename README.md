@@ -15,6 +15,8 @@ El cierre de Linear M0/M1 (2026-08-20) está en
 autenticada contra Zajuna real, con el contrato de login de dos pasos y el
 registro de selectores por curso, está en
 [`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md).
+Cómo arrancar en local: [`docs/run-local.md`](docs/run-local.md).
+Por qué no hay instalador macOS: [`docs/macos-deferred.md`](docs/macos-deferred.md).
 
 ## Arquitectura actual
 
@@ -71,6 +73,7 @@ npm run lint --prefix frontend
 go -C core test ./...
 go -C core vet ./...
 npm run test:downloads
+npm run test:smoke:native
 npm audit --omit=dev --audit-level=high
 npm run test:browser:core
 ```
