@@ -227,8 +227,8 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if isZajunaLoginPage(finalURL, title, body) {
 		return CaptureResult{}, fmt.Errorf("%w: URL final %s", ErrLoginPage, finalURL)
 	}
-	if isChallengePage(finalURL, title, body) {
-		return CaptureResult{}, fmt.Errorf("%w: URL final %s", ErrChallengePage, finalURL)
+	if reason := pageChallengeReason(page, finalURL, title, body); reason != "" {
+		return CaptureResult{}, fmt.Errorf("%w: %s en URL final %s", ErrChallengePage, reason, finalURL)
 	}
 	if blocked, blockedErr := isBlockedPage(page, title); blocked {
 		return CaptureResult{}, blockedErr

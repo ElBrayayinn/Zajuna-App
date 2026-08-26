@@ -11,7 +11,10 @@ duplicadas.
 La migración completa, las decisiones técnicas, las tareas abiertas y la
 matriz de pruebas están en [`docs/desktop-migration.md`](docs/desktop-migration.md).
 El cierre de Linear M0/M1 (2026-08-20) está en
-[`docs/hardening-2026-08-20.md`](docs/hardening-2026-08-20.md).
+[`docs/hardening-2026-08-20.md`](docs/hardening-2026-08-20.md). La validación
+autenticada contra Zajuna real, con el contrato de login de dos pasos y el
+registro de selectores por curso, está en
+[`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md).
 
 ## Arquitectura actual
 
@@ -75,6 +78,26 @@ npm run test:browser:core
 El smoke visual comprueba Resumen en desktop, tablet y móvil; el smoke
 empaquetado inicia el ejecutable, verifica `/api/health` en loopback, el
 frontend embebido, los deep links SPA, assets y respuestas 404 de API/static.
+
+### Pruebas contra Zajuna real
+
+El E2E autenticado necesita una cuenta de prueba. Las credenciales van solo en
+variables de entorno de la sesión: nunca en un archivo ni en un commit.
+
+```powershell
+$env:ZAJUNA_E2E = '1'
+$env:ZAJUNA_TEST_DOCUMENT_TYPE = 'CC'
+$env:ZAJUNA_TEST_USERNAME = '<documento>'
+$env:ZAJUNA_TEST_PASSWORD = '<contraseña>'
+npm run test:e2e:zajuna
+```
+
+Añadiendo `ZAJUNA_MAPS_E2E=1` se descubren las rutas del curso, y con
+`ZAJUNA_CAPTURE_E2E=1` más `ZAJUNA_PLAYWRIGHT_DIR` se ejecutan las capturas
+reales. Si además se define `ZAJUNA_SELECTOR_REPORT`, la corrida escribe en esa
+ruta el registro de selectores por curso (`docs/evidence/mdl-33-selectors.json`),
+sin credenciales, nombres, host ni rutas locales. El procedimiento completo está
+en [`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md).
 
 ## Empaquetado
 

@@ -168,7 +168,7 @@ sistema.
 | P0 | Firma digital de instaladores y ejecutables (MDL-29). | Evitar advertencias de Windows/macOS y asegurar procedencia. |
 | P0 | Smoke nativo de DMG/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | La estación actual solo valida Windows. |
 | P1 | Pasada manual WCAG con teclado, NVDA y VoiceOver (MDL-32). | El smoke automatizado no sustituye un lector de pantalla. |
-| P1 | E2E autenticado con cuenta de prueba real (MDL-33). | Fixtures cubren login vencido, CAPTCHA y redirects; falta cuenta viva. |
+| P1 | Revisar la regla del ítem 3.1 y los selectores de cronograma con un instructor (MDL-33). | El E2E vivo del 2026-08-26 capturó 11 de 12 objetivos; 5 solo coincidieron con un fallback más grueso. |
 | P1 | Gate de release con matriz y acta (MDL-34). | No afirmar versión lista sin logs/artefactos frescos. |
 | P2 | Completar workflows administrativos y adaptadores externos opcionales. | No bloquean el runtime local principal. |
 
@@ -177,11 +177,19 @@ escáner automatizado Codex Security no pudo iniciar por un fallo de su
 workbench, por lo que no se presenta una certificación automática.
 
 CAPTCHA y MFA no se resuelven automáticamente. Si Zajuna muestra reCAPTCHA,
-hCaptcha o un segundo factor, el cliente HTTP y Chromium abortan con
+hCaptcha, Turnstile o un segundo factor, el cliente HTTP y Chromium abortan con
 `zajuna_challenge_required` y no capturan. Una sesión vencida produce
 `zajuna_session_expired` y no guarda evidencia anónima. La prueba viva se
 ejecuta con `ZAJUNA_E2E=1` y credenciales solo en variables de entorno
 (`ZAJUNA_TEST_USERNAME`, `ZAJUNA_TEST_PASSWORD`); nunca se versionan.
+
+La ejecución autenticada del 2026-08-26 no encontró CAPTCHA ni MFA en Zajuna, y
+mostró que la detección por subcadena era un falso positivo latente: bastaba con
+que el contenido de un curso mencionara un CAPTCHA para abortar una captura
+válida. Ahora la detección es estructural (widget en el DOM o marcadores que solo
+emite un proveedor) y la prosa solo cuenta en la pantalla de autenticación. El
+contrato real del login, los selectores verificados y el registro por curso están
+en [`mdl-33-2026-08-26.md`](mdl-33-2026-08-26.md).
 
 ## 5. Pruebas y criterios de aceptación
 
@@ -209,8 +217,9 @@ El instalador Windows actual incluye core Go y Chromium/Playwright, responde a
 
 El detalle de Linear está en [`hardening-2026-08-20.md`](hardening-2026-08-20.md).
 
-1. Ejecutar el E2E autenticado con cuenta de prueba (`ZAJUNA_E2E=1`) y registrar
-   selectores no sensibles (MDL-33).
+1. Revisar con un instructor las reglas que el curso real dejó sin resolver y
+   repetir el registro de selectores en otro curso (MDL-33); el registro vive en
+   `docs/evidence/mdl-33-selectors.json`.
 2. Firmar instaladores y correr smoke nativo en Windows, macOS y Linux (MDL-29).
 3. Pasada manual WCAG con teclado, zoom 200 % y NVDA/VoiceOver (MDL-32).
 4. Gate de release con matriz y acta; no marcar Done sin artefactos (MDL-34).
