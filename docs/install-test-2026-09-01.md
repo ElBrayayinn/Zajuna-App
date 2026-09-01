@@ -39,7 +39,7 @@ vuelven a calcular en el PC de prueba. Si no coinciden, la prueba se detiene.
 | Artefacto | SHA256 esperado | SHA256 en el PC de prueba |
 |---|---|---|
 | `Zajuna App Setup 0.1.0.exe` | `a375623903f7d49f6a7d036814cb20ee2742a35b1cabc60730d4b9589b906c45` | (pendiente) |
-| `Zajuna App-0.1.0.AppImage` | (pendiente) | (pendiente) |
+| `Zajuna App-0.1.0.AppImage` | `469dd81c62fe200093a997f77862c87cc10cf1cb424b77113ceeb867e6d0964b` | (pendiente) |
 
 ## Qué debe hacer la app si todo va bien
 
