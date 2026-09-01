@@ -1,7 +1,9 @@
 # Prueba de instalación nativa — 2026-09-01 (MDL-29)
 
 Protocolo y bitácora de la primera instalación de Zajuna App en máquinas
-distintas a la estación de desarrollo. Cubre Windows 10/11 x64 y Linux x64.
+distintas a la estación de desarrollo. Cubre **Windows 10/11 x64** y **Linux
+Mint 22.3 «Zena» x64**, que es la plataforma Linux objetivo del release.
+macOS está fuera de alcance y Ubuntu no se usa como plataforma de prueba.
 
 Este documento se llena **mientras** se ejecuta la prueba. Un casillero sin
 resultado escrito significa "no ejecutado", nunca "pasó".
@@ -18,7 +20,7 @@ produjo un artefacto**: sus 7 ejecuciones registradas terminaban en 0 s.
 | 3 | electron-builder detecta CI y activa publicación implícita: el AppImage se construía completo y luego abortaba con `GitHub Personal Access Token is not set`. | `scripts/package.cjs` pasa `--publish never` salvo que se pida lo contrario. |
 | 4 | El smoke buscaba `dist/linux-unpacked/Zajuna App`. electron-builder nombra el binario Linux con `appInfo.sanitizedName` en minúscula, o sea el campo `name` → `zajuna-app`; `Zajuna App` solo aplica al `.exe`. | El smoke prueba ambos nombres y descubre el ejecutable en `linux-unpacked` si cambia. |
 | 5 | El smoke lanzaba el paquete con `stdio: 'ignore'`: un arranque fallido solo se veía como «no expuso /api/health». | Se guarda una cola acotada de stdout/stderr y se adjunta al error. |
-| 6 | Con la salida ya visible: Electron aborta con `FATAL: The SUID sandbox helper binary was found, but is not configured correctly` porque `chrome-sandbox` no es setuid root en `dist/linux-unpacked`. | Solo la invocación del smoke pasa `--no-sandbox`; la app entregada no cambia. **Queda abierto en máquina real** (ver B2). |
+| 6 | Con la salida ya visible: Electron aborta con `FATAL: The SUID sandbox helper binary was found, but is not configured correctly` porque `chrome-sandbox` no es setuid root en `dist/linux-unpacked`. | Solo la invocación del smoke pasa `--no-sandbox`; la app entregada no cambia. **Queda abierto en Mint 22.3 real** (ver B1 y B5). |
 
 ## Artefactos bajo prueba
 
@@ -27,7 +29,7 @@ produjo un artefacto**: sus 7 ejecuciones registradas terminaban en 0 s.
 | Rama | `mdl-29-native-installers-fix` |
 | Commits | `284e34d`, `d2eb8a1`, `76e4a87`, `0de73d8`, `25512ac` |
 | Windows | `Zajuna App Setup 0.1.0.exe` (NSIS, x64) |
-| Linux | `Zajuna App-0.1.0.AppImage` (x64) |
+| Linux | `Zajuna App-0.1.0.AppImage` (x64), compilado en `ubuntu-24.04`, la base de Mint 22.3 |
 | Firma Windows | **Ausente.** Sin certificado Authenticode (`CSC_LINK` no configurado). |
 | Integridad | `release-manifest.json` con SHA256 por artefacto. |
 
@@ -47,7 +49,7 @@ Zajuna App no es un sitio web. El acceso directo lanza un launcher Electron
 dirección. Cerrar la pestaña no apaga el core.
 
 - Datos en Windows: `%LOCALAPPDATA%\ZajunaApp` (`config.json`, SQLite, evidencias).
-- Datos en Linux: `~/.local/share/zajuna-app` (o `$XDG_DATA_HOME/zajuna-app`).
+- Datos en Mint: `~/.local/share/zajuna-app` (o `$XDG_DATA_HOME/zajuna-app`).
 - Contraseña de Zajuna: almacén del sistema, servicio `zajuna-app`. Nunca en
   `config.json` ni en un `.env`.
 - Archivo de endpoint: `zajuna-app-<pid>-<nonce>.json` en el directorio temporal.
@@ -153,23 +155,80 @@ Que los datos del usuario sobrevivan a la desinstalación es normal en un NSIS
 por usuario. Lo que hay que **decidir y registrar** es si eso es lo que
 queremos: son evidencias y una base SQLite con datos de fichas reales.
 
-## Bloque B — Linux x64 (Ubuntu / Debian)
+## Bloque B — Linux Mint 22.3 «Zena» x64
 
-### B0. Preparación
+Plataforma Linux objetivo del release. Mint 22.3 se publicó el 2026-01-13, está
+construida sobre **Ubuntu 24.04.3 LTS**, trae kernel 6.14 y tiene soporte hasta
+abril de 2029. Esa base es la razón por la que el AppImage se compila en un
+runner `ubuntu-24.04`: misma línea base de glibc y librerías del sistema.
 
-1. Anotar distribución y versión: `cat /etc/os-release`.
-2. Anotar entorno de escritorio y si hay sesión gráfica:
-   `echo $XDG_CURRENT_DESKTOP $DISPLAY`.
-3. Dos dependencias del sistema que **sí** afectan esta prueba:
-   - **FUSE.** Un AppImage necesita FUSE 2. En Ubuntu 22.04+ y 24.04 ya no
-     viene: `sudo apt install libfuse2` (o `libfuse2t64` en 24.04).
-     Alternativa sin instalar nada: `--appimage-extract-and-run`.
-   - **Llavero.** La contraseña usa el Secret Service de D-Bus
-     (`gnome-keyring` / KWallet). Sin sesión gráfica con llavero desbloqueado,
-     guardar la contraseña **falla**. Si ocurre, es un hallazgo real y hay que
-     anotar el error exacto, no rodearlo.
+No se prueba sobre Ubuntu. Si el PC disponible no es Mint 22.3, se anota la
+versión real y el resultado no cuenta como evidencia de esta plataforma.
 
-### B1. Descargar y verificar integridad
+### B0. Identificar la máquina
+
+```bash
+cat /etc/os-release
+uname -r
+echo "$XDG_CURRENT_DESKTOP / $XDG_SESSION_TYPE"
+```
+
+| Dato | Esperado | Observado |
+|---|---|---|
+| `NAME` / `VERSION` | Linux Mint 22.3 (Zena) | |
+| `UBUNTU_CODENAME` | `noble` | |
+| Kernel | 6.14.x | |
+| Escritorio / sesión | `X-Cinnamon` / `x11` o `wayland` | |
+
+### B1. La comprobación que decide todo: sandbox de Chromium
+
+**Hacer esto antes de instalar.** Un solo valor predice si la app arranca:
+
+```bash
+sysctl -n kernel.apparmor_restrict_unprivileged_userns
+```
+
+| Salida | Qué significa |
+|---|---|
+| `0`, o error «unknown key» | Los user namespaces sin privilegios están permitidos. El sandbox de Chromium debería funcionar y la app debería arrancar normal. |
+| `1` | AppArmor bloquea el sandbox por namespaces. Electron abortará con `FATAL: The SUID sandbox helper binary was found, but is not configured correctly`, igual que en el runner de CI. |
+
+Ubuntu 24.04 introdujo esa restricción y rompió los AppImage de Electron: un
+AppImage no tiene paso de instalación, así que nadie crea un perfil AppArmor
+para él, a diferencia de un `.deb` que lo instala en `/etc/apparmor.d/`. **Está
+sin confirmar si Mint 22.3 hereda la restricción o la revierte**, y por eso se
+mide en la máquina real en vez de asumirlo.
+
+Anotar el valor observado: `______`
+
+### B2. Dependencia de FUSE
+
+Un AppImage necesita FUSE 2, que la base 24.04 ya no instala por omisión. En la
+base `noble` el paquete se llama `libfuse2t64`:
+
+```bash
+sudo apt install libfuse2t64
+```
+
+Si esa versión del paquete no existe en los repos configurados, probar el nombre
+antiguo `sudo apt install libfuse2`. Anotar cuál funcionó: `______`
+
+Alternativa sin instalar nada, útil para no tocar el PC:
+
+```bash
+./"Zajuna App-0.1.0.AppImage" --appimage-extract-and-run
+```
+
+### B3. Herramientas para verificar el llavero
+
+La contraseña de Zajuna va al Secret Service de D-Bus. Cinnamon usa
+`gnome-keyring`, que Mint ya trae. Para poder inspeccionarlo:
+
+```bash
+sudo apt install libsecret-tools
+```
+
+### B4. Descargar y verificar integridad
 
 ```bash
 sha256sum "Zajuna App-0.1.0.AppImage"
@@ -178,41 +237,16 @@ chmod +x "Zajuna App-0.1.0.AppImage"
 
 Comparar con `release-manifest.json`. **Si no coincide, detener la prueba.**
 
-### B2. Primer arranque
+### B5. Primer arranque
 
 ```bash
 ./"Zajuna App-0.1.0.AppImage"
 ```
 
-Si falla por FUSE:
-
-```bash
-./"Zajuna App-0.1.0.AppImage" --appimage-extract-and-run
-```
-
-**Hallazgo abierto que esta prueba debe resolver.** En el runner de CI el
-paquete sin instalar aborta con:
-
-```text
-FATAL: The SUID sandbox helper binary was found, but is not configured
-correctly. ... chrome-sandbox is owned by root and has mode 4755
-```
-
-Chromium cae al sandbox SUID cuando el sistema no permite user namespaces sin
-privilegios, que es el caso de Ubuntu 24.04 por AppArmor. En CI se rodeó con
-`--no-sandbox` porque ahí solo se valida el core Go, pero **no sabemos si el
-AppImage arranca en un escritorio Linux real**. Si aparece el mismo mensaje en
-el PC de prueba, anótalo textualmente: pasa a ser una decisión de producto
-(shipear `--no-sandbox` en el AppRun del AppImage, o exigir `chrome-sandbox`
-setuid), no un ajuste de prueba. Para seguir con el resto del protocolo ese día:
-
-```bash
-./"Zajuna App-0.1.0.AppImage" --no-sandbox
-```
-
 | Paso | Qué observar | Resultado |
 |---|---|---|
-| Abre el navegador predeterminado en `127.0.0.1:<puerto>` | | |
+| Arranca sin abortar | Sin mensaje `FATAL` de sandbox | |
+| Abre el navegador predeterminado en `127.0.0.1:<puerto>` | Mint trae Firefox | |
 | Anotar el puerto | | |
 | Aparece **Setup** | | |
 
@@ -220,9 +254,50 @@ setuid), no un ajuste de prueba. Para seguir con el resto del protocolo ese día
 curl -s http://127.0.0.1:PUERTO/api/health
 ```
 
-Se espera `status: ok`, `runtime: linux`. Guardar la salida.
+Se espera `status: ok`, `app: zajuna-app`, `runtime: linux`. Guardar la salida.
 
-### B3. Credenciales
+**Si aborta con el error de sandbox SUID**, ese es el hallazgo principal de la
+jornada. Anotar el mensaje textual y seguir el resto del protocolo con:
+
+```bash
+./"Zajuna App-0.1.0.AppImage" --no-sandbox
+```
+
+Ese `--no-sandbox` es solo para poder continuar la prueba: **no** es la
+corrección. La corrección es una decisión de producto con tres caminos, y hay un
+detalle técnico que la condiciona: `linux.executableArgs` de electron-builder
+solo escribe argumentos en el `.desktop`, **no** en el AppRun del AppImage
+(`LinuxTargetHelper.js`), así que no cubre a alguien que ejecute el AppImage
+directamente desde la terminal.
+
+| Camino | Costo | Consecuencia |
+|---|---|---|
+| Añadir `--no-sandbox` en `main.cjs` para Linux | Cambio de una línea, cubre todos los modos de lanzamiento | Desactiva el sandbox del launcher Electron, que no renderiza contenido: no abre `BrowserWindow` y la interfaz corre en el navegador del usuario. No toca el Chromium de capturas. |
+| Pedir al instructor el sysctl `kernel.apparmor_restrict_unprivileged_userns=0` | Requiere `sudo` en cada PC | Debilita esa protección para todo el sistema, no solo para nuestra app. |
+| Distribuir `.deb` en vez de AppImage | Trabajo de empaquetado nuevo | Un `.deb` puede instalar su perfil AppArmor y `chrome-sandbox` setuid, que es la vía soportada. |
+
+### B6. Captura real: la prueba que sí tiene peso de seguridad
+
+Esto es distinto del arranque. El core Go lanza un **segundo** Chromium, el de
+Playwright, con `Headless: true` y **sandbox activo** (`browser.go`,
+`pw.Chromium.Launch`). Ese sí carga contenido remoto de Zajuna, así que su
+sandbox importa de verdad y no se debe desactivar a la ligera.
+
+Si el sysctl de B1 dio `1`, es probable que las capturas también fallen. Hay que
+medirlo:
+
+| Paso | Qué observar | Resultado |
+|---|---|---|
+| Configurar la cuenta de prueba en Setup | | |
+| Ejecutar una captura de evidencia desde la interfaz | Genera el PNG | |
+| Si falla, anotar el error textual del core | | |
+| Revisar el log del core | `~/.local/share/zajuna-app/logs/` | |
+
+Si el arranque necesitó `--no-sandbox` **y** las capturas fallan, son dos
+problemas con distinto peso: el del launcher es cosmético, el del Chromium de
+capturas es de seguridad. Registrarlos por separado.
+
+### B7. Credenciales
 
 | Comprobación | Cómo | Resultado |
 |---|---|---|
@@ -230,7 +305,9 @@ Se espera `status: ok`, `runtime: linux`. Guardar la salida.
 | Existe la credencial | `secret-tool search service zajuna-app` | |
 | Si el llavero falla | Anotar el error textual de la app | |
 
-### B4. Instancia única y cierre limpio
+La contraseña no se escribe en este documento ni en Linear.
+
+### B8. Instancia única y cierre limpio
 
 | Paso | Qué observar | Resultado |
 |---|---|---|
@@ -240,7 +317,7 @@ Se espera `status: ok`, `runtime: linux`. Guardar la salida.
 | `pgrep -a zajuna-core` | **Vacío** — sin huérfanos | |
 | `ls /tmp/zajuna-app-*.json` | **Vacío** | |
 
-### B5. Actualización
+### B9. Actualización
 
 Reemplazar el AppImage por el siguiente build y ejecutarlo.
 
@@ -249,7 +326,7 @@ Reemplazar el AppImage por el siguiente build y ejecutarlo.
 | Arranca con el binario nuevo | |
 | `~/.local/share/zajuna-app` conserva `config.json` y la base | |
 
-### B6. Desinstalación
+### B10. Desinstalación
 
 Un AppImage no tiene desinstalador: se borra el archivo.
 
@@ -258,11 +335,11 @@ Un AppImage no tiene desinstalador: se borra el archivo.
 | Sin procesos vivos tras borrarlo | `pgrep -a zajuna-core` | |
 | Datos que quedan | `du -sh ~/.local/share/zajuna-app` | |
 | Credencial que queda | `secret-tool search service zajuna-app` | |
-| Lanzador en el menú | Anotar si el AppImage registró un `.desktop` huérfano | |
+| Lanzador en el menú | Mint pregunta si integrar el AppImage al menú; anotar si queda un `.desktop` huérfano en `~/.local/share/applications` | |
 
 ## Resultado consolidado
 
-| Criterio de MDL-29 | Windows | Linux |
+| Criterio de MDL-29 | Windows 10/11 | Mint 22.3 «Zena» |
 |---|---|---|
 | Instalación limpia | | |
 | Arranque y `/api/health` | | |
@@ -272,7 +349,9 @@ Un AppImage no tiene desinstalador: se borra el archivo.
 | Cierre sin procesos huérfanos | | |
 | Actualización conservando datos | | |
 | Desinstalación / borrado | | |
-| Firma verificada | **No.** Sin certificado Authenticode. | No aplica. |
+| Arranque sin desactivar el sandbox | No aplica | |
+| Captura real con Chromium sandboxed | No aplica | |
+| Firma verificada | **No.** Sin certificado Authenticode. | No aplica: integridad por SHA-256. |
 
 ## Bloqueos y decisiones
 

@@ -21,8 +21,14 @@ jobs:
           - name: Windows
             runner: windows-latest
             package_script: package:windows
+          # La plataforma Linux objetivo es Linux Mint 22.3 "Zena", que esta
+          # construida sobre Ubuntu 24.04.3 LTS. Se fija el runner a 24.04 en
+          # vez de ubuntu-latest para que el AppImage se compile contra la
+          # misma linea base de glibc y librerias del sistema que el objetivo,
+          # y para que un salto futuro de ubuntu-latest no lo desalinee.
+          # GitHub no ofrece runners de Mint; 24.04 es la base de Mint 22.3.
           - name: Linux
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             package_script: package:linux
     steps:
       - uses: actions/checkout@v4
