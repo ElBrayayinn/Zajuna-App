@@ -64,7 +64,10 @@ jobs:
           $signature = Get-AuthenticodeSignature $installer.FullName
           if ($signature.Status -ne 'Valid') { throw "Firma inválida: $($signature.Status)" }
 
+      # always(): si el smoke falla queremos igual el instalador para poder
+      # reproducir el fallo en una maquina real.
       - name: Upload release evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zajuna-${{ matrix.name }}-native

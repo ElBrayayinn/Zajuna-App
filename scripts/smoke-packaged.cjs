@@ -5,9 +5,43 @@ const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
 
+// electron-builder nombra el ejecutable distinto en cada plataforma: en Windows
+// usa productName ("Zajuna App.exe") y en Linux `appInfo.sanitizedName`
+// minusculo, es decir el campo `name` de package.json ("zajuna-app"). Buscar
+// "Zajuna App" en linux-unpacked hacia fallar el smoke con el paquete correcto
+// ya construido.
+const NON_APP_BINARIES = new Set(['chrome-sandbox', 'chrome_crashpad_handler']);
+
+function firstExistingPath(candidates) {
+  return candidates.find((candidate) => fsSync.existsSync(candidate));
+}
+
+function discoverLinuxExecutable(unpackedDir) {
+  if (!fsSync.existsSync(unpackedDir)) return undefined;
+  return fsSync
+    .readdirSync(unpackedDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !NON_APP_BINARIES.has(entry.name) && path.extname(entry.name) === '')
+    .map((entry) => path.join(unpackedDir, entry.name))
+    .find((candidate) => {
+      try {
+        fsSync.accessSync(candidate, fsSync.constants.X_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+}
+
 function defaultExecutable() {
-  if (process.platform === 'win32') return path.join(projectRoot, 'dist', 'win-unpacked', 'Zajuna App.exe');
-  return path.join(projectRoot, 'dist', 'linux-unpacked', 'Zajuna App');
+  if (process.platform === 'win32') {
+    return path.join(projectRoot, 'dist', 'win-unpacked', 'Zajuna App.exe');
+  }
+  const unpackedDir = path.join(projectRoot, 'dist', 'linux-unpacked');
+  const named = firstExistingPath([
+    path.join(unpackedDir, 'zajuna-app'),
+    path.join(unpackedDir, 'Zajuna App'),
+  ]);
+  return named || discoverLinuxExecutable(unpackedDir) || path.join(unpackedDir, 'zajuna-app');
 }
 
 function packagedCoreDir(executable) {
