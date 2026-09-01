@@ -133,7 +133,18 @@ async function main() {
   console.log(`Iniciando smoke del paquete: ${executable}`);
   const userDataDir = path.join(projectRoot, 'tmp', 'smoke-packaged-user-data');
   await fs.rm(userDataDir, { recursive: true, force: true });
-  const child = spawn(executable, [`--user-data-dir=${userDataDir}`], {
+  // El smoke corre el directorio `linux-unpacked` recien extraido, donde
+  // `chrome-sandbox` no puede ser setuid root, asi que Chromium aborta con
+  // "The SUID sandbox helper binary ... is not configured correctly". Este
+  // smoke valida el core Go y el frontend embebido, no el sandbox de Chromium:
+  // el launcher no abre BrowserWindow ni carga contenido remoto en Electron.
+  // Esto NO cambia la app entregada; solo esta invocacion de prueba.
+  const launchArgs = [`--user-data-dir=${userDataDir}`];
+  if (process.platform === 'linux') {
+    console.log('Linux: el paquete sin instalar se lanza con --no-sandbox (chrome-sandbox no es setuid en dist/).');
+    launchArgs.push('--no-sandbox');
+  }
+  const child = spawn(executable, launchArgs, {
     cwd: path.dirname(executable),
     windowsHide: true,
     // Capturado, no descartado: cuando el paquete no publica endpoint la unica
