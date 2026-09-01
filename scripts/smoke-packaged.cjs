@@ -71,6 +71,26 @@ async function endpointFor(pid, timeoutMs = 20000) {
   throw new Error(`El paquete no expuso /api/health en ${timeoutMs} ms (pid ${pid}).`);
 }
 
+// Guarda una cola acotada de la salida del proceso empaquetado: sin esto un
+// fallo de arranque solo se ve como "no expuso /api/health".
+function collectChildOutput(child, maxChars = 4000) {
+  const chunks = [];
+  let total = 0;
+  const append = (stream, label) => {
+    if (!stream) return;
+    stream.setEncoding('utf8');
+    stream.on('data', (chunk) => {
+      chunks.push(`[${label}] ${chunk}`);
+      total += chunk.length;
+      while (total > maxChars && chunks.length > 1) total -= chunks.shift().length;
+    });
+    stream.on('error', () => {});
+  };
+  append(child.stdout, 'stdout');
+  append(child.stderr, 'stderr');
+  return { tail: () => chunks.join('').trim().slice(-maxChars) };
+}
+
 async function stopProcess(child) {
   if (!child || child.exitCode !== null) return;
   if (process.platform === 'win32') {
@@ -116,9 +136,12 @@ async function main() {
   const child = spawn(executable, [`--user-data-dir=${userDataDir}`], {
     cwd: path.dirname(executable),
     windowsHide: true,
-    stdio: 'ignore',
+    // Capturado, no descartado: cuando el paquete no publica endpoint la unica
+    // pista de por que esta en la salida del launcher.
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ZAJUNA_SKIP_EXTERNAL_OPEN: '1' },
   });
+  const childOutput = collectChildOutput(child);
   try {
     const { endpoint, file } = await endpointFor(child.pid);
     const parsedEndpoint = new URL(endpoint.url);
@@ -143,7 +166,10 @@ async function main() {
   } catch (error) {
     await stopProcess(child);
     await fs.rm(userDataDir, { recursive: true, force: true });
-    throw error;
+    const tail = childOutput.tail();
+    throw new Error(tail ? `${error.message}
+Salida del paquete:
+${tail}` : error.message);
   }
 }
 
