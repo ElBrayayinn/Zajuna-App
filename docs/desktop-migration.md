@@ -167,8 +167,8 @@ runners nativos porque Chromium y la firma son específicos de cada sistema.
 |---|---|---|
 | P0 | Firma Authenticode del instalador Windows (MDL-29). | Asegurar procedencia sin exponer credenciales. |
 | P0 | Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | Requiere evidencia fresca de los runners Windows/Linux. |
-| P1 | Pasada manual WCAG con teclado, NVDA y VoiceOver (MDL-32). | El smoke automatizado no sustituye un lector de pantalla. |
-| P0 | Corregir la regla del ítem 3.1 y los selectores de cronograma y menú de curso (MDL-33). | El E2E vivo del 2026-08-26 capturó 11 de 12 objetivos en dos cursos reales; los mismos 5-6 cayeron al fallback en ambos, así que las reglas están mal, no los cursos. |
+| P1 | VoiceOver en macOS (diferido; MDL-32). | Teclado, zoom, reflow y NVDA Windows ya tienen evidencia; no se afirma WCAG 2.1 AA completa. |
+| P0 | Corregir la regla del ítem 3.1 y los selectores de cronograma y menú de curso (MDL-124). | El E2E vivo del 2026-08-26 (MDL-33) capturó 11 de 12 objetivos en dos cursos reales; los mismos 5-6 cayeron al fallback en ambos, así que las reglas están mal, no los cursos. |
 | P1 | Gate de release con matriz y acta (MDL-34). | No afirmar versión lista sin logs/artefactos frescos. |
 | P2 | Completar workflows administrativos y adaptadores externos opcionales. | No bloquean el runtime local principal. |
 
@@ -218,9 +218,9 @@ El instalador Windows actual incluye core Go y Chromium/Playwright, responde a
 El detalle de Linear está en [`hardening-2026-08-20.md`](hardening-2026-08-20.md).
 
 1. Corregir con un instructor las reglas que fallaron igual en los dos cursos
-   reales y volver a correr el registro (MDL-33); los registros viven en
+   reales y volver a correr el registro (MDL-124); los registros viven en
    `docs/evidence/mdl-33-selectors.json` y `mdl-33-selectors-curso-b.json`.
 2. Firmar instaladores y correr smoke nativo en Windows, macOS y Linux (MDL-29).
-3. Pasada manual WCAG con teclado, zoom 200 % y NVDA/VoiceOver (MDL-32).
+3. VoiceOver en macOS queda diferido; MDL-32 ya cerró teclado, zoom, reflow y NVDA Windows.
 4. Gate de release con matriz y acta; no marcar Done sin artefactos (MDL-34).
 5. Solo después preparar logo, iconos, actualización automática y publicación.

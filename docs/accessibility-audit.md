@@ -2,13 +2,14 @@
 
 Fecha de la revisión: **2026-08-26**  
 Alcance: frontend React embebido en el core Go. Las nueve rutas operativas
-tienen pasada de teclado, zoom 200 % y reflow 320 CSS px registrada abajo.
-NVDA/VoiceOver siguen sin ejecutar.
+tienen pasada de teclado, zoom 200 %, reflow 320 CSS px y **NVDA en Windows**
+registrada abajo. VoiceOver queda con bloqueo explícito (no hay runner macOS;
+macOS no es target de distribución).
 
 Esta revisión sigue la guía de accesibilidad del proyecto y separa las
 comprobaciones automatizadas de las que necesitan una persona con teclado,
-zoom y lector de pantalla. No se declara conformidad WCAG completa hasta
-terminar la pasada manual.
+zoom y lector de pantalla. **No se declara conformidad WCAG 2.1 AA completa**
+mientras falte VoiceOver.
 
 ## Comprobaciones automatizadas realizadas
 
@@ -48,7 +49,7 @@ Los estados sobre fondos suaves, iconos y combinaciones de borde requieren
 revisión contextual durante la prueba manual; el ratio de un token aislado no
 garantiza que todas sus variantes cumplan.
 
-## Pasada manual pendiente antes de declarar conformidad
+## Pasada manual (MDL-32)
 
 1. ~~Navegar las nueve rutas solo con teclado~~ **Hecho 2026-08-26** (Chromium empaquetado; ver matriz).
 2. ~~Probar NVDA en Windows~~ **Hecho 2026-08-26** (NVDA 2026.1.1 portable, Chromium headed).
