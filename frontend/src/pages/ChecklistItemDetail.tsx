@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { PageError, PageSkeleton } from '../components/AsyncState'
+import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
 import { evidenceDownloadUrl } from '../api/client'
 import {
   useCapture,
@@ -9,6 +9,7 @@ import {
   useSetItemStatus,
   useSetupStatus,
   useTargets,
+  isNotFound,
 } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
@@ -33,6 +34,9 @@ export function ChecklistItemDetail() {
   const capture = useCapture()
 
   if (dashboardQuery.isLoading) return <PageSkeleton label="Cargando detalle de tarea" />
+  if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
+    return <MissingActiveFicha message="Necesitas una ficha activa para ver el detalle de esta tarea." />
+  }
   if (dashboardQuery.isError || !dashboard) {
     return <PageError message="No pudimos cargar el detalle de la ficha activa." action={<Link className="button" to="/checklist">Volver al checklist</Link>} />
   }
@@ -50,7 +54,10 @@ export function ChecklistItemDetail() {
   const task = item
   const activeFichaId = dashboard.activeFichaId
 
-  const targets = (targetsQuery.data?.targets || []).filter((target) => target.itemCode === task.itemCode)
+  const targets = (targetsQuery.data?.targets || []).filter((target) => {
+    if (target.itemCode === task.itemCode) return true
+    return Boolean(target.coveredItemCodes?.includes(task.itemCode))
+  })
   const reviews = reviewsQuery.data || []
   const confidence = confidenceFor(task)
   const maxEvidences = Math.max(1, Number(task.maxEvidences) || 1)
@@ -141,7 +148,9 @@ export function ChecklistItemDetail() {
               {Array.from({ length: Math.max(targets.length, maxEvidences) }).map((_, index) => {
                 const target = targets[index]
                 const evidence = task.evidences?.find((entry) => (entry.slotNumber || 1) === index + 1)
-                const review = target ? reviews.find((entry) => entry.routeKey === `${target.groupName}|${target.url || target.cssSelector || target.itemCode}`) : undefined
+                const review = target
+                  ? reviews.find((entry) => entry.routeKey === (target.routeKey || `${target.groupName}|${target.url || target.cssSelector || target.itemCode}`))
+                  : undefined
                 return (
                 <article className="task-slot-card" key={`${task.itemCode}-${index}`}>
                     <div className={`slot-dot${evidence ? ' filled' : ''}`} aria-hidden="true" />

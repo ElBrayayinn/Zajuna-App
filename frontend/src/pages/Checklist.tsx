@@ -13,6 +13,7 @@ import {
   useSetItemStatus,
   useSetupStatus,
   useTargets,
+  isNotFound,
 } from '../hooks/api'
 import {
   confidenceFor,
@@ -24,7 +25,7 @@ import {
   routeStatusLabel,
 } from '../lib/format'
 import { Icon } from '../components/Icon'
-import { PageError, PageSkeleton } from '../components/AsyncState'
+import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
 import { evidenceDownloadUrl } from '../api/client'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
@@ -639,7 +640,7 @@ function PreviewModal({
 
 export function Checklist() {
   const toast = useToast()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const dashboardQuery = useDashboard()
   const dashboard = dashboardQuery.data
 
@@ -673,14 +674,22 @@ export function Checklist() {
     }
   }, [activitiesQuery.data, dashboard?.activeFichaId, syncedActivitiesFicha])
 
+  useEffect(() => {
+    const fromUrl = searchParams.get('category') || 'all'
+    setCategory((current) => (current === fromUrl ? current : fromUrl))
+  }, [searchParams])
+
   if (dashboardQuery.isLoading) {
     return <PageSkeleton label="Cargando checklist" />
+  }
+  if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
+    return <MissingActiveFicha message="Selecciona una ficha activa para ver el checklist." />
   }
   if (dashboardQuery.isError) {
     return <PageError message="No pudimos cargar el checklist de la ficha activa." action={<button className="button" onClick={() => dashboardQuery.refetch()}>Reintentar</button>} />
   }
   if (!dashboard) {
-    return <div className="empty">Todavía no hay una ficha activa. Sincroniza tus fichas para comenzar.</div>
+    return <MissingActiveFicha />
   }
 
   const items = dashboard.items || []
@@ -689,7 +698,7 @@ export function Checklist() {
   const done = Number(summary.yes) || 0
   const failed = Number(summary.no) || 0
   const pending = Number(summary.pending) || 0
-  const total = Math.max(Number(summary.total) || items.length, 1)
+  const total = Math.max(Number(summary.total) || items.length, 0)
   const progress = Math.max(0, Math.min(100, Number(summary.percentage) || 0))
   const reviews = reviewsQuery.data || []
 
@@ -725,6 +734,12 @@ export function Checklist() {
 
   function handleCategoryChange(nextCategory: string) {
     setCategory(nextCategory)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (nextCategory === 'all') next.delete('category')
+      else next.set('category', nextCategory)
+      return next
+    }, { replace: true })
     window.requestAnimationFrame(() => {
       const section = itemsSectionRef.current
       if (!section) return

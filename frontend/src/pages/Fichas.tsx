@@ -92,7 +92,7 @@ export function Fichas() {
   if (fichasQuery.isLoading) return <PageSkeleton label="Cargando fichas locales" />
   if (fichasQuery.isError) return <PageError message="No pudimos cargar las fichas locales." action={<button className="button" onClick={() => fichasQuery.refetch()}>Reintentar</button>} />
 
-  const activeFicha = fichas.find((ficha) => ficha.id === active) || fichas[0]
+  const activeFicha = fichas.find((ficha) => ficha.id === active)
   const summary = dashboard?.summary
   const activeEvidenceCount = (dashboard?.items || []).reduce(
     (sum, item) => sum + (Number(item.evidenceCount) || 0),
@@ -248,7 +248,7 @@ export function Fichas() {
               )
             })
           ) : (
-            <div className="empty">No encontramos fichas con esa búsqueda.</div>
+            <div className="empty">{query ? 'No encontramos fichas con esa búsqueda.' : 'Todavía no hay fichas sincronizadas.'}</div>
           )}
         </div>
         <div className="ficha-table-footer">

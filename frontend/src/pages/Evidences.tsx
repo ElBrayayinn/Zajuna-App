@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { evidenceDownloadUrl } from '../api/client'
-import { PageError, PageSkeleton } from '../components/AsyncState'
+import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
 import {
   useDashboard,
   useDeleteEvidence,
@@ -9,6 +9,7 @@ import {
   useRebuildEvidenceGroups,
   useSetItemStatus,
   useUploadEvidence,
+  isNotFound,
 } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
@@ -40,8 +41,10 @@ export function Evidences() {
   const dashboardQuery = useDashboard()
   const dashboard = dashboardQuery.data
   const activeFichaId = dashboard?.activeFichaId
-  const { data: evidenceGroups } = useEvidenceGroups(activeFichaId)
-  const { data: evidences } = useEvidences(activeFichaId)
+  const groupsQuery = useEvidenceGroups(activeFichaId)
+  const evidencesQuery = useEvidences(activeFichaId)
+  const evidenceGroups = groupsQuery.data
+  const evidences = evidencesQuery.data
   const rebuildGroups = useRebuildEvidenceGroups()
   const uploadEvidence = useUploadEvidence()
   const deleteEvidence = useDeleteEvidence()
@@ -69,7 +72,19 @@ export function Evidences() {
   const flatEvidences = evidences?.length ? evidences : groupedEvidences
 
   if (dashboardQuery.isLoading) return <PageSkeleton label="Cargando galería de evidencias" />
+  if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
+    return <MissingActiveFicha message="Selecciona una ficha activa para ver sus evidencias." />
+  }
   if (dashboardQuery.isError || !dashboard) return <PageError message="No pudimos cargar las evidencias de la ficha activa." action={<button className="button" onClick={() => dashboardQuery.refetch()}>Reintentar</button>} />
+  if (groupsQuery.isLoading || evidencesQuery.isLoading) return <PageSkeleton label="Cargando archivos de evidencia" />
+  if (groupsQuery.isError || evidencesQuery.isError) {
+    return (
+      <PageError
+        message="No pudimos cargar los archivos de evidencia de esta ficha."
+        action={<button className="button" onClick={() => { groupsQuery.refetch(); evidencesQuery.refetch() }}>Reintentar</button>}
+      />
+    )
+  }
 
   const dashboardItems = dashboard?.items || []
   const relatedItems = dashboardItems.filter((item) => item.evidenceCount)
@@ -296,7 +311,7 @@ function EvidenceMiniatures({
               return (
                 <article key={evidence.id} className={`evidence-miniature${selected ? ' selected' : ''}`}>
                   <div className="evidence-miniature-select" onClick={() => toggle(evidence.id)}>
-                    <span className="evidence-miniature-preview" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); onPreview(evidence) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onPreview(evidence) }}>
+                    <span className="evidence-miniature-preview" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); onPreview(evidence) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onPreview(evidence) } }}>
                       {image ? <img src={evidenceDownloadUrl(evidence.id)} alt="" loading="lazy" /> : <span className="evidence-format-icon">{format.toUpperCase() || 'FILE'}</span>}
                       <span className="evidence-select-mark" aria-hidden="true">{selected ? '✓' : ''}</span>
                     </span>
@@ -419,7 +434,11 @@ function EvidenceGallery({
               <EvidenceGroupCard key={group.id || `${group.title || 'grupo'}-${index}`} group={group} onPreview={onPreview} />
             ))
           ) : (
-            <div className="empty">No encontramos grupos con esos filtros.</div>
+            <div className="empty">
+              {groups.length === 0
+                ? 'Todavía no hay evidencias en esta ficha.'
+                : 'No encontramos grupos con esos filtros.'}
+            </div>
           )}
         </div>
         {matches.length > 6 && (

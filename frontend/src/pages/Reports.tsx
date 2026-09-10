@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { reportDownloadUrl } from '../api/client'
 import { PageError, PageSkeleton } from '../components/AsyncState'
 import { Icon } from '../components/Icon'
-import { useCreateBackup, useDashboard, useGenerateReport, useReports } from '../hooks/api'
+import { useCreateBackup, useDashboard, useGenerateReport, useReports, isNotFound } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { formatDate, jobStatusClass } from '../lib/format'
 import type { JobStatus, Report } from '../types'
@@ -66,10 +66,16 @@ export function Reports() {
   const [evidenceLimit, setEvidenceLimit] = useState(100)
 
   if (dashboardQuery.isLoading || reportsQuery.isLoading) return <PageSkeleton label="Cargando reportes locales" />
-  if (dashboardQuery.isError || reportsQuery.isError) return <PageError message="No pudimos cargar los reportes locales." action={<button className="button" onClick={() => { dashboardQuery.refetch(); reportsQuery.refetch() }}>Reintentar</button>} />
+  if (reportsQuery.isError) return <PageError message="No pudimos cargar los reportes locales." action={<button className="button" onClick={() => reportsQuery.refetch()}>Reintentar</button>} />
+  if (dashboardQuery.isError && !isNotFound(dashboardQuery.error)) {
+    return <PageError message="No pudimos cargar la ficha activa." action={<button className="button" onClick={() => dashboardQuery.refetch()}>Reintentar</button>} />
+  }
 
   const handleGenerateReport = () => {
-    if (!dashboard) return
+    if (!dashboard) {
+      toast('Selecciona una ficha activa antes de generar un reporte.', true)
+      return
+    }
     generateReport.mutate(
       {
         title: `Reporte de la ficha ${dashboard.ficha.externalId}`,
@@ -91,7 +97,7 @@ export function Reports() {
     })
   }
 
-  const rows = (reports || []).slice(0, 5)
+  const rows = reports || []
   const generateDisabled = !dashboard || generateReport.isPending
 
   return (
@@ -107,14 +113,14 @@ export function Reports() {
               </p>
             </div>
             <button className="button primary small" type="button" onClick={handleGenerateReport} disabled={generateDisabled}>
-              {generateReport.isPending ? 'Procesando…' : 'Generar PDF'}
+              {generateReport.isPending ? 'Procesando…' : format === 'html' ? 'Generar HTML' : 'Generar PDF'}
             </button>
           </div>
           <div className="report-list">
             {rows.length ? (
               rows.map((report) => <ReportRow key={report.id} report={report} />)
             ) : (
-              <div className="empty">Aún no has generado un reporte para esta ficha.</div>
+              <div className="empty">{dashboard ? 'Aún no has generado un reporte.' : 'Selecciona una ficha activa para generar un reporte. Los reportes ya creados siguen visibles aquí.'}</div>
             )}
           </div>
         </div>
