@@ -29,3 +29,4 @@ vuelve a añadir macOS al job nativo y a [MDL-29](https://linear.app/medialab-se
 
 Detalle de firma Windows/Linux: [`signing.md`](signing.md).
 Cómo arrancar la app: [`run-local.md`](run-local.md).
+Cómo instalarla en Windows: [`guia-instalacion.md`](guia-instalacion.md).

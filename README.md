@@ -16,6 +16,8 @@ autenticada contra Zajuna real, con el contrato de login de dos pasos y el
 registro de selectores por curso, está en
 [`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md).
 Cómo arrancar en local: [`docs/run-local.md`](docs/run-local.md).
+Cómo instalarla en un equipo (SmartScreen, Setup y primer uso):
+[`docs/guia-instalacion.md`](docs/guia-instalacion.md).
 Por qué no hay instalador macOS: [`docs/macos-deferred.md`](docs/macos-deferred.md).
 
 ## Arquitectura actual

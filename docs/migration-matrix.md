@@ -35,7 +35,7 @@ es una dependencia de ejecución.
 | Notificaciones | Tabla v12, preferencias y centro local | Completado | Validar lectura masiva y cierre/reapertura. |
 | Frontend React | 12 rutas, React Query, router, CSS y fuentes offline | Completado | Añadir runner unitario cuando el producto lo requiera. |
 | Fidelidad mockup | Estados, motion, responsive, SVG y galería | Completado | Revisión manual de las 16 pantallas. |
-| Accesibilidad | ARIA, foco, menú móvil, contraste y smoke | Hardening | NVDA, VoiceOver, teclado completo y zoom 200 % (MDL-32). |
+| Accesibilidad | ARIA, foco, menú móvil, contraste, teclado, zoom, reflow y NVDA Windows | Completado (condicionado) | VoiceOver macOS diferido; no afirmar WCAG 2.1 AA completa (MDL-32). |
 | API local | Go loopback, SPA fallback y contratos documentados | Hardening | Probar capability/Origin con cliente externo. |
 | Anti-SSRF | Allowlist Zajuna, IP privada y redirect guard | Completado | Repetir pruebas con DNS/redirects reales. |
 | Redacción de secretos | URLs, errores, eventos y metadata | Completado | Añadir revisión de logs de instalación. |

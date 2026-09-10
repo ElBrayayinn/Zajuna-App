@@ -50,6 +50,9 @@ Un segundo `desktop:start` no duplica el backend: reabre la URL existente.
 
 ## Cómo la usará un instructor (instalador)
 
+La guía paso a paso (requisitos, SmartScreen, asistente, Setup y fallos) está
+en [`guia-instalacion.md`](guia-instalacion.md). Resumen:
+
 1. Instala `Zajuna App Setup …exe` (Windows) o el AppImage (Linux).
 2. El acceso directo inicia el mismo launcher: core local + navegador.
 3. En el primer arranque aparece **Setup**: documento y contraseña de Zajuna.
