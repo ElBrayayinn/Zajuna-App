@@ -196,7 +196,7 @@ func TestDashboardBrowserSmoke(t *testing.T) {
 		actualHash := hex.EncodeToString(hash[:])
 		t.Logf("visual baseline %s sha256=%s", viewport.name, actualHash)
 		if expected := visualBaselines[viewport.name]; expected != "" && actualHash != expected {
-			t.Errorf("visual baseline mismatch for %s: got %s want %s", viewport.name, actualHash, expected)
+			t.Fatalf("visual baseline mismatch for %s: got %s want %s", viewport.name, actualHash, expected)
 		}
 	}
 }
@@ -374,7 +374,29 @@ func TestWCAGKeyboardMatrix(t *testing.T) {
 			}
 		}
 
-		t.Logf("keyboard/reflow pass %s skip=ok live=ok h1=1 overflow320=ok scale-viewports=125/150/200", route)
+		if err := page.SetViewportSize(1366, 768); err != nil {
+			t.Fatalf("%s restore viewport for zoom: %v", route, err)
+		}
+		if _, err := page.Evaluate(`() => { document.documentElement.style.zoom = '200%'; return true }`); err != nil {
+			t.Fatalf("%s zoom: %v", route, err)
+		}
+		page.WaitForTimeout(150)
+		zoomState, err := page.Evaluate(`() => ({
+			mainVisible: !!document.getElementById('dashboard-main') && document.getElementById('dashboard-main').getClientRects().length > 0,
+			skipPresent: !!document.querySelector('a.skip-link'),
+		})`)
+		if _, resetErr := page.Evaluate(`() => { document.documentElement.style.zoom = ''; return true }`); resetErr != nil {
+			t.Fatalf("%s reset zoom: %v", route, resetErr)
+		}
+		if err != nil {
+			t.Fatalf("%s zoom inspect: %v", route, err)
+		}
+		zoomMap, _ := zoomState.(map[string]any)
+		if zoomMap["mainVisible"] != true || zoomMap["skipPresent"] != true {
+			t.Fatalf("%s unusable at 200%% zoom: %#v", route, zoomState)
+		}
+
+		t.Logf("keyboard/reflow pass %s skip=ok live=ok h1=1 overflow320=ok scale-viewports=125/150/200 zoom200=ok", route)
 	}
 
 	if err := page.SetViewportSize(1366, 768); err != nil {

@@ -77,7 +77,7 @@ export function Topbar({ mobileMenuOpen, onToggleMobileMenu, menuButtonRef }: To
         <span className="current" aria-current="page">{navItem?.label || 'Resumen'}</span>
       </nav>
       <div className="header-actions">
-        <button className="header-icon" type="button" aria-label={unreadNotifications || needsReview ? `Notificaciones · ${unreadNotifications || 1} sin leer` : 'Notificaciones'} onClick={() => navigate('/notificaciones')}>
+        <button className="header-icon" type="button" aria-label={unreadNotifications ? `Notificaciones · ${unreadNotifications} sin leer` : needsReview ? 'Notificaciones · hay trabajos por revisar' : 'Notificaciones'} onClick={() => navigate('/notificaciones')}>
           <Icon name="bell" size={15} />
           <i id="notif-alert-dot" hidden={!unreadNotifications && !needsReview} aria-hidden="true" />
         </button>

@@ -30,7 +30,7 @@ function requestedArch() {
 const platform = requestedPlatform();
 const arch = requestedArch();
 if (platform === 'mac') {
-  console.error('macOS ya no es una plataforma de distribuciÃ³n compatible: solo se generan instaladores Windows (NSIS) y Linux (AppImage).');
+  console.error('macOS ya no es una plataforma de distribución compatible: solo se generan instaladores Windows (NSIS) y Linux (AppImage).');
   process.exit(1);
 }
 const targetId = {

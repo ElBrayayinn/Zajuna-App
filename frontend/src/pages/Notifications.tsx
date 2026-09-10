@@ -2,12 +2,15 @@ import { Link } from 'react-router-dom'
 import { PageError, PageSkeleton } from '../components/AsyncState'
 import { Icon } from '../components/Icon'
 import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications } from '../hooks/api'
+import { useToast } from '../hooks/useToast'
+import { friendlyError } from '../lib/friendlyError'
 import { formatDate } from '../lib/format'
 
 export function Notifications() {
   const query = useNotifications()
   const markRead = useMarkNotificationRead()
   const markAllRead = useMarkAllNotificationsRead()
+  const toast = useToast()
 
   if (query.isLoading) return <PageSkeleton label="Cargando notificaciones locales" />
   if (query.isError || !query.data) return <PageError message="No pudimos cargar el centro de notificaciones." action={<button className="button ghost small" onClick={() => query.refetch()}>Reintentar</button>} />
@@ -24,7 +27,7 @@ export function Notifications() {
               <h3 style={{ marginTop: 7 }}>Notificaciones</h3>
               <p className="helper">Avisos generados por trabajos y diagnósticos en este equipo.</p>
             </div>
-            <button className="button ghost small" type="button" onClick={() => markAllRead.mutate()} disabled={!unread || markAllRead.isPending}>
+            <button className="button ghost small" type="button" onClick={() => markAllRead.mutate(undefined, { onError: (error) => toast(friendlyError(error.message), true) })} disabled={!unread || markAllRead.isPending}>
               {markAllRead.isPending ? 'Guardando…' : 'Marcar todo leído'}
             </button>
           </div>
@@ -43,7 +46,7 @@ export function Notifications() {
                   </div>
                   <div className="notification-actions">
                     {item.jobId ? <Link className="button ghost small" to={`/trabajos/${encodeURIComponent(item.jobId)}`}>Ver trabajo</Link> : null}
-                    {!item.readAt ? <button className="button ghost small" type="button" onClick={() => markRead.mutate(item.id)} disabled={markRead.isPending}>Marcar leído</button> : <span className="status-chip ok">Leída</span>}
+                    {!item.readAt ? <button className="button ghost small" type="button" onClick={() => markRead.mutate(item.id, { onError: (error) => toast(friendlyError(error.message), true) })} disabled={markRead.isPending}>Marcar leído</button> : <span className="status-chip ok">Leída</span>}
                   </div>
                 </article>
               ))}

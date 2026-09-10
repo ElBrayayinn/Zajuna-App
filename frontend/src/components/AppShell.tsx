@@ -3,12 +3,14 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { findNavItem } from '../lib/nav'
+import { useSettings } from '../hooks/api'
 
 export function AppShell() {
   const location = useLocation()
   const navItem = findNavItem(location.pathname)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const settingsQuery = useSettings()
 
   useEffect(() => {
     setMobileNavOpen(false)
@@ -30,6 +32,12 @@ export function AppShell() {
     document.body.classList.toggle('mobile-nav-open', mobileNavOpen)
     return () => document.body.classList.remove('mobile-nav-open')
   }, [mobileNavOpen])
+
+  useEffect(() => {
+    const motionEnabled = settingsQuery.data?.capture.motion !== false
+    document.documentElement.toggleAttribute('data-motion-off', !motionEnabled)
+    return () => document.documentElement.removeAttribute('data-motion-off')
+  }, [settingsQuery.data?.capture.motion])
 
   return (
     <div className="app-layout">

@@ -17,6 +17,7 @@ import {
   useSetupStatus,
   useSyncFichas,
   useTargets,
+  isNotFound,
 } from '../hooks/api'
 import {
   confidenceFor,
@@ -167,6 +168,18 @@ export function Overview() {
   }
 
   if (dashboardQuery.isError) {
+    if (isNotFound(dashboardQuery.error) && fichas.length) {
+      return (
+        <section className="card onboarding-card">
+          <div className="card-pad">
+            <div className="eyebrow">Siguiente paso</div>
+            <h2 style={{ marginTop: 7 }}>Elige una ficha para comenzar</h2>
+            <p className="helper" style={{ marginTop: 8 }}>La cuenta está lista. Selecciona una ficha sincronizada y después busca las rutas del curso.</p>
+            <Link className="button primary" to="/fichas" style={{ marginTop: 18 }}>Ver mis fichas</Link>
+          </div>
+        </section>
+      )
+    }
     if (!fichas.length) {
       return (
         <section className="card onboarding-card">
@@ -217,7 +230,7 @@ export function Overview() {
   const done = Number(summary.yes) || 0
   const failed = Number(summary.no) || 0
   const pending = Number(summary.pending) || 0
-  const total = Math.max(items.length, done + failed + pending, 1)
+  const total = Math.max(items.length, done + failed + pending)
   const progress = clamp(Number(summary.percentage) || 0, 0, 100)
   const evidenceCount = items.reduce((sum, item) => sum + (Number(item.evidenceCount) || 0), 0)
   const routeCount = Number(targetsQuery.data?.summary?.slotCount || targetsQuery.data?.targets?.length || 0)
@@ -353,7 +366,7 @@ export function Overview() {
             <i style={{ width: `${progress}%` }} />
           </div>
           <div className="metric-note">
-            {done} de {total} ítems cumplidos
+            {total ? `${done} de ${total} ítems cumplidos` : 'Aún no hay ítems en esta ficha'}
           </div>
         </article>
 

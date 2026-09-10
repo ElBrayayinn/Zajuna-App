@@ -127,8 +127,10 @@ La evidencia de teclado vive en `TestWCAGKeyboardMatrix` (`ZAJUNA_RUN_BROWSER_SM
   `/notificaciones`, y usa un viewport de portátil de 1366×768.
 - La automatización aproxima el espacio disponible con viewports efectivos
   equivalentes a escalas de 125 %, 150 % y 200 %, verificando el
-  desbordamiento horizontal. La pasada manual de zoom continúa siendo la
-  evidencia normativa.
+  desbordamiento horizontal. **Además** restaura `document.documentElement.style.zoom = 200%`
+  (WCAG 1.4.4) en cada ruta: el viewport reducido no sustituye el zoom de texto.
+- `html { min-width: 320px }` se retiró para no forzar overflow horizontal junto a
+  `scrollbar-gutter: stable` en Windows con barra clásica.
 - Los botones de acción, incluidas las variantes `.button.small`, y los campos
   de formulario mantienen un objetivo mínimo de 44×44 CSS px.
 - La hoja global estabiliza el espacio de la barra de desplazamiento, el

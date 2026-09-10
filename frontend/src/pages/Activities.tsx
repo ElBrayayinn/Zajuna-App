@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PageError, PageSkeleton } from '../components/AsyncState'
-import { useActivities, useDashboard, useSaveActivities } from '../hooks/api'
+import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
+import { useActivities, useDashboard, useSaveActivities, isNotFound } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import type { Activity } from '../types'
@@ -53,7 +53,10 @@ export function Activities() {
     setSelectedIds(new Set(data.activities.filter((activity) => activity.selected).map((activity) => activity.id)))
   }, [data])
 
-  if (dashboardQuery.isLoading || activitiesQuery.isLoading) return <PageSkeleton label="Cargando actividades" />
+  if (dashboardQuery.isLoading || (activeFichaId && activitiesQuery.isLoading)) return <PageSkeleton label="Cargando actividades" />
+  if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
+    return <MissingActiveFicha message="Las actividades se consultan por ficha. Selecciona un curso para continuar." />
+  }
   if (dashboardQuery.isError) return <PageError message="No pudimos cargar la ficha activa." action={<Link className="button" to="/fichas">Elegir una ficha</Link>} />
   if (!activeFichaId) {
     return (
@@ -100,15 +103,15 @@ export function Activities() {
   const handleSave = () => {
     if (!activeFichaId) return
     const selectedActivityIds = Array.from(selectedIds)
+    if (!selectedActivityIds.length) {
+      toast('Selecciona al menos una actividad antes de preparar las evidencias.', true)
+      return
+    }
     saveActivities.mutate(
       { fichaId: activeFichaId, selectedActivityIds },
       {
         onSuccess: () => {
-          toast(
-            selectedActivityIds.length
-              ? `Guardamos ${selectedActivityIds.length} actividades a tu cargo.`
-              : 'Selecciona al menos una actividad antes de preparar las evidencias.',
-          )
+          toast(`Guardamos ${selectedActivityIds.length} actividades a tu cargo.`)
         },
         onError: (error) => {
           toast(friendlyError(error.message), true)

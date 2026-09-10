@@ -5,7 +5,7 @@ import type { JobStatus } from '../types'
 
 const POLL_MS = 5000
 
-function isNotFound(error: unknown) {
+export function isNotFound(error: unknown) {
   return error instanceof ApiError && error.status === 404
 }
 
@@ -361,7 +361,7 @@ export function useDeleteEvidence() {
 }
 
 export function useReports() {
-  return useQuery({ queryKey: ['reports'], queryFn: () => api.listReports(8), refetchInterval: POLL_MS })
+  return useQuery({ queryKey: ['reports'], queryFn: () => api.listReports(50), refetchInterval: POLL_MS })
 }
 
 export function useGenerateReport() {

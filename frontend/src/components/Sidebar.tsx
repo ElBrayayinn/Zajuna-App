@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { Icon } from './Icon'
 import { OPERATION_ITEMS, SYSTEM_ITEMS } from '../lib/nav'
-import { useFichas, useJobs } from '../hooks/api'
+import { useDiagnostics, useFichas, useJobs } from '../hooks/api'
 
 interface SidebarProps {
   open?: boolean
@@ -11,7 +11,21 @@ interface SidebarProps {
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const { data: fichas } = useFichas()
   const { data: jobs } = useJobs()
+  const diagnostics = useDiagnostics()
   const hasActiveJob = (jobs || []).some((job) => ['queued', 'running', 'waiting_user', 'retrying'].includes(job.status))
+  const checks = diagnostics.data?.checks || []
+  const hasError = checks.some((check) => check.status === 'error')
+  const hasWarn = checks.some((check) => check.status === 'warn')
+  const healthTitle = diagnostics.isError || hasError ? 'Núcleo local con problemas' : 'Núcleo local activo'
+  const healthDetail = diagnostics.isLoading
+    ? 'Comprobando…'
+    : diagnostics.isError
+      ? 'sin diagnóstico'
+      : hasError
+        ? 'con incidencias'
+        : hasWarn
+          ? 'con avisos'
+          : '127.0.0.1 · listo'
 
   return (
     <aside id="primary-nav" className={`sidebar${open ? ' mobile-open' : ''}`} aria-label="Navegación principal">
@@ -52,11 +66,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         ))}
       </nav>
       <div className="sidebar-footer">
-        <div className="sidebar-health">
+        <div className={`sidebar-health${hasError || diagnostics.isError ? ' error' : hasWarn ? ' warn' : ''}`}>
           <i />
           <div>
-            <strong>Núcleo local activo</strong>
-            <span>127.0.0.1 · listo</span>
+            <strong>{healthTitle}</strong>
+            <span>{healthDetail}</span>
           </div>
         </div>
       </div>

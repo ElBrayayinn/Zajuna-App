@@ -41,7 +41,8 @@ export function Settings() {
   const setup = setupQuery.data
   const { data: fichas } = useFichas()
   const { data: dashboard } = useDashboard()
-  const { data: backups } = useBackups()
+  const backupsQuery = useBackups()
+  const backups = backupsQuery.data
   const settingsQuery = useSettings()
   const settings = settingsQuery.data
   const saveSetup = useSaveSetup()
@@ -418,7 +419,9 @@ export function Settings() {
               </div>
               <div className="backup-list">
                 <strong className="eyebrow">Copias disponibles</strong>
-                {backups?.length ? backups.slice(0, 5).map((backup) => (
+                {backupsQuery.isError ? (
+                  <p className="helper" style={{ marginTop: 10 }}>No pudimos cargar las copias de seguridad.</p>
+                ) : backups?.length ? backups.slice(0, 5).map((backup) => (
                   <div className="backup-row" key={backup.name}>
                     <span><b>{backup.name}</b><small>{formatBytes(backup.sizeBytes)} · {new Date(backup.createdAt).toLocaleString('es-CO')}</small></span>
                     <span className="backup-actions">
