@@ -10,6 +10,9 @@ jobs:
   package-and-smoke:
     name: ${{ matrix.name }} installer
     runs-on: ${{ matrix.runner }}
+    env:
+      # GitHub no permite `secrets` en `if`; se expone solo la presencia del certificado.
+      HAS_CSC_LINK: ${{ secrets.CSC_LINK != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -49,7 +52,7 @@ jobs:
         run: npm run test:smoke:packaged
 
       - name: Verify Windows Authenticode
-        if: runner.os == 'Windows' && secrets.CSC_LINK != ''
+        if: runner.os == 'Windows' && env.HAS_CSC_LINK == 'true'
         shell: pwsh
         run: |
           $installer = Get-ChildItem dist -Filter '*.exe' | Select-Object -First 1
