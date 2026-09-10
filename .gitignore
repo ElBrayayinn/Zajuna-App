@@ -31,3 +31,7 @@ bin/
 .idea/
 .vscode/
 *.swp
+
+# Bóvedas Obsidian locales (no son código de la app)
+.obsidian/
+ZajunaApp/
