@@ -1,5 +1,6 @@
 const { app, shell } = require('electron');
 const { spawn } = require('node:child_process');
+const { stopProcessTree } = require('./stop-process-tree.cjs');
 const crypto = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -160,7 +161,7 @@ async function startCoreOnce() {
     const timeout = setTimeout(() => {
       const message = 'El núcleo local no inició a tiempo.' + (coreError ? ' ' + coreError.trim() : '');
       stopCore().finally(() => finish(reject, new Error(message)));
-    }, 10000);
+    }, 20000);
 
     child.once('error', (error) => {
       finish(reject, new Error(`No se pudo iniciar el núcleo local: ${error.message}`));
@@ -266,29 +267,7 @@ async function stopCore() {
     coreEndpoint = undefined;
 
     if (processToStop && processToStop.exitCode === null) {
-      await new Promise((resolve) => {
-        let settled = false;
-        const settle = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(forceTimer);
-          resolve();
-        };
-        const forceTimer = setTimeout(() => {
-          try {
-            processToStop.kill();
-          } catch {
-            // El proceso ya pudo haber terminado entre los dos intentos.
-          }
-          settle();
-        }, 5000);
-        processToStop.once('exit', settle);
-        try {
-          processToStop.kill('SIGTERM');
-        } catch {
-          settle();
-        }
-      });
+      await stopProcessTree(processToStop);
     }
 
     if (endpointFile) {
@@ -337,4 +316,9 @@ process.on('uncaughtException', (error) => {
   void appendCoreLog(`[launcher] Error no controlado: ${error.message}\n`);
   quitting = true;
   void stopCore().finally(() => app.exit(1));
+});
+
+process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  void appendCoreLog(`[launcher] Promesa no controlada: ${message}\n`);
 });
