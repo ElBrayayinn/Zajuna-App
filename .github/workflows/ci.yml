@@ -51,3 +51,4 @@ jobs:
       - run: npm ci
       - run: npm run test:downloads
       - run: npm run test:smoke:native
+      - run: npm run test:desktop

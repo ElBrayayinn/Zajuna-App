@@ -267,7 +267,7 @@ func newRouterWithServices(dataDir string, credentials secrets.Store, jobRuntime
 	mux.HandleFunc("POST /api/setup", func(w http.ResponseWriter, r *http.Request) {
 		var request setupRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("configuraciÃƒÂ³n invÃƒÂ¡lida: %w", err))
+			writeError(w, http.StatusBadRequest, fmt.Errorf("configuración inválida: %w", err))
 			return
 		}
 		request.ZajunaUsername = strings.TrimSpace(request.ZajunaUsername)
@@ -448,7 +448,7 @@ func dataDirectory() (string, error) {
 	if runtime.GOOS == "windows" {
 		base := os.Getenv("LOCALAPPDATA")
 		if base == "" {
-			return "", errors.New("LOCALAPPDATA no estÃƒÂ¡ disponible")
+			return "", errors.New("LOCALAPPDATA no está disponible")
 		}
 		return filepath.Join(base, "ZajunaApp"), nil
 	}
@@ -478,7 +478,7 @@ func readConfig(dataDir string) (appConfig, error) {
 	}
 	var config appConfig
 	if err := json.Unmarshal(contents, &config); err != nil {
-		return appConfig{}, fmt.Errorf("configuraciÃƒÂ³n local daÃƒÂ±ada: %w", err)
+		return appConfig{}, fmt.Errorf("configuración local dañada: %w", err)
 	}
 	return config, nil
 }

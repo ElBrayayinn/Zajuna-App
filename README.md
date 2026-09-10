@@ -112,7 +112,7 @@ npm run package:windows
 npm run package:linux
 ```
 
-macOS no es un target de distribuciÃ³n: no se generan DMG/PKG ni se mantiene un
+macOS no es un target de distribución: no se generan DMG/PKG ni se mantiene un
 script de empaquetado hasta contar con credenciales Developer ID. `npm run
 build:platforms` genera los cores Go para Windows/Linux x64 y ARM64.
 `scripts/package.cjs` exige que el runner coincida con la plataforma,
