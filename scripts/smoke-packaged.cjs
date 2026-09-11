@@ -86,7 +86,14 @@ async function main() {
   console.log(`Iniciando smoke del paquete: ${executable}`);
   const userDataDir = path.join(projectRoot, 'tmp', 'smoke-packaged-user-data');
   await fs.rm(userDataDir, { recursive: true, force: true });
-  const child = spawn(executable, [`--user-data-dir=${userDataDir}`], {
+  const args = [`--user-data-dir=${userDataDir}`];
+  if (process.platform === 'linux') {
+    // El chrome-sandbox empaquetado no queda con dueño root/modo 4755 en un
+    // runner de CI corriente; solo este smoke lo desactiva, nunca el binario
+    // que instala un usuario real.
+    args.push('--no-sandbox');
+  }
+  const child = spawn(executable, args, {
     cwd: path.dirname(executable),
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
