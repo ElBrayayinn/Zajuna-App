@@ -164,6 +164,33 @@ func TestBuildCaptureTargetsUsesGoogleSheetsAwareCronogramaSelector(t *testing.T
 	t.Fatal("cronograma target was not generated")
 }
 
+func TestBuildCaptureTargetsItem31MatchesCourseContentWithoutAFragileHint(t *testing.T) {
+	// MDL-124: two independent real courses proved the checklist wording
+	// ("material de trabajo", "evidencias") never appears verbatim on the
+	// course main page item 3.1 resolves to, so `.section` plus that hint
+	// found 284 unrelated nodes and matched none of them, aborting the whole
+	// capture batch. See docs/mdl-33-2026-08-26.md.
+	record := coursemaps.Record{ByItemCode: map[string]json.RawMessage{
+		"3.1": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/course/view.php?id=27932"`),
+	}}
+	targets, _, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if target.ItemCode == "3.1" {
+			if target.CSSSelector != "#region-main .course-content" {
+				t.Fatalf("item 3.1 must crop the confirmed course-content wrapper, got %q", target.CSSSelector)
+			}
+			if target.LabelHint != "" || target.RequireSelector {
+				t.Fatalf("item 3.1 must not require a fragile text hint: %#v", target)
+			}
+			return
+		}
+	}
+	t.Fatal("item 3.1 target was not generated")
+}
+
 func TestBuildCaptureTargetsCapturesInstructorProfileAsFullPage(t *testing.T) {
 	record := coursemaps.Record{ByItemCode: map[string]json.RawMessage{
 		"2.1.1": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/user/profile.php"`),

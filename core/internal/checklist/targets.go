@@ -91,6 +91,15 @@ func captureLabelHints(itemCode string, fallback []string) []string {
 	if strings.HasPrefix(itemCode, "1.1.") || strings.HasPrefix(itemCode, "1.2.") {
 		return nil
 	}
+	// Item 3.1 ("Disponibilidad del material de trabajo y enlaces de envío de
+	// evidencias") shares the course main page route with menu_curso and
+	// configuracion. Two independent real courses (docs/mdl-33-2026-08-26.md)
+	// proved the checklist wording never appears verbatim on that page: the
+	// route already identifies the target, so a fragile text hint only makes
+	// the capture fail outright.
+	if itemCode == "3.1" {
+		return nil
+	}
 	// Forum and announcement pages expose the activity title in the heading,
 	// while the actual Moodle discussion rows usually contain only the subject
 	// and author. The owner filter is the reliable semantic constraint here;
@@ -604,7 +613,12 @@ func captureGroupPlan(groupName string) groupPlan {
 	case "perfil_instructor":
 		return groupPlan{[]string{"profile"}, "#page-user-profile", nil, false}
 	case "disponibilidad":
-		return groupPlan{[]string{"page", "resource", "url"}, "#region-main .course-content .section", []string{"material de trabajo", "evidencias"}, false}
+		// Resolves to the course main page (client_maps_resolver.go), the same
+		// route as menu_curso and configuracion. `.course-content .section`
+		// matches hundreds of unrelated nodes there (284 in both real courses
+		// audited for MDL-124) instead of the topic sections it was meant for,
+		// so it is not a usable crop even without a label hint.
+		return groupPlan{[]string{"page", "resource", "url"}, "#region-main .course-content", nil, false}
 	case "menu_curso":
 		return groupPlan{[]string{"course"}, "#region-main .course-content", []string{"secciones"}, false}
 	case "calificaciones":
@@ -640,7 +654,7 @@ func captureSelectorChain(groupName, primary string) []string {
 	groupSelectors := map[string][]string{
 		"cronograma_general":     {"#region-main .course-content", "#region-main"},
 		"cronograma_vigente":     {"#region-main .course-content .section", "#region-main .course-content", "#region-main"},
-		"disponibilidad":         {"#region-main .course-content .section", "#region-main .course-content"},
+		"disponibilidad":         {"#region-main .course-content"},
 		"perfil_instructor":      {"#page-user-profile", "#region-main"},
 		"menu_curso":             {"#region-main .course-content", ".course-content"},
 		"calificaciones":         {"#region-main .gradereport-grader-table", "#region-main table", "#region-main"},
