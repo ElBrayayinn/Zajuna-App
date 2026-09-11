@@ -36,7 +36,7 @@ import (
 //go:embed web
 var webFiles embed.FS
 
-const appVersion = "0.1.0"
+const appVersion = "0.1.1"
 
 type appConfig struct {
 	SetupComplete      bool   `json:"setupComplete"`
