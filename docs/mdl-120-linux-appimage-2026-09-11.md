@@ -105,6 +105,15 @@ PATH=~/local-bin-test:$PATH zajunaapp --no-sandbox --user-data-dir=...
 El comando global funciona igual que el AppImage directo. Limpiado sin
 residuos tras la prueba.
 
+**Actualización**: reemplazar el archivo en su ruta de instalación
+conservando el nombre y repetir `chmod +x` deja el binario operativo
+(verificado con `sha256sum` antes/después del reemplazo).
+
+**Desinstalación**: AppImage no tiene instalador ni desinstalador formal —
+"desinstalar" es borrar el archivo (y el symlink global, si se creó). Se
+verificó que `rm -rf` sobre el directorio de instalación no deja residuos
+(`~/opt-test` deja de existir, sin archivos huérfanos).
+
 ## No verificado en esta sesión
 
 - Kali Linux/Debian real (bare-metal o VM), solo WSL2/Ubuntu.
