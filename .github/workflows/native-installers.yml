@@ -48,7 +48,18 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      - name: Smoke packaged application
+      - name: Install Xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Smoke packaged application (Linux)
+        if: runner.os == 'Linux'
+        # Electron necesita un servidor de display para inicializar su proceso
+        # principal aunque no abra ninguna ventana; ubuntu-latest no trae uno.
+        run: xvfb-run --auto-servernum -- npm run test:smoke:packaged
+
+      - name: Smoke packaged application (Windows)
+        if: runner.os == 'Windows'
         run: npm run test:smoke:packaged
 
       - name: Verify Windows Authenticode
