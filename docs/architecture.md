@@ -105,5 +105,6 @@ Windows/Linux x64 y ARM64, pero el instalador debe probarse nativamente.
 - Firma Authenticode de Windows (MDL-29).
 - Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29).
 - VoiceOver en macOS (diferido; MDL-32 cerró teclado, zoom, reflow y NVDA Windows).
-- Corregir reglas de captura del ítem 3.1, cronograma y menú de curso (MDL-124).
+- Reconfirmar contra un curso real la corrección de la regla de captura del
+  ítem 3.1 y el fallback de cronograma/menú de curso (MDL-124).
 - Gate de release con matriz y acta (MDL-34).

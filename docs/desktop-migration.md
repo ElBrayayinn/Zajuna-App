@@ -168,7 +168,7 @@ runners nativos porque Chromium y la firma son específicos de cada sistema.
 | P0 | Firma Authenticode del instalador Windows (MDL-29). | Asegurar procedencia sin exponer credenciales. |
 | P0 | Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29). | Requiere evidencia fresca de los runners Windows/Linux. |
 | P1 | VoiceOver en macOS (diferido; MDL-32). | Teclado, zoom, reflow y NVDA Windows ya tienen evidencia; no se afirma WCAG 2.1 AA completa. |
-| P0 | Corregir la regla del ítem 3.1 y los selectores de cronograma y menú de curso (MDL-124). | El E2E vivo del 2026-08-26 (MDL-33) capturó 11 de 12 objetivos en dos cursos reales; los mismos 5-6 cayeron al fallback en ambos, así que las reglas están mal, no los cursos. |
+| P1 | Volver a correr el registro de selectores en un curso real para confirmar la corrección del ítem 3.1 y revisar el fallback de cronograma/menú de curso (MDL-124). | El ítem 3.1 fallaba porque su hint de texto nunca aparece en la página de curso a la que resuelve (misma ruta que `menu_curso`/`configuracion`); ya se corrigió en código quitando el hint y usando el contenedor confirmado por el registro de MDL-33. `cronograma_general`/`cronograma_vigente` no perdían evidencia por el fallback (capturan página completa igual), y `menu_curso` sigue siendo evidencia válida por ese wrapper más amplio; falta reconfirmarlo contra un curso real. |
 | P1 | Gate de release con matriz y acta (MDL-34). | No afirmar versión lista sin logs/artefactos frescos. |
 | P2 | Completar workflows administrativos y adaptadores externos opcionales. | No bloquean el runtime local principal. |
 
@@ -220,9 +220,11 @@ residuos de registro). Sigue **sin firma digital**. Detalle completo en
 
 El detalle de Linear está en [`hardening-2026-08-20.md`](hardening-2026-08-20.md).
 
-1. Corregir con un instructor las reglas que fallaron igual en los dos cursos
-   reales y volver a correr el registro (MDL-124); los registros viven en
-   `docs/evidence/mdl-33-selectors.json` y `mdl-33-selectors-curso-b.json`.
+1. Volver a correr el registro de selectores contra un curso real para
+   confirmar que el ítem 3.1 ya no falla y revisar si `cronograma_general`,
+   `cronograma_vigente` y `menu_curso` siguen usando su selector de respaldo
+   (MDL-124); los registros viven en `docs/evidence/mdl-33-selectors.json` y
+   `mdl-33-selectors-curso-b.json`. No requiere al instructor.
 2. Firmar el instalador Windows y correr smoke nativo en Windows y Linux
    (MDL-29); macOS queda fuera de alcance hasta contar con Developer ID
    (`macos-deferred.md`).
