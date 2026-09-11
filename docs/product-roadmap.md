@@ -66,17 +66,18 @@ firma nativa, WCAG manual y gate de release. Ver Linear MDL-25.
 2. Crear y probar DMG macOS y AppImage Linux en máquinas nativas (MDL-29).
 3. Probar instalación limpia, actualización, desinstalación y ausencia de
    procesos huérfanos (MDL-29).
-4. Corregir con un instructor la regla del ítem 3.1 y los selectores de
-   `cronograma_general`, `cronograma_vigente` y `menu_curso`. Dos cursos reales
-   distintos fallan igual, así que no es particularidad del curso: falta decidir
-   cuál es el recorte correcto de la evidencia (MDL-124).
+4. Volver a correr el registro de selectores (`ZAJUNA_CAPTURE_E2E`) sobre un
+   curso real para confirmar en producción la corrección del ítem 3.1 y
+   revisar si `cronograma_general`/`cronograma_vigente`/`menu_curso` siguen
+   cayendo al selector de respaldo (MDL-124). No requiere al instructor: se
+   ejecuta con las mismas credenciales de prueba de MDL-33.
 
 ### P1 — Antes de beta amplia
 
 1. VoiceOver en macOS queda diferido con MDL-32: teclado, zoom 200 %, reflow y
    NVDA Windows ya tienen evidencia en `docs/accessibility-audit.md`.
-2. Volver a correr el registro de selectores después de corregir esas reglas,
-   para confirmar que dejan de caer al fallback (MDL-124).
+2. Confirmar con el registro de selectores que el ítem 3.1 deja de fallar de
+   forma dura tras la corrección de MDL-124 (ver punto anterior).
 3. Repetir revisión OWASP y el gate de integración (MDL-34).
 
 ### P2 — Evolución posterior
