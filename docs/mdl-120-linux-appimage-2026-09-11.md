@@ -85,6 +85,26 @@ Chromium requiere `CLONE_NEWUSER` sin restricciones, que algunas
 configuraciones de WSL2 bloquean); no se investigó si un Kali/Debian real
 necesita el mismo flag — otro punto para MDL-123.
 
+## Verificación adicional: flujo de instalación de la guía de usuario
+
+Se recibió `Guia_Instalacion_ZajunaApp_Linux.pdf` (entorno validado: Kali
+Linux) y su contenido se incorporó a `docs/guia-instalacion.md` §10. El flujo
+de instalación global (mover a un directorio estable + symlink a un `bin`
+en el `PATH`) se probó en WSL con rutas propias del usuario (no se repitió
+con `/opt`/`/usr/local/bin` reales porque requerían sudo interactivo, ya
+revocado tras el trabajo de MDL-120):
+
+```text
+mkdir -p ~/opt-test/ZajunaApp && mv ZajunaApp.AppImage ~/opt-test/ZajunaApp/
+chmod +x ~/opt-test/ZajunaApp/ZajunaApp.AppImage
+ln -sf ~/opt-test/ZajunaApp/ZajunaApp.AppImage ~/local-bin-test/zajunaapp
+PATH=~/local-bin-test:$PATH zajunaapp --no-sandbox --user-data-dir=...
+→ {"app":"zajuna-app","runtime":"linux","status":"ok","version":"0.1.0"}
+```
+
+El comando global funciona igual que el AppImage directo. Limpiado sin
+residuos tras la prueba.
+
 ## No verificado en esta sesión
 
 - Kali Linux/Debian real (bare-metal o VM), solo WSL2/Ubuntu.
