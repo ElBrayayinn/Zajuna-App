@@ -17,8 +17,9 @@ Este roadmap solo muestra el estado de trabajo y las tareas que faltan.
 | Configuración/diagnóstico/notificaciones | Implementado | APIs locales y vistas funcionales. |
 | Fidelidad visual y accesibilidad automatizada | Implementado | Sistema de diseño, motion, responsive y smoke de tres viewports. |
 | Seguridad OWASP | Hardening principal implementado | Capability, Host/Origin, anti-SSRF, cookies de captura acotadas, redacción y symlink guard. |
-| Instalador Windows | Construido y probado | NSIS x64 con core + Chromium; sin firma digital. Guía de descargas sin bypass de SmartScreen. |
-| macOS/Linux | Cross-build preparado | Falta ejecutar instalador y smoke en runners nativos. |
+| Instalador Windows | Construido y probado | NSIS x64 con core + Chromium; ciclo instalar/usar/desinstalar limpio verificado el 2026-09-11; sin firma digital. Guía de descargas sin bypass de SmartScreen. |
+| Linux | Cross-build preparado | Falta ejecutar instalador y smoke en runner nativo (`ubuntu-latest`). |
+| macOS | Fuera de alcance | Sin Developer ID; ver `macos-deferred.md`. |
 
 ## Fases cerradas
 
@@ -62,10 +63,15 @@ firma nativa, WCAG manual y gate de release. Ver Linear MDL-25.
 
 ### P0 — Antes de entregar una versión comercial
 
-1. Firmar el instalador y ejecutables con certificados del cliente (MDL-29).
-2. Crear y probar DMG macOS y AppImage Linux en máquinas nativas (MDL-29).
-3. Probar instalación limpia, actualización, desinstalación y ausencia de
-   procesos huérfanos (MDL-29).
+1. Firmar el instalador Windows con certificado del cliente (`CSC_LINK` en CI)
+   (MDL-29). macOS no es un target de distribución hasta contar con
+   Developer ID (`macos-deferred.md`).
+2. Ejecutar el AppImage de Linux en un runner nativo y adjuntar su smoke
+   (MDL-29): local en Windows solo probó Windows (ver
+   `release-gate-2026-09-11.md`); falta disparar `Native installers` con
+   permisos de admin.
+3. Instalación limpia, actualización y desinstalación sin procesos huérfanos:
+   verificado en Windows el 2026-09-11; falta repetir en Linux (MDL-29).
 4. Volver a correr el registro de selectores (`ZAJUNA_CAPTURE_E2E`) sobre un
    curso real para confirmar en producción la corrección del ítem 3.1 y
    revisar si `cronograma_general`/`cronograma_vigente`/`menu_curso` siguen
@@ -78,7 +84,9 @@ firma nativa, WCAG manual y gate de release. Ver Linear MDL-25.
    NVDA Windows ya tienen evidencia en `docs/accessibility-audit.md`.
 2. Confirmar con el registro de selectores que el ítem 3.1 deja de fallar de
    forma dura tras la corrección de MDL-124 (ver punto anterior).
-3. Repetir revisión OWASP y el gate de integración (MDL-34).
+3. Repetir revisión OWASP y el gate de integración (MDL-34): corrido el
+   2026-09-11 en Windows con matriz local verde; falta firma Windows y
+   evidencia nativa Linux (`release-gate-2026-09-11.md`).
 
 ### P2 — Evolución posterior
 

@@ -212,10 +212,100 @@ La desinstalación puede dejar datos locales (cuenta, evidencias, backups) en
 
 ## 10. Anexo: Linux (AppImage)
 
-En Linux el artefacto es un AppImage, no un Setup. Comprueba el SHA256 del
-manifiesto, marca el archivo como ejecutable (`chmod +x`) y ábrelo. No hay
-SmartScreen. Si el escritorio bloquea un binario no firmado, no eludas esa
-protección: usa el canal oficial y el checksum.
+En Linux el artefacto es un AppImage, no un Setup. Entorno validado: Kali
+Linux (basado en Debian). Comprueba el SHA256 del manifiesto, marca el
+archivo como ejecutable (`chmod +x`) y ábrelo. No hay SmartScreen. Si el
+escritorio bloquea un binario no firmado, no eludas esa protección: usa el
+canal oficial y el checksum.
+
+### Requisitos del equipo
+
+Las capturas usan Chromium/Puppeteer, así que el consumo depende también de
+cuántas instancias corran en paralelo:
+
+| Recurso | Mínimo | Recomendado |
+|---|---|---|
+| Procesador | 4 núcleos | 8 núcleos |
+| Memoria RAM | 4 GB | 8 GB |
+| Almacenamiento | 2 GB libres dedicados a la app | + espacio adicional para capturas (varía según resolución, formato y frecuencia) |
+
+Con 8 núcleos y 8 GB hay margen para dos o tres capturas simultáneas; con el
+mínimo, evita abrir muchas a la vez. No trates los 2 GB como el espacio total
+de operación: reserva más si vas a capturar mucho y supervisa la carpeta de
+evidencias.
+
+### Primera ejecución
+
+```bash
+cd ~/Downloads   # o ~/Descargas
+ls -lh
+chmod +x ZajunaApp.AppImage
+ls -l ZajunaApp.AppImage      # confirmar el permiso
+./ZajunaApp.AppImage
+```
+
+No la ejecutes como root salvo necesidad técnica documentada; debe iniciarse
+con el usuario habitual del sistema.
+
+Comprobación rápida de recursos antes de instalar:
+
+```bash
+nproc      # CPU disponible
+free -h    # memoria RAM
+df -h .    # espacio libre
+```
+
+### Instalación opcional en una ubicación global
+
+AppImage no necesita "instalarse" para funcionar, pero si quieres iniciarla
+desde cualquier terminal:
+
+```bash
+sudo mkdir -p /opt/ZajunaApp
+sudo mv ~/Downloads/ZajunaApp.AppImage /opt/ZajunaApp/ZajunaApp.AppImage
+sudo chmod +x /opt/ZajunaApp/ZajunaApp.AppImage
+sudo ln -sf /opt/ZajunaApp/ZajunaApp.AppImage /usr/local/bin/zajunaapp
+```
+
+Después se inicia con `zajunaapp` desde cualquier carpeta.
+
+### Actualizar
+
+Reemplaza el archivo conservando el mismo nombre y repite el permiso de
+ejecución:
+
+```bash
+sudo cp ZajunaApp.AppImage /opt/ZajunaApp/ZajunaApp.AppImage
+sudo chmod +x /opt/ZajunaApp/ZajunaApp.AppImage
+```
+
+### Solución de problemas comunes
+
+**"Permission denied" al ejecutar** — falta el permiso de ejecución:
+
+```bash
+chmod +x ZajunaApp.AppImage
+./ZajunaApp.AppImage
+```
+
+**El AppImage pide FUSE o no puede montarse** — algunas instalaciones mínimas
+de Linux no traen `libfuse2`/`fuse3` por defecto:
+
+```bash
+sudo apt update
+apt search fuse | grep -E "libfuse|fuse"
+```
+
+Si el sistema no tiene esa compatibilidad, usa la extracción temporal como
+diagnóstico o solución alterna:
+
+```bash
+./ZajunaApp.AppImage --appimage-extract-and-run
+```
+
+Para reportar un problema, incluye distribución y versión de Linux,
+arquitectura, el mensaje exacto de la terminal y los pasos previos. Nunca
+incluyas credenciales, tokens ni información sensible.
 
 macOS no forma parte de este release. Ver [`macos-deferred.md`](macos-deferred.md).
 

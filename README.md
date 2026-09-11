@@ -14,7 +14,10 @@ El cierre de Linear M0/M1 (2026-08-20) está en
 [`docs/hardening-2026-08-20.md`](docs/hardening-2026-08-20.md). La validación
 autenticada contra Zajuna real, con el contrato de login de dos pasos y el
 registro de selectores por curso, está en
-[`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md).
+[`docs/mdl-33-2026-08-26.md`](docs/mdl-33-2026-08-26.md). El gate de
+integración más reciente (MDL-34), con el ciclo completo de instalar/usar/
+desinstalar Windows, está en
+[`docs/release-gate-2026-09-11.md`](docs/release-gate-2026-09-11.md).
 Cómo arrancar en local: [`docs/run-local.md`](docs/run-local.md).
 Cómo instalarla en un equipo (SmartScreen, Setup y primer uso):
 [`docs/guia-instalacion.md`](docs/guia-instalacion.md).

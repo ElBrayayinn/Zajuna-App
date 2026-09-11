@@ -211,7 +211,10 @@ rasterización variable del texto del `<select>` nativo. La última ejecución
 pasó dos veces consecutivas.
 
 El instalador Windows actual incluye core Go y Chromium/Playwright, responde a
-`/api/health` y mide aproximadamente 346 MB. Sigue **sin firma digital**.
+`/api/health` y mide aproximadamente 330 MB. El ciclo instalar en silencio →
+usar → desinstalar se verificó limpio el 2026-09-11 (sin procesos huérfanos ni
+residuos de registro). Sigue **sin firma digital**. Detalle completo en
+[`release-gate-2026-09-11.md`](release-gate-2026-09-11.md).
 
 ## 6. Cómo continuar
 
@@ -222,7 +225,9 @@ El detalle de Linear está en [`hardening-2026-08-20.md`](hardening-2026-08-20.m
    `cronograma_vigente` y `menu_curso` siguen usando su selector de respaldo
    (MDL-124); los registros viven en `docs/evidence/mdl-33-selectors.json` y
    `mdl-33-selectors-curso-b.json`. No requiere al instructor.
-2. Firmar instaladores y correr smoke nativo en Windows, macOS y Linux (MDL-29).
+2. Firmar el instalador Windows y correr smoke nativo en Windows y Linux
+   (MDL-29); macOS queda fuera de alcance hasta contar con Developer ID
+   (`macos-deferred.md`).
 3. VoiceOver en macOS queda diferido; MDL-32 ya cerró teclado, zoom, reflow y NVDA Windows.
 4. Gate de release con matriz y acta; no marcar Done sin artefactos (MDL-34).
 5. Solo después preparar logo, iconos, actualización automática y publicación.

@@ -9,6 +9,10 @@ const os = require('node:os');
 const isDevelopment = !app.isPackaged;
 // Electron is only the silent launcher/supervisor. It does not create a
 // BrowserWindow: React is rendered by the user's default browser at loopback.
+// GPU/hardware acceleration is never needed here; disabling it avoids a GPU
+// process crash on Linux hosts without accelerated graphics (CI runners,
+// containers, some window managers) that would otherwise block startup.
+app.disableHardwareAcceleration();
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const skipExternalOpen = process.env.ZAJUNA_SKIP_EXTERNAL_OPEN === '1';
 let coreProcess;
