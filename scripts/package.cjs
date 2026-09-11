@@ -95,6 +95,12 @@ for (let index = 0; index < rawArgs.length; index += 1) {
 if (!filteredArgs.some((arg) => arg === '--' || arg.startsWith('--win') || arg.startsWith('--mac') || arg.startsWith('--linux'))) {
   filteredArgs.push(`--${platform}`);
 }
+// electron-builder detects CI and defaults to publishing a GitHub Release
+// unless told otherwise; this pipeline only produces local installer
+// artifacts, so publishing must be explicit and never implicit.
+if (!filteredArgs.some((arg) => arg === '--publish' || arg.startsWith('--publish='))) {
+  filteredArgs.push('--publish', 'never');
+}
 filteredArgs.push('--config', configPath);
 
 console.log(`Empaquetando ${platform}/${arch} con ${path.relative(projectRoot, sourceBinary)}.`);
