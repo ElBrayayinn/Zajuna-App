@@ -217,6 +217,12 @@ manifiesto, marca el archivo como ejecutable (`chmod +x`) y ábrelo. No hay
 SmartScreen. Si el escritorio bloquea un binario no firmado, no eludas esa
 protección: usa el canal oficial y el checksum.
 
+El AppImage necesita FUSE (`libfuse2`/`fuse3`) para montarse; algunas
+instalaciones mínimas de Linux no lo traen por defecto. Si falla al abrir por
+esa razón, instala el paquete FUSE de tu distribución o ejecútalo con
+`./ZajunaApp.AppImage --appimage-extract-and-run` como alternativa de
+diagnóstico.
+
 macOS no forma parte de este release. Ver [`macos-deferred.md`](macos-deferred.md).
 
 ---
