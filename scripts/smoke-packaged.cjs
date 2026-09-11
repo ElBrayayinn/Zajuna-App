@@ -18,12 +18,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function endpointFor(pid, timeoutMs = 20000) {
+async function endpointFor(child, output, timeoutMs = 20000) {
   const tmpDir = require('node:os').tmpdir();
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(
+        `El proceso empaquetado terminó antes de exponer /api/health (código ${child.exitCode}, señal ${child.signalCode}).\n--- stdout/stderr ---\n${output.text() || '(vacío)'}`
+      );
+    }
     try {
-      const candidate = (await fs.readdir(tmpDir)).find((name) => name.startsWith(`zajuna-app-${pid}-`) && name.endsWith('.json'));
+      const candidate = (await fs.readdir(tmpDir)).find((name) => name.startsWith(`zajuna-app-${child.pid}-`) && name.endsWith('.json'));
       if (!candidate) throw new Error('endpoint pending');
       const expected = path.join(tmpDir, candidate);
       const endpoint = JSON.parse(await fs.readFile(expected, 'utf8'));
@@ -34,7 +39,9 @@ async function endpointFor(pid, timeoutMs = 20000) {
     }
     await sleep(250);
   }
-  throw new Error(`El paquete no expuso /api/health en ${timeoutMs} ms (pid ${pid}).`);
+  throw new Error(
+    `El paquete no expuso /api/health en ${timeoutMs} ms (pid ${child.pid}).\n--- stdout/stderr ---\n${output.text() || '(vacío)'}`
+  );
 }
 
 async function stopProcess(child) {
@@ -82,11 +89,15 @@ async function main() {
   const child = spawn(executable, [`--user-data-dir=${userDataDir}`], {
     cwd: path.dirname(executable),
     windowsHide: true,
-    stdio: 'ignore',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ZAJUNA_SKIP_EXTERNAL_OPEN: '1' },
   });
+  const outputChunks = [];
+  child.stdout?.on('data', (chunk) => outputChunks.push(chunk));
+  child.stderr?.on('data', (chunk) => outputChunks.push(chunk));
+  const output = { text: () => Buffer.concat(outputChunks).toString('utf8').trim() };
   try {
-    const { endpoint, file } = await endpointFor(child.pid);
+    const { endpoint, file } = await endpointFor(child, output);
     const parsedEndpoint = new URL(endpoint.url);
     if (parsedEndpoint.protocol !== 'http:' || parsedEndpoint.hostname !== '127.0.0.1') {
       throw new Error(`El paquete publicó un endpoint fuera de loopback: ${endpoint.url}`);
