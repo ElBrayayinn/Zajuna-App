@@ -17,7 +17,7 @@ var forumResolveModes = map[string]string{
 	"11.1.1": "anuncios_singleton", "11.1.2": "anuncios_singleton", "11.1.3": "anuncios_singleton", "11.1.4": "anuncios_singleton",
 	"11.2.1": "anuncios_singleton", "11.2.2": "anuncios_singleton", "11.2.3": "sesion_slot",
 	"11.3": "anuncios_singleton", "11.4": "anuncio_slot",
-	"14.1.1": "tematico_slot", "14.1.2": "tematico_slot", "15.1": "induccion_singleton",
+	"14.1.1": "tematico_slot", "14.1.2": "tematico_slot", "15.1": "netiqueta_singleton",
 }
 
 var forumPoolTerms = map[string][]string{
@@ -26,7 +26,13 @@ var forumPoolTerms = map[string][]string{
 	"anuncios_singleton":  {"anuncios"},
 	"anuncio_slot":        {"anuncio", "comunicativa", "aprendices aprobados"},
 	"sesion_slot":         {"sesión en línea", "sesion en linea", "sesión sincrónica", "grabación sesión"},
-	"induccion_singleton": {"foro de inducción", "induccion", "inducción"},
+	// MDL-153: this mode used to be "induccion_singleton" searching for
+	// induction/onboarding terms — unrelated to item 15.1 ("Lenguaje cortés y
+	// respetuoso con uso de netiqueta"). It resolved to the general student
+	// induction forum every time, which is why the owner filter never found
+	// an instructor post there. "netiqueta" is the item's own distinctive
+	// checklist term and the most likely literal match on a real course.
+	"netiqueta_singleton": {"netiqueta", "buena ortografía", "buena ortografia", "lenguaje cortés"},
 }
 
 var pagePoolTerms = map[string][]string{
