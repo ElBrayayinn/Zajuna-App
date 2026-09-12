@@ -90,9 +90,9 @@ func isPrivateHost(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
 		return IsPrivateIP(ip)
 	}
-	// Resolve only when no explicit allowlist is supplied. An allowlisted public
-	// origin is checked by its exact host; a generic worker still must not be
-	// able to resolve into private infrastructure.
+	// Always resolve, even for an allowlisted host: an allowed public hostname
+	// could still DNS-rebind to a private address, and a generic worker must
+	// never be able to resolve into private infrastructure either way.
 	ips, err := net.LookupIP(host)
 	if err != nil || len(ips) == 0 {
 		return true

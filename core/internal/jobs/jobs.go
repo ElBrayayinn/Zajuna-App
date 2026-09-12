@@ -265,7 +265,16 @@ func (r *Runtime) execute(id string) {
 	}
 	if result.ErrorMessage != "" {
 		if result.Retryable && job.Attempt < job.MaxAttempts {
-			if err := r.store.RetryJob(r.ctx, id, result.ErrorCode, result.ErrorMessage); errors.Is(err, ErrInvalidTransition) {
+			if err := r.store.RetryJob(r.ctx, id, result.ErrorCode, result.ErrorMessage); err != nil {
+				if errors.Is(err, ErrInvalidTransition) {
+					return
+				}
+				// A transient store error (e.g. SQLite lock contention) must not
+				// schedule an in-memory retry as if the attempt counter had been
+				// persisted: that would let a job retry more times than
+				// MaxAttempts allows and leave its persisted state inconsistent
+				// with what actually ran.
+				_ = r.store.FailJob(r.ctx, id, "retry_persist_failed", err.Error())
 				return
 			}
 			r.enqueueRetry(id, time.Duration(job.Attempt)*500*time.Millisecond)

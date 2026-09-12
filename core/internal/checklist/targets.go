@@ -100,6 +100,21 @@ func captureLabelHints(itemCode string, fallback []string) []string {
 	if itemCode == "3.1" {
 		return nil
 	}
+	// A live run against a real course (docs/mdl-124-seguimiento-2026-09-11.md)
+	// proved these checklist descriptions never appear as literal page text
+	// either: they describe course-menu structure/organization (a hidden
+	// subsection, a missing subsection, a records folder), not visible content.
+	// `.course-content .section` matched 284 candidate nodes on the resolved
+	// page and 0 matched the hint, so RequireSelector aborted the whole item
+	// instead of falling back — the same failure mode fixed for item 3.1.
+	// 7.3.2 and 13.1.3 share the literal hint "Documentos de retención": that
+	// item can resolve to an actual stored document/resource page instead of
+	// the course listing, which has no `.course-content` at all (raw=0), so
+	// the same rule applies to both instead of only the group's third slot.
+	switch itemCode {
+	case "7.1.1", "7.2", "7.3.2", "7.4.1", "7.4.2", "7.4.3", "7.4.4", "8.2", "8.3", "13.1.3", "13.2.2":
+		return nil
+	}
 	// Forum and announcement pages expose the activity title in the heading,
 	// while the actual Moodle discussion rows usually contain only the subject
 	// and author. The owner filter is the reliable semantic constraint here;
@@ -108,10 +123,9 @@ func captureLabelHints(itemCode string, fallback []string) []string {
 		return nil
 	}
 	itemHints := map[string][]string{
-		"7.1.1": {"Reporte de Curso"}, "7.1.2": {"Seguimiento a la Formación"}, "7.2": {"Reporte de Curso"},
-		"7.3.1": {"Comités evaluativos"}, "7.3.2": {"Documentos de retención"}, "7.3.3": {"Reuniones EEF"},
-		"7.4.1": {"Actas de Comité"}, "7.4.2": {"Planes de Mejoramiento"}, "7.4.3": {"Registro de Novedades"}, "7.4.4": {"Llamados de Atención"},
-		"8.1": {"Sesiones en Línea"}, "8.2": {"Subsecciones por Fase"}, "8.3": {"Subsecciones por Fase y Mes"},
+		"7.1.2": {"Seguimiento a la Formación"},
+		"7.3.1": {"Comités evaluativos"}, "7.3.3": {"Reuniones EEF"},
+		"8.1": {"Sesiones en Línea"},
 		"9.1.1": {"Dudas e Inquietudes"}, "9.1.2": {"Dudas e Inquietudes"}, "9.1.3": {"Foro Temático"}, "9.1.4": {"Foro Temático"},
 		"9.1.5": {"Dudas e Inquietudes"}, "9.1.6": {"Foro Temático"}, "9.1.7": {"Foro Temático"},
 		"10.1.1": {"calificación"}, "10.1.2": {"tres días"},
@@ -119,8 +133,8 @@ func captureLabelHints(itemCode string, fallback []string) []string {
 		"11.2.1": {"inicio de actividad"}, "11.2.2": {"cierre de actividad"}, "11.2.3": {"sesión en línea"},
 		"11.3": {"aprendices aprobados"}, "11.4": {"Anuncio"},
 		"12.1.1": {"Grabación"}, "12.1.2": {"Resumen"},
-		"13.1.1": {"Reuniones EEF"}, "13.1.2": {"Comités"}, "13.1.3": {"Documentos de retención"},
-		"13.2.1": {"calificaciones"}, "13.2.2": {"Formatos de cierre"},
+		"13.1.1": {"Reuniones EEF"}, "13.1.2": {"Comités"},
+		"13.2.1": {"calificaciones"},
 		"14.1.1": {"Foro Temático"}, "14.1.2": {"Conclusión"}, "15.1": {"netiqueta"},
 	}
 	if hints, ok := itemHints[itemCode]; ok {

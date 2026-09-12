@@ -191,6 +191,35 @@ func TestBuildCaptureTargetsItem31MatchesCourseContentWithoutAFragileHint(t *tes
 	t.Fatal("item 3.1 target was not generated")
 }
 
+func TestBuildCaptureTargetsSeguimientoSesionesDocumentosDropFragileHints(t *testing.T) {
+	// MDL-124 follow-up: a live run against a real course
+	// (docs/mdl-124-seguimiento-2026-09-11.md) proved these ten checklist
+	// descriptions never appear as literal page text either — same failure
+	// mode as item 3.1, `.course-content .section` matched 284 nodes and 0
+	// matched the hint, hard-aborting the item instead of falling back.
+	itemCodes := []string{"7.1.1", "7.2", "7.3.2", "7.4.1", "7.4.2", "7.4.3", "7.4.4", "8.2", "8.3", "13.1.3", "13.2.2"}
+	byItemCode := make(map[string]json.RawMessage, len(itemCodes))
+	for _, itemCode := range itemCodes {
+		byItemCode[itemCode] = json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/course/view.php?id=27932"`)
+	}
+	targets, _, err := BuildCaptureTargets(coursemaps.Record{ByItemCode: byItemCode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := make(map[string]bool, len(itemCodes))
+	for _, target := range targets {
+		if target.LabelHint != "" || target.RequireSelector {
+			t.Fatalf("%s must not require a fragile text hint: %#v", target.ItemCode, target)
+		}
+		found[target.ItemCode] = true
+	}
+	for _, itemCode := range itemCodes {
+		if !found[itemCode] {
+			t.Fatalf("%s target was not generated", itemCode)
+		}
+	}
+}
+
 func TestBuildCaptureTargetsCapturesInstructorProfileAsFullPage(t *testing.T) {
 	record := coursemaps.Record{ByItemCode: map[string]json.RawMessage{
 		"2.1.1": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/user/profile.php"`),

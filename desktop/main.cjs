@@ -13,6 +13,18 @@ const isDevelopment = !app.isPackaged;
 // process crash on Linux hosts without accelerated graphics (CI runners,
 // containers, some window managers) that would otherwise block startup.
 app.disableHardwareAcceleration();
+if (process.platform === 'linux') {
+  // The AppImage target has no privileged install step, so chrome-sandbox
+  // never ends up root-owned/mode 4755 the way Chromium's SUID sandbox
+  // requires — Electron aborts on startup otherwise. This previously only
+  // disabled the sandbox in the CI-only smoke test (scripts/smoke-packaged.cjs),
+  // which meant CI stayed green while every real Linux user hit the same
+  // fatal error the smoke test was bypassing. The app never renders remote or
+  // untrusted content in a Chromium window (React runs in the user's own
+  // default browser), so disabling the sandbox here does not expose it to a
+  // hostile page the way it would in a general-purpose browser.
+  app.commandLine.appendSwitch('no-sandbox');
+}
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const skipExternalOpen = process.env.ZAJUNA_SKIP_EXTERNAL_OPEN === '1';
 let coreProcess;
