@@ -231,6 +231,7 @@ export function Overview() {
   const failed = Number(summary.no) || 0
   const pending = Number(summary.pending) || 0
   const total = Math.max(items.length, done + failed + pending)
+  const progressTotal = Math.max(total, 1)
   const progress = clamp(Number(summary.percentage) || 0, 0, 100)
   const evidenceCount = items.reduce((sum, item) => sum + (Number(item.evidenceCount) || 0), 0)
   const routeCount = Number(targetsQuery.data?.summary?.slotCount || targetsQuery.data?.targets?.length || 0)
@@ -461,13 +462,13 @@ export function Overview() {
               </button>
             </div>
             <div className="segmented-progress" role="img" aria-label={`Cumplimiento: ${done} cumplidas, ${failed} no cumplidas y ${pending} pendientes de ${total}`}>
-              <span className="done grow-in" style={{ width: `${(done / total) * 100}%` }}>
+              <span className="done grow-in" style={{ width: `${(done / progressTotal) * 100}%` }}>
                 {done ? `${done} cumplidas` : ''}
               </span>
-              <span className="failed grow-in" style={{ width: `${(failed / total) * 100}%` }}>
+              <span className="failed grow-in" style={{ width: `${(failed / progressTotal) * 100}%` }}>
                 {failed || ''}
               </span>
-              <span className="pending grow-in" style={{ width: `${(pending / total) * 100}%` }}>
+              <span className="pending grow-in" style={{ width: `${(pending / progressTotal) * 100}%` }}>
                 {pending ? `${pending} pendientes` : ''}
               </span>
             </div>

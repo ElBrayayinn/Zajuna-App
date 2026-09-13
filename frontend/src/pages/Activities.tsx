@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
 import { useActivities, useDashboard, useSaveActivities, isNotFound } from '../hooks/api'
@@ -47,11 +47,16 @@ export function Activities() {
   const data = activitiesQuery.data
   const saveActivities = useSaveActivities()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectionDirty, setSelectionDirty] = useState(false)
+  const syncedFichaRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
-    if (!data) return
+    if (!data || !activeFichaId) return
+    if (syncedFichaRef.current === activeFichaId && selectionDirty) return
     setSelectedIds(new Set(data.activities.filter((activity) => activity.selected).map((activity) => activity.id)))
-  }, [data])
+    setSelectionDirty(false)
+    syncedFichaRef.current = activeFichaId
+  }, [activeFichaId, data, selectionDirty])
 
   if (dashboardQuery.isLoading || (activeFichaId && activitiesQuery.isLoading)) return <PageSkeleton label="Cargando actividades" />
   if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
@@ -92,6 +97,7 @@ export function Activities() {
   const selected = selectedIds.size
 
   const toggleActivity = (id: string) => {
+    setSelectionDirty(true)
     setSelectedIds((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
@@ -110,7 +116,9 @@ export function Activities() {
     saveActivities.mutate(
       { fichaId: activeFichaId, selectedActivityIds },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
+          await activitiesQuery.refetch()
+          setSelectionDirty(false)
           toast(`Guardamos ${selectedActivityIds.length} actividades a tu cargo.`)
         },
         onError: (error) => {

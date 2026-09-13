@@ -699,6 +699,7 @@ export function Checklist() {
   const failed = Number(summary.no) || 0
   const pending = Number(summary.pending) || 0
   const total = Math.max(Number(summary.total) || items.length, 0)
+  const progressTotal = Math.max(total, 1)
   const progress = Math.max(0, Math.min(100, Number(summary.percentage) || 0))
   const reviews = reviewsQuery.data || []
 
@@ -905,18 +906,18 @@ export function Checklist() {
                   {routeReviewOpen ? 'Ocultar mapa' : 'Ver mapa'}
                 </button>
                 <button className="button ghost small" onClick={handleExportReport} disabled={generateReport.isPending}>
-                  Exportar PDF
+                  Generar PDF
                 </button>
                 <button className="button primary small" onClick={handleCapture} disabled={capture.isPending || !targetsQuery.data?.targets?.length}>
-                  Capturar evidencias
+                  Preparar evidencias
                 </button>
               </div>
             </div>
             <div className="checklist-progress">
               <i>
-                <span style={{ width: `${(done / total) * 100}%`, background: 'var(--brand)' }} />
-                <span style={{ width: `${(failed / total) * 100}%`, background: 'var(--no)' }} />
-                <span style={{ width: `${(pending / total) * 100}%`, background: '#f0c77e' }} />
+                <span style={{ width: `${(done / progressTotal) * 100}%`, background: 'var(--brand)' }} />
+                <span style={{ width: `${(failed / progressTotal) * 100}%`, background: 'var(--no)' }} />
+                <span style={{ width: `${(pending / progressTotal) * 100}%`, background: '#f0c77e' }} />
               </i>
               <div className="checklist-progress-copy">
                 <strong>{progress} %</strong>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useDiscoverCourseMaps, useJobs, useSetupStatus } from '../hooks/api'
+import { useDashboard, useDiscoverCourseMaps, useJobs, useSetupStatus, useTargets } from '../hooks/api'
 import { friendlyJobStatus, friendlyJobType, jobStatusClass } from '../lib/format'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
@@ -24,15 +24,18 @@ export function RouteDiscoveryAction({
 }: RouteDiscoveryActionProps) {
   const toast = useToast()
   const { data: setup } = useSetupStatus()
+  const { data: dashboard } = useDashboard()
+  const targetsQuery = useTargets(dashboard?.activeFichaId)
   const jobsQuery = useJobs()
   const discover = useDiscoverCourseMaps()
+  const mapReady = targetsQuery.data?.mapReady === true
 
   const discoverJobs = (jobsQuery.data || [])
     .filter((job) => job.type === 'discover-course-maps')
     .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))
   const latest = discoverJobs[0]
   const active = latest && ['queued', 'running', 'waiting_user', 'retrying'].includes(latest.status) ? latest : undefined
-  const buttonLabel = discover.isPending ? 'Enviando…' : active ? (latest.status === 'queued' ? 'En cola…' : 'Buscando rutas…') : label
+  const buttonLabel = !dashboard?.activeFichaId ? 'Selecciona una ficha' : discover.isPending ? 'Enviando…' : active ? (latest.status === 'queued' ? 'En cola…' : 'Buscando rutas…') : label
   const classes = ['button', variant, compact ? 'small' : '', className].filter(Boolean).join(' ')
 
   function handleDiscover() {
@@ -51,10 +54,10 @@ export function RouteDiscoveryAction({
 
   return (
     <span className="route-discovery-action">
-      <button type="button" className={classes} onClick={handleDiscover} disabled={!!active || discover.isPending}>
+      <button type="button" className={classes} onClick={handleDiscover} disabled={!dashboard?.activeFichaId || !!active || discover.isPending}>
         {buttonLabel}
       </button>
-      {latest && !active && latest.status === 'completed' ? (
+      {latest && !active && latest.status === 'completed' && mapReady ? (
         <span className="route-action-status ok" role="status">
           Rutas listas · <Link to={`/trabajos/${latest.id}`}>ver trabajo</Link>
         </span>

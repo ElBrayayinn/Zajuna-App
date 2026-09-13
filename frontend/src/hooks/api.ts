@@ -110,7 +110,14 @@ export function useSetActiveFicha() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: api.setActiveFicha,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['activities'] })
+      queryClient.invalidateQueries({ queryKey: ['evidenceGroups'] })
+      queryClient.invalidateQueries({ queryKey: ['evidences'] })
+      queryClient.invalidateQueries({ queryKey: ['targets'] })
+      queryClient.invalidateQueries({ queryKey: ['reviews'] })
+    },
   })
 }
 
