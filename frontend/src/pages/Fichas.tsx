@@ -10,6 +10,7 @@ import {
   useSetActiveFicha,
   useSetupStatus,
   useSyncFichas,
+  useTargets,
 } from '../hooks/api'
 import { formatDate } from '../lib/format'
 import { useToast } from '../hooks/useToast'
@@ -35,19 +36,19 @@ function FichaTableRow({
   disabled: boolean
 }) {
   return (
-    <div className={`ficha-table-row${isActive ? ' active' : ''}`}>
-      <div>
+    <div className={`ficha-table-row${isActive ? ' active' : ''}`} role="row">
+      <div role="cell">
         <strong className="mono">{ficha.externalId}</strong>
         <small>{isActive ? 'Ficha activa' : 'Disponible'}</small>
       </div>
-      <div>
+      <div role="cell">
         <strong>{ficha.name}</strong>
       </div>
-      <span className="mono">{ficha.courseId}</span>
-      <div>
+      <span className="mono" role="cell">{ficha.courseId}</span>
+      <div role="cell">
         {isActive ? (
           <>
-            <div className="progress" style={{ marginTop: 0 }}>
+            <div className="progress" style={{ marginTop: 0 }} role="progressbar" aria-label="Cumplimiento" aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100}>
               <i style={{ width: `${percentage}%` }} />
             </div>
             <small style={{ marginTop: 4 }}>{percentage}%</small>
@@ -56,15 +57,17 @@ function FichaTableRow({
           <span>—</span>
         )}
       </div>
-      <span>{isActive ? evidenceCount : '—'}</span>
-      <span>{formatDate(ficha.updatedAt)}</span>
-      <button
-        className={`button ${isActive ? '' : 'secondary'} small`.trim()}
-        disabled={disabled}
-        onClick={() => (isActive ? onOpen() : onSelect(ficha.id))}
-      >
-        {isActive ? 'Abrir resumen' : 'Seleccionar'}
-      </button>
+      <span role="cell">{isActive ? evidenceCount : '—'}</span>
+      <span role="cell">{formatDate(ficha.updatedAt)}</span>
+      <div role="cell">
+        <button
+          className={`button ${isActive ? '' : 'secondary'} small`.trim()}
+          disabled={disabled}
+          onClick={() => (isActive ? onOpen() : onSelect(ficha.id))}
+        >
+          {isActive ? 'Abrir resumen' : 'Seleccionar'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -88,6 +91,8 @@ export function Fichas() {
   const active = dashboard?.activeFichaId
   const activitiesQuery = useActivities(active)
   const activities = activitiesQuery.data
+  const targetsQuery = useTargets(active)
+  const routesReady = targetsQuery.data?.mapReady !== false && Boolean(targetsQuery.data?.targets?.length)
 
   if (fichasQuery.isLoading) return <PageSkeleton label="Cargando fichas locales" />
   if (fichasQuery.isError) return <PageError message="No pudimos cargar las fichas locales." action={<button className="button" onClick={() => fichasQuery.refetch()}>Reintentar</button>} />
@@ -123,6 +128,10 @@ export function Fichas() {
 
   const handleCapture = () => {
     if (!active) return
+    if (!routesReady) {
+      toast('Busca las rutas del curso antes de preparar evidencias.', true)
+      return
+    }
     capture.mutate(
       { fichaId: active, username, documentType },
       {
@@ -166,7 +175,7 @@ export function Fichas() {
             </div>
           </div>
           <button className="button primary" disabled={syncFichas.isPending} onClick={handleSync}>
-            Sincronizar ahora
+            Sincronizar fichas
           </button>
         </div>
         <div className="active-ficha-grid">
@@ -188,7 +197,7 @@ export function Fichas() {
           </div>
         </div>
         <div className="ficha-actions" aria-label="Acciones de la ficha activa">
-          <button className="button navy small" onClick={handleOpenChecklist}>
+          <button className="button navy small" disabled={!active} onClick={handleOpenChecklist}>
             Abrir checklist
           </button>
           <div className="ficha-action-group">
@@ -197,7 +206,7 @@ export function Fichas() {
           </div>
           <div className="ficha-action-group">
             <span className="ficha-action-label">Paso 2 · captura</span>
-            <button className="button ghost small" disabled={!active || capture.isPending} onClick={handleCapture}>
+            <button className="button ghost small" disabled={!active || !routesReady || capture.isPending} onClick={handleCapture}>
               Preparar evidencias
             </button>
           </div>
@@ -220,15 +229,15 @@ export function Fichas() {
             />
           </div>
         </div>
-        <div className="ficha-table">
-          <div className="ficha-table-head">
-            <span>Ficha</span>
-            <span>Programa</span>
-            <span>Curso</span>
-            <span>Cumplimiento</span>
-            <span>Evidencias</span>
-            <span>Actualizada</span>
-            <span>Acciones</span>
+        <div className="ficha-table" role="table" aria-label="Fichas disponibles">
+          <div className="ficha-table-head" role="row">
+            <span role="columnheader">Ficha</span>
+            <span role="columnheader">Programa</span>
+            <span role="columnheader">Curso</span>
+            <span role="columnheader">Cumplimiento</span>
+            <span role="columnheader">Evidencias</span>
+            <span role="columnheader">Actualizada</span>
+            <span role="columnheader">Acciones</span>
           </div>
           {visible.length ? (
             visible.map((ficha) => {
@@ -248,7 +257,11 @@ export function Fichas() {
               )
             })
           ) : (
-            <div className="empty">{query ? 'No encontramos fichas con esa búsqueda.' : 'Todavía no hay fichas sincronizadas.'}</div>
+            <div className="ficha-table-empty" role="row">
+              <div className="empty" role="cell">
+                {query ? 'No encontramos fichas con esa búsqueda.' : 'Todavía no hay fichas sincronizadas.'}
+              </div>
+            </div>
           )}
         </div>
         <div className="ficha-table-footer">

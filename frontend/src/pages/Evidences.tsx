@@ -310,8 +310,14 @@ function EvidenceMiniatures({
               const selected = selectedIds.has(evidence.id)
               return (
                 <article key={evidence.id} className={`evidence-miniature${selected ? ' selected' : ''}`}>
-                  <div className="evidence-miniature-select" onClick={() => toggle(evidence.id)}>
-                    <span className="evidence-miniature-preview" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); onPreview(evidence) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onPreview(evidence) } }}>
+                  <button
+                    className="evidence-miniature-select"
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={`${selected ? 'Quitar de la selección' : 'Seleccionar'} ${evidence.name || 'evidencia local'}`}
+                    onClick={() => toggle(evidence.id)}
+                  >
+                    <span className="evidence-miniature-preview">
                       {image ? <img src={evidenceDownloadUrl(evidence.id)} alt="" loading="lazy" /> : <span className="evidence-format-icon">{format.toUpperCase() || 'FILE'}</span>}
                       <span className="evidence-select-mark" aria-hidden="true">{selected ? '✓' : ''}</span>
                     </span>
@@ -319,7 +325,7 @@ function EvidenceMiniatures({
                       <strong>{evidence.name || 'Evidencia local'}</strong>
                       <small>{String(evidence.format || 'archivo').toUpperCase()} · {formatDate(evidence.capturedAt)}</small>
                     </span>
-                  </div>
+                  </button>
                   <button className="evidence-miniature-open" type="button" onClick={() => onPreview(evidence)}>Vista previa</button>
                 </article>
               )
@@ -352,7 +358,8 @@ function EvidenceGallery({
   const allFormats = useMemo(() => {
     const set = new Set<string>()
     groups.forEach((group) => {
-      group.evidences.forEach((evidence) => {
+      const groupEvidences = group.evidences ?? []
+      groupEvidences.forEach((evidence) => {
         const format = String(evidence.format || '').toLowerCase()
         if (format) set.add(format)
       })
@@ -365,7 +372,7 @@ function EvidenceGallery({
     const haystack = [group.title, ...(group.itemCodes || []), group.reason].join(' ').toLowerCase()
     const formatOk =
       formatFilter === 'all' ||
-      group.evidences.some((evidence) => String(evidence.format || '').toLowerCase() === formatFilter)
+      (group.evidences ?? []).some((evidence) => String(evidence.format || '').toLowerCase() === formatFilter)
     return (filter === 'all' || confidence === filter) && (!normalizedQuery || haystack.includes(normalizedQuery)) && formatOk
   })
 
@@ -458,11 +465,12 @@ function EvidenceGallery({
 }
 
 function EvidenceGroupCard({ group, onPreview }: { group: EvidenceGroup; onPreview: (evidence: Evidence) => void }) {
-  const evidence = group.evidences[0]
+  const evidences = group.evidences ?? []
+  const evidence = evidences[0]
   const confidence = groupConfidence(group.confidence)
   const codes = group.itemCodes || []
   const itemsLabel = codes.slice(0, 5).join(' · ') + (codes.length > 5 ? ' · …' : '')
-  const count = group.evidences.length
+  const count = evidences.length
 
   return (
     <article className="evidence-group-card">
@@ -547,6 +555,7 @@ function Task({
         <button
           type="button"
           className={`status-seg si ${current === 'SI' ? 'active' : ''}`}
+          aria-pressed={current === 'SI'}
           onClick={() => handleStatus('SI')}
         >
           Sí
@@ -554,6 +563,7 @@ function Task({
         <button
           type="button"
           className={`status-seg no ${current === 'NO' ? 'active' : ''}`}
+          aria-pressed={current === 'NO'}
           onClick={() => handleStatus('NO')}
         >
           No
@@ -561,6 +571,7 @@ function Task({
         <button
           type="button"
           className={`status-seg pendiente ${current === 'PENDIENTE' ? 'active' : ''}`}
+          aria-pressed={current === 'PENDIENTE'}
           onClick={() => handleStatus('PENDIENTE')}
         >
           Pend.
@@ -621,7 +632,16 @@ function PreviewModal({
   }, [onClose, onNext, onPrevious])
 
   return (
-    <div id="evidence-modal" className="evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidence-preview-title">
+    <div
+      id="evidence-modal"
+      className="evidence-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="evidence-preview-title"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
       <div className="evidence-dialog">
         <div className="evidence-dialog-head">
           <h3 id="evidence-preview-title">{title}</h3>

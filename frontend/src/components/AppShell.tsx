@@ -46,15 +46,17 @@ export function AppShell() {
       {mobileNavOpen && <button className="mobile-nav-backdrop" type="button" aria-label="Cerrar navegación" onClick={() => { setMobileNavOpen(false); menuButtonRef.current?.focus() }} />}
       <div className="app-content">
         <Topbar mobileMenuOpen={mobileNavOpen} onToggleMobileMenu={() => setMobileNavOpen((open) => !open)} menuButtonRef={menuButtonRef} />
-        <main id="dashboard-main" className="shell app-main" aria-labelledby="dashboard-title" tabIndex={-1}>
-          <h1 id="dashboard-title" className="sr-only">
-            Espacio de trabajo de Zajuna App
-          </h1>
+        <main id="dashboard-main" className="shell app-main" aria-labelledby={navItem?.showGenericHeader ? 'page-title' : 'dashboard-title'} tabIndex={-1}>
+          {!navItem?.showGenericHeader && (
+            <h1 id="dashboard-title" className="sr-only">
+              {navItem?.label || 'Espacio de trabajo de Zajuna App'}
+            </h1>
+          )}
           {navItem?.showGenericHeader && (
             <section className="page-head">
               <div>
                 <div className="eyebrow">{navItem.eyebrow}</div>
-                <p className="page-head-title">{navItem.label}</p>
+                <h1 id="page-title" className="page-head-title">{navItem.label}</h1>
                 <p>{navItem.description}</p>
               </div>
             </section>

@@ -72,6 +72,10 @@ export function ChecklistItemDetail() {
   }
 
   function handleCapture() {
+    if (targetsQuery.data?.mapReady === false || !targets.length) {
+      toast('Busca y confirma las rutas de esta tarea antes de preparar su evidencia.', true)
+      return
+    }
     capture.mutate(
       {
         fichaId: activeFichaId,
@@ -125,8 +129,8 @@ export function ChecklistItemDetail() {
           </div>
 
           <div className="task-detail-actions">
-            <button className="button primary" onClick={handleCapture} disabled={capture.isPending}>
-              {capture.isPending ? 'Preparando…' : 'Capturar esta tarea'}
+            <button className="button primary" onClick={handleCapture} disabled={capture.isPending || targetsQuery.isLoading || !targets.length}>
+              {capture.isPending ? 'Preparando…' : 'Preparar evidencia'}
             </button>
             <Link className="button ghost" to="/evidencias">Ver galería de evidencias</Link>
           </div>
