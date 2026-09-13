@@ -52,14 +52,38 @@ async function testWindowsUsesTaskkillTreeThenForce() {
   assert.deepEqual(calls[1].args, ['/PID', '42', '/T', '/F']);
 }
 
-async function testUnixUsesSigtermThenSigkill() {
+async function testUnixSignalsWholeProcessGroup() {
+  const calls = [];
   const child = fakeChild(7);
-  const done = stopProcessTree(child, { platform: 'linux', timeoutMs: 20 });
+  const done = stopProcessTree(child, {
+    platform: 'linux',
+    timeoutMs: 20,
+    killImpl: (pid, signal) => calls.push({ pid, signal }),
+  });
   await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.deepEqual(child.signals, ['SIGTERM']);
+  assert.deepEqual(calls, [{ pid: -7, signal: 'SIGTERM' }]);
   await new Promise((resolve) => setTimeout(resolve, 30));
   await done;
-  assert.deepEqual(child.signals, ['SIGTERM', 'SIGKILL']);
+  assert.deepEqual(calls, [
+    { pid: -7, signal: 'SIGTERM' },
+    { pid: -7, signal: 'SIGKILL' },
+  ]);
+  assert.deepEqual(child.signals, []);
+}
+
+async function testUnixSettlesImmediatelyWhenGroupIsGone() {
+  const child = fakeChild(8);
+  const done = stopProcessTree(child, {
+    platform: 'linux',
+    timeoutMs: 20,
+    killImpl: () => {
+      const error = new Error('No such process');
+      error.code = 'ESRCH';
+      throw error;
+    },
+  });
+  await done;
+  assert.deepEqual(child.signals, []);
 }
 
 async function testExitCancelsForceKill() {
@@ -81,9 +105,10 @@ async function testExitCancelsForceKill() {
 (async () => {
   await testAlreadyExitedResolvesImmediately();
   await testWindowsUsesTaskkillTreeThenForce();
-  await testUnixUsesSigtermThenSigkill();
+  await testUnixSignalsWholeProcessGroup();
+  await testUnixSettlesImmediatelyWhenGroupIsGone();
   await testExitCancelsForceKill();
-  console.log('stop-process-tree tests: 4 passed');
+  console.log('stop-process-tree tests: 5 passed');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

@@ -71,7 +71,7 @@ if (!fs.existsSync(playwrightSource)) {
 }
 fs.cpSync(playwrightSource, path.join(stagingDir, 'playwright'), { recursive: true });
 
-const configPath = path.join(projectRoot, 'tmp', `electron-builder.${targetId}.json`);
+const configPath = path.join(projectRoot, 'tmp', `electron-builder.${targetId}.cjs`);
 const config = {
   appId: 'com.zajuna.app',
   productName: 'Zajuna App',
@@ -81,7 +81,14 @@ const config = {
   win: { target: 'nsis' },
   linux: { target: 'AppImage' },
 };
-fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+// electron-builder's JSON config can't carry a function, and afterPack (the
+// Linux --no-sandbox/--ozone-platform wrapper, see linux-no-sandbox-wrapper.cjs)
+// must be one, so the generated config is a .cjs module instead of JSON.
+const wrapperHookPath = path.join(__dirname, 'linux-no-sandbox-wrapper.cjs').replaceAll(path.sep, '/');
+fs.writeFileSync(
+  configPath,
+  `module.exports = {\n  ...${JSON.stringify(config, null, 2)},\n  afterPack: require(${JSON.stringify(wrapperHookPath)}).afterPack,\n};\n`,
+);
 
 const cliPath = require.resolve('electron-builder/cli.js');
 const filteredArgs = [];
