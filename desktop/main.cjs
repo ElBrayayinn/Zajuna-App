@@ -24,6 +24,12 @@ if (process.platform === 'linux') {
   // default browser), so disabling the sandbox here does not expose it to a
   // hostile page the way it would in a general-purpose browser.
   app.commandLine.appendSwitch('no-sandbox');
+  // Electron always initializes a display backend (X11/Wayland) even though
+  // this app never creates a BrowserWindow, so it fatals with "Missing X
+  // server or $DISPLAY" on any headless/server Linux host (no desktop
+  // session, SSH-only access, minimal installs). Forcing the headless Ozone
+  // platform skips that requirement entirely.
+  app.commandLine.appendSwitch('ozone-platform', 'headless');
 }
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 const skipExternalOpen = process.env.ZAJUNA_SKIP_EXTERNAL_OPEN === '1';
@@ -154,6 +160,10 @@ async function startCoreOnce() {
     cwd: path.dirname(binary),
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
+    // On POSIX, detached makes the core the leader of its own process group
+    // (pgid === pid), so stopProcessTree can signal the whole group -pid
+    // instead of only the core itself, reaching any worker it spawned.
+    detached: process.platform !== 'win32',
   });
   coreProcess = child;
 

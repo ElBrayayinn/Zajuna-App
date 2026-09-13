@@ -244,8 +244,9 @@ ls -l ZajunaApp.AppImage      # confirmar el permiso
 ./ZajunaApp.AppImage
 ```
 
-No la ejecutes como root salvo necesidad técnica documentada; debe iniciarse
-con el usuario habitual del sistema.
+Se recomienda iniciarla con el usuario habitual del sistema, no como root, por
+buena práctica de mínimo privilegio — pero root también funciona (empaquetado
+verificado en Kali Linux, MDL-123).
 
 Comprobación rápida de recursos antes de instalar:
 
@@ -288,19 +289,23 @@ chmod +x ZajunaApp.AppImage
 ./ZajunaApp.AppImage
 ```
 
-**El AppImage pide FUSE o no puede montarse** — algunas instalaciones mínimas
-de Linux no traen `libfuse2`/`fuse3` por defecto:
+**`dlopen(): error loading libfuse.so.2` al ejecutar** — el runtime del
+AppImage necesita `libfuse2` (API FUSE 2.x). Ubuntu la trae como paquete de
+transición (`libfuse2t64`), pero **Kali Linux/Debian rolling ya no la
+empaquetan en absoluto** — solo ofrecen `fuse3`/`libfuse3-4` (verificado en
+Kali 2026.3, MDL-123). No hay paquete que instalar para resolverlo en Kali:
+usa la extracción temporal, que no depende de FUSE:
+
+```bash
+./ZajunaApp.AppImage --appimage-extract-and-run
+```
+
+En otras distribuciones que sí ofrezcan `libfuse2`/`libfuse2t64`, instalarla
+resuelve el mismo error sin necesitar `--appimage-extract-and-run`:
 
 ```bash
 sudo apt update
 apt search fuse | grep -E "libfuse|fuse"
-```
-
-Si el sistema no tiene esa compatibilidad, usa la extracción temporal como
-diagnóstico o solución alterna:
-
-```bash
-./ZajunaApp.AppImage --appimage-extract-and-run
 ```
 
 Para reportar un problema, incluye distribución y versión de Linux,
