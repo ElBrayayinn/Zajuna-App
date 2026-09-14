@@ -1,7 +1,7 @@
 # Firma y smoke de instaladores
 
-Zajuna App distribuye instaladores únicamente para Windows y Linux. macOS no se
-empaqueta ni se publica mientras no exista una identidad Developer ID.
+Zajuna App distribuye instaladores únicamente para Windows y Linux. macOS no es
+una plataforma soportada.
 
 ## Windows
 

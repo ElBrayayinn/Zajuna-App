@@ -52,9 +52,9 @@ SQLite vive en la carpeta de datos del usuario. El schema actual es v12 e
 incluye fichas, cursos, mapas, targets, jobs, eventos, schedules, evidencias,
 reportes, settings, backups, historial del checklist y notificaciones.
 
-La contraseña se escribe exclusivamente en Credential Manager (Windows),
-Keychain (macOS) o Secret Service (Linux). Cookies y tokens permanecen en
-memoria; URLs y eventos pasan por redacción antes de persistirse.
+La contraseña se escribe exclusivamente en Credential Manager (Windows) o
+Secret Service (Linux). Cookies y tokens permanecen en memoria; URLs y eventos
+pasan por redacción antes de persistirse.
 
 Los backups ZIP incluyen snapshot SQLite, hashes SHA256 y `schemaVersion`. El
 restore valida `PRAGMA integrity_check` y el schema en staging; si `Open`
@@ -104,7 +104,6 @@ Windows/Linux x64 y ARM64, pero el instalador debe probarse nativamente.
 
 - Firma Authenticode de Windows (MDL-29).
 - Smoke nativo de NSIS/AppImage y ciclo instalar/actualizar/desinstalar (MDL-29).
-- VoiceOver en macOS (diferido; MDL-32 cerró teclado, zoom, reflow y NVDA Windows).
-- Reconfirmar contra un curso real la corrección de la regla de captura del
-  ítem 3.1 y el fallback de cronograma/menú de curso (MDL-124).
+- Cobertura de lector de pantalla limitada a NVDA en Windows (MDL-32 cerró
+  teclado, zoom, reflow y NVDA).
 - Gate de release con matriz y acta (MDL-34).

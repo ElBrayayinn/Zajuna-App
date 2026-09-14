@@ -14,10 +14,8 @@ function argumentValue(name) {
 
 function requestedPlatform() {
   if (rawArgs.includes('--win')) return 'win';
-  if (rawArgs.includes('--mac')) return 'mac';
   if (rawArgs.includes('--linux')) return 'linux';
   if (process.platform === 'win32') return 'win';
-  if (process.platform === 'darwin') return 'mac';
   return 'linux';
 }
 
@@ -29,10 +27,6 @@ function requestedArch() {
 
 const platform = requestedPlatform();
 const arch = requestedArch();
-if (platform === 'mac') {
-  console.error('macOS ya no es una plataforma de distribución compatible: solo se generan instaladores Windows (NSIS) y Linux (AppImage).');
-  process.exit(1);
-}
 const targetId = {
   win: { x64: 'windows-x64', arm64: 'windows-arm64' },
   linux: { x64: 'linux-x64', arm64: 'linux-arm64' },
@@ -43,7 +37,7 @@ if (!targetId) {
   process.exit(1);
 }
 
-const hostPlatform = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
+const hostPlatform = process.platform === 'win32' ? 'win' : 'linux';
 if (platform !== hostPlatform) {
   console.error(`El empaquetado de ${platform} debe ejecutarse en un runner ${platform}; el host actual es ${hostPlatform}. Esto evita incluir Chromium de otra plataforma.`);
   process.exit(1);
@@ -99,7 +93,7 @@ for (let index = 0; index < rawArgs.length; index += 1) {
   }
   filteredArgs.push(rawArgs[index]);
 }
-if (!filteredArgs.some((arg) => arg === '--' || arg.startsWith('--win') || arg.startsWith('--mac') || arg.startsWith('--linux'))) {
+if (!filteredArgs.some((arg) => arg === '--' || arg.startsWith('--win') || arg.startsWith('--linux'))) {
   filteredArgs.push(`--${platform}`);
 }
 // electron-builder detects CI and defaults to publishing a GitHub Release

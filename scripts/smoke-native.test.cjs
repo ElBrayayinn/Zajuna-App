@@ -12,7 +12,7 @@ const {
 function testDetectsSigningSecretsWithoutPrintingThem() {
   assert.equal(signingSecretsPresent({}), false);
   assert.equal(signingSecretsPresent({ CSC_LINK: 'secret' }), true);
-  assert.equal(signingSecretsPresent({ APPLE_ID: 'user@example.com' }), true);
+  assert.equal(signingSecretsPresent({ CSC_NAME: 'Medialab SENA' }), true);
 }
 
 function testClassifiesAuthenticode() {

@@ -3,13 +3,13 @@
 Fecha de la revisión: **2026-08-26**  
 Alcance: frontend React embebido en el core Go. Las nueve rutas operativas
 tienen pasada de teclado, zoom 200 %, reflow 320 CSS px y **NVDA en Windows**
-registrada abajo. VoiceOver queda con bloqueo explícito (no hay runner macOS;
-macOS no es target de distribución).
+registrada abajo. VoiceOver queda fuera de alcance: macOS no es una plataforma
+soportada.
 
 Esta revisión sigue la guía de accesibilidad del proyecto y separa las
 comprobaciones automatizadas de las que necesitan una persona con teclado,
-zoom y lector de pantalla. **No se declara conformidad WCAG 2.1 AA completa**
-mientras falte VoiceOver.
+zoom y lector de pantalla. La cobertura de lector de pantalla se limita a NVDA
+en Windows, que es la plataforma donde se distribuye la aplicación.
 
 ## Comprobaciones automatizadas realizadas
 
@@ -53,7 +53,6 @@ garantiza que todas sus variantes cumplan.
 
 1. ~~Navegar las nueve rutas solo con teclado~~ **Hecho 2026-08-26** (Chromium empaquetado; ver matriz).
 2. ~~Probar NVDA en Windows~~ **Hecho 2026-08-26** (NVDA 2026.1.1 portable, Chromium headed).
-   VoiceOver en macOS: **pendiente / otro día**.
 3. ~~Revisar zoom al 200% y reflow en 320 CSS px~~ **Hecho 2026-08-26.**
 4. ~~Confirmar objetivos táctiles de al menos 44×44 CSS px para acciones
    principales~~ **Hecho para controles primarios**; `.button.small` queda como residual.
@@ -90,7 +89,7 @@ Ejecutada sobre Chromium empaquetado (Windows). Fecha, runtime y acta:
 
 ### Matriz de nueve rutas
 
-| Ruta | Teclado | Zoom 200 % | Reflow 320 CSS px | NVDA/VoiceOver |
+| Ruta | Teclado | Zoom 200 % | Reflow 320 CSS px | NVDA |
 |---|---|---|---|---|
 | `/resumen` | Skip link, Tab, `main`, `h1` único, toasts `aria-live` | Contenido usable | Sin overflow de documento | NVDA: skip link, título, nav |
 | `/fichas` | Igual; tabla con scroll interno | Igual | Sin overflow de documento | NVDA: shell + “Fichas” |
@@ -105,11 +104,11 @@ Ejecutada sobre Chromium empaquetado (Windows). Fecha, runtime y acta:
 ### Criterios de Linear
 
 - Teclado documentado en las nueve rutas: **sí**.
-- NVDA (Windows): **sí** (2026.1.1 portable, `TestNVDAScreenReaderPass`). VoiceOver: **bloqueo explícito** (macOS otro día).
+- NVDA (Windows): **sí** (2026.1.1 portable, `TestNVDAScreenReaderPass`). VoiceOver: fuera de alcance (macOS no es plataforma soportada).
 - Zoom 200 % y reflow 320 CSS px: **sí**, con remediación de overflow en Checklist y Evidencias.
 - Información crítica no depende solo de color o motion: estados llevan texto (`SI`/`NO`/`PENDIENTE`, chips con etiqueta) y `prefers-reduced-motion` está activo.
 - Hallazgos P0/P1: el nombre “Fichas0” se remedia en el mismo cambio (`aria-label="Fichas, N"`). No se abrieron issues hijas.
-- No se declara WCAG 2.1 AA completa hasta VoiceOver.
+- La cobertura de lector de pantalla se limita a NVDA en Windows.
 
 ### Remediación incluida en esta pasada
 

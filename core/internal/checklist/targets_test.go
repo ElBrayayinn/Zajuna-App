@@ -191,6 +191,35 @@ func TestBuildCaptureTargetsItem31MatchesCourseContentWithoutAFragileHint(t *tes
 	t.Fatal("item 3.1 target was not generated")
 }
 
+func TestBuildCaptureTargetsItem41MenuCursoMatchesCourseContentWithoutAFragileHint(t *testing.T) {
+	// MDL-124: a live run against a real course
+	// (docs/evidence/mdl-124-verify-2026-09-14.json) proved item 4.1's
+	// "secciones" hint never appears inside `#region-main .course-content` on
+	// its resolved course main page, even though that exact container matched
+	// on that exact route for item 3.1 with no hint at all. Requiring the
+	// literal checklist wording only pushed 4.1 down its fallback chain to the
+	// coarser `#page-content` wrapper instead of the confirmed container.
+	record := coursemaps.Record{ByItemCode: map[string]json.RawMessage{
+		"4.1": json.RawMessage(`"https://zajuna.sena.edu.co/zajuna/course/view.php?id=27932"`),
+	}}
+	targets, _, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if target.ItemCode == "4.1" {
+			if target.CSSSelector != "#region-main .course-content" {
+				t.Fatalf("item 4.1 must crop the confirmed course-content wrapper, got %q", target.CSSSelector)
+			}
+			if target.LabelHint != "" || target.RequireSelector {
+				t.Fatalf("item 4.1 must not require a fragile text hint: %#v", target)
+			}
+			return
+		}
+	}
+	t.Fatal("item 4.1 target was not generated")
+}
+
 func TestBuildCaptureTargetsSeguimientoSesionesDocumentosDropFragileHints(t *testing.T) {
 	// MDL-124 follow-up: a live run against a real course
 	// (docs/mdl-124-seguimiento-2026-09-11.md) proved these ten checklist

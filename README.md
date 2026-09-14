@@ -21,7 +21,6 @@ desinstalar Windows, está en
 Cómo arrancar en local: [`docs/run-local.md`](docs/run-local.md).
 Cómo instalarla en un equipo (SmartScreen, Setup y primer uso):
 [`docs/guia-instalacion.md`](docs/guia-instalacion.md).
-Por qué no hay instalador macOS: [`docs/macos-deferred.md`](docs/macos-deferred.md).
 
 ## Arquitectura actual
 
@@ -117,10 +116,9 @@ npm run package:windows
 npm run package:linux
 ```
 
-macOS no es un target de distribución: no se generan DMG/PKG ni se mantiene un
-script de empaquetado hasta contar con credenciales Developer ID. `npm run
-build:platforms` genera los cores Go para Windows/Linux x64 y ARM64.
-`scripts/package.cjs` exige que el runner coincida con la plataforma,
+macOS no es una plataforma soportada. `npm run build:platforms` genera los
+cores Go para Windows/Linux x64 y ARM64. `scripts/package.cjs` exige que el
+runner coincida con la plataforma,
 staging del core + Playwright, y genera `dist/release-manifest.json` y
 `dist/sbom.cyclonedx.json`. El instalador Windows probado está en `dist/` y
 actualmente no tiene firma digital.

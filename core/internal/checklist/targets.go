@@ -100,6 +100,17 @@ func captureLabelHints(itemCode string, fallback []string) []string {
 	if itemCode == "3.1" {
 		return nil
 	}
+	// Item 4.1 ("Menú del Curso organizado con las secciones estipuladas")
+	// resolves to the same course main page as 3.1, and its hint ("secciones")
+	// is the same anti-pattern: a live run against a real course
+	// (docs/mdl-124-verify-2026-09-14.json) proved `#region-main .course-content`
+	// on that exact route matches for item 3.1 with no hint at all, but 4.1's
+	// "secciones" hint never appears inside it, so the capture falls back all
+	// the way to the coarser `#page-content` wrapper instead of using the
+	// confirmed, more precise container.
+	if itemCode == "4.1" {
+		return nil
+	}
 	// A live run against a real course (docs/mdl-124-seguimiento-2026-09-11.md)
 	// proved these checklist descriptions never appear as literal page text
 	// either: they describe course-menu structure/organization (a hidden
@@ -634,7 +645,10 @@ func captureGroupPlan(groupName string) groupPlan {
 		// so it is not a usable crop even without a label hint.
 		return groupPlan{[]string{"page", "resource", "url"}, "#region-main .course-content", nil, false}
 	case "menu_curso":
-		return groupPlan{[]string{"course"}, "#region-main .course-content", []string{"secciones"}, false}
+		// Resolves to the same course main page as "disponibilidad" (item 3.1).
+		// The checklist wording ("secciones") never appears literally there
+		// either, so the route alone identifies the target instead of a hint.
+		return groupPlan{[]string{"course"}, "#region-main .course-content", nil, false}
 	case "calificaciones":
 		return groupPlan{[]string{"grading"}, "#region-main .gradereport-grader-table", []string{"calificaciones"}, false}
 	case "configuracion", "seguimiento_evaluacion", "seguimiento_documentos", "sesiones_linea", "documentos_retencion":

@@ -59,7 +59,7 @@ en [`guia-instalacion.md`](guia-instalacion.md). Resumen:
 4. A partir de ahí, Resumen, fichas, checklist, evidencias y reportes son
    locales. Los backups ZIP también son locales.
 
-macOS no se entrega en este release. Ver [`macos-deferred.md`](macos-deferred.md).
+macOS no es una plataforma soportada.
 
 ## Pruebas rápidas
 
