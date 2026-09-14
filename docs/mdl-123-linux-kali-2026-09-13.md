@@ -84,7 +84,7 @@ Cualquier Kali sin sesión gráfica activa (servidor, SSH, instalación mínima)
 habría hecho fallar la app antes de este fix, sin necesitar Xvfb ni ningún
 servidor X real.
 
-### 4. `stopProcessTree` en Linux/macOS solo mataba el proceso directo
+### 4. `stopProcessTree` en POSIX solo mataba el proceso directo
 
 `desktop/stop-process-tree.cjs` usaba `child.kill(signal)` en POSIX, que solo
 señala el PID del propio `zajuna-core`, no su árbol de procesos. Si el core

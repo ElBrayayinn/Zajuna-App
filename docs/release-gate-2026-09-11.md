@@ -56,9 +56,8 @@ nuevas (sin regresiones, sin overflow, sin elementos sin nombre accesible) y
 se actualizaron los tres hashes.
 
 El workflow `.github/workflows/ci.yml` cubre frontend, Go y descargas en cada
-PR. El job `native` (Windows y Linux; **sin macOS**, ver `macos-deferred.md`)
-solo corre con `workflow_dispatch` y no se pudo disparar desde esta estación
-por permisos.
+PR. El job `native` (Windows y Linux; **sin macOS**) solo corre con
+`workflow_dispatch` y no se pudo disparar desde esta estación por permisos.
 
 Acta: [`committee-minutes-2026-09-11.md`](committee-minutes-2026-09-11.md).
 Firma: [`signing.md`](signing.md). Gate previo:

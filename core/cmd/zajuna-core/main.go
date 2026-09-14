@@ -456,9 +456,6 @@ func dataDirectory() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "ZajunaApp"), nil
-	}
 	base := os.Getenv("XDG_DATA_HOME")
 	if base == "" {
 		base = filepath.Join(home, ".local", "share")
@@ -517,8 +514,6 @@ func openBrowser(url string) error {
 	switch runtime.GOOS {
 	case "windows":
 		command, args = "rundll32", []string{"url.dll,FileProtocolHandler", url}
-	case "darwin":
-		command, args = "open", []string{url}
 	default:
 		command, args = "xdg-open", []string{url}
 	}

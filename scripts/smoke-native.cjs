@@ -11,7 +11,7 @@ const METADATA_FILES = new Set([
 ]);
 
 function signingSecretsPresent(env = process.env) {
-  return Boolean(env.CSC_LINK || env.CSC_NAME || env.APPLE_ID);
+  return Boolean(env.CSC_LINK || env.CSC_NAME);
 }
 
 function classifyAuthenticodeStatus(status) {
@@ -77,7 +77,7 @@ function buildReport({ distRoot, env = process.env, platform = process.platform,
     releaseBlocked: blocked,
     blockers: [
       artifacts.length === 0 ? 'No hay artefactos en dist/ (instalador no construido en esta corrida).' : null,
-      !secrets ? 'No hay CSC_LINK / CSC_NAME / APPLE_ID en el entorno; la firma no se ejecutó.' : null,
+      !secrets ? 'No hay CSC_LINK / CSC_NAME en el entorno; la firma no se ejecutó.' : null,
       artifacts.some((item) => item.signing === 'unsigned') ? 'Al menos un artefacto está sin firma válida.' : null,
       artifacts.some((item) => item.signing === 'invalid') ? 'Al menos un artefacto tiene firma inválida o no confiable.' : null,
       platform === 'win32' && !unpackedExists ? 'No hay win-unpacked para smoke empaquetado.' : null,
@@ -87,7 +87,6 @@ function buildReport({ distRoot, env = process.env, platform = process.platform,
 
 function defaultUnpackedExecutable(projectRoot) {
   if (process.platform === 'win32') return path.join(projectRoot, 'dist', 'win-unpacked', 'Zajuna App.exe');
-  if (process.platform === 'darwin') return path.join(projectRoot, 'dist', 'mac', 'Zajuna App.app', 'Contents', 'MacOS', 'Zajuna App');
   const linuxDir = path.join(projectRoot, 'dist', 'linux-unpacked');
   const candidates = [path.join(linuxDir, 'zajuna-app'), path.join(linuxDir, 'Zajuna App')];
   return candidates.find((item) => fs.existsSync(item)) || candidates[0];

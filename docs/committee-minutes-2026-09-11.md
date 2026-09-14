@@ -8,8 +8,7 @@ Issue madre: [MDL-25](https://linear.app/medialab-sena/issue/MDL-25).
 **Release comercial: bloqueado.** M0/M1/M2 de código están cerrados en
 `main`. Falta firma Authenticode de Windows (requiere `CSC_LINK` en CI) y
 evidencia nativa de Linux (requiere disparar el job `native` con permisos de
-admin). macOS sigue fuera de alcance por decisión previa (`macos-deferred.md`,
-2026-08-25) hasta contar con Developer ID.
+admin). macOS sigue fuera de alcance por decisión previa (2026-08-25).
 
 ## Hechos de la estación (Windows)
 

@@ -18,7 +18,7 @@ Descargar → (opcional) SHA256 → Ejecutar .exe
     → Resumen en el navegador
 ```
 
-macOS no se entrega. Linux (AppImage) va al final, como anexo.
+Linux (AppImage) va al final, como anexo. macOS no es una plataforma soportada.
 
 ---
 
@@ -311,8 +311,6 @@ apt search fuse | grep -E "libfuse|fuse"
 Para reportar un problema, incluye distribución y versión de Linux,
 arquitectura, el mensaje exacto de la terminal y los pasos previos. Nunca
 incluyas credenciales, tokens ni información sensible.
-
-macOS no forma parte de este release. Ver [`macos-deferred.md`](macos-deferred.md).
 
 ---
 

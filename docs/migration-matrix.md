@@ -28,21 +28,21 @@ es una dependencia de ejecución.
 | Jobs y progreso | Runtime persistente, CAS, eventos, polling y detalle | Completado | Repetir recuperación real tras un cierre forzado. |
 | Cancelación/reintentos | Context cancellation, CAS y backoff | Completado | Cancelar un job terminal se rechaza; un worker por id. |
 | Scheduler | Schedules locales y tarjeta de Resumen | Completado | Probar cierre de UI con job programado. |
-| Reportes | HTML/PDF local con evidencias agrupadas | Completado | Validar fuentes y PDF en macOS/Linux. |
+| Reportes | HTML/PDF local con evidencias agrupadas | Completado | Validar fuentes y PDF en Linux. |
 | Backups | ZIP, hash, `integrity_check`, schema y rollback | Completado | Probar restore en una instalación de cliente. |
 | Configuración | Cuenta, capturas, almacenamiento, copias y avisos | Completado | Validar preferencias en instalación limpia. |
 | Diagnóstico | Core, SQLite, Chromium, disco y jobs | Completado | Exportar log redacted y probar fallos reales. |
 | Notificaciones | Tabla v12, preferencias y centro local | Completado | Validar lectura masiva y cierre/reapertura. |
 | Frontend React | 12 rutas, React Query, router, CSS y fuentes offline | Completado | Añadir runner unitario cuando el producto lo requiera. |
 | Fidelidad mockup | Estados, motion, responsive, SVG y galería | Completado | Revisión manual de las 16 pantallas. |
-| Accesibilidad | ARIA, foco, menú móvil, contraste, teclado, zoom, reflow y NVDA Windows | Completado (condicionado) | VoiceOver macOS diferido; no afirmar WCAG 2.1 AA completa (MDL-32). |
+| Accesibilidad | ARIA, foco, menú móvil, contraste, teclado, zoom, reflow y NVDA Windows | Completado (condicionado) | Sin VoiceOver (macOS no es plataforma soportada); no afirmar WCAG 2.1 AA completa (MDL-32). |
 | API local | Go loopback, SPA fallback y contratos documentados | Hardening | Probar capability/Origin con cliente externo. |
 | Anti-SSRF | Allowlist Zajuna, IP privada y redirect guard | Completado | Repetir pruebas con DNS/redirects reales. |
 | Redacción de secretos | URLs, errores, eventos y metadata | Completado | Añadir revisión de logs de instalación. |
 | Launcher local | Supervisor, recovery, instancia única, logs rotativos y navegador predeterminado sin BrowserWindow | Completado | Probar doble lanzamiento, cierre forzado y core ausente en cada OS. |
 | Core Windows | NSIS x64 con core + Playwright | Completado | Entregar instalador a QA Windows. |
-| Core ARM64/cross-build | Windows/Linux/macOS x64 y ARM64 | Completado | Smoke nativo de cada instalador. |
-| Firma y publicación | Manifest SHA256, SBOM y guía de descargas | Hardening | Firma, notarización y canal oficial (MDL-29, MDL-28). |
+| Core ARM64/cross-build | Windows/Linux x64 y ARM64 | Completado | Smoke nativo de cada instalador. |
+| Firma y publicación | Manifest SHA256, SBOM y guía de descargas | Hardening | Firma y canal oficial (MDL-29, MDL-28). |
 
 ## Infraestructura descartada
 

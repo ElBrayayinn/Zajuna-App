@@ -6,23 +6,22 @@
 `dist/core-targets/`:
 
 - `windows-x64/zajuna-core.exe`;
+- `windows-arm64/zajuna-core.exe`;
 - `linux-x64/zajuna-core`;
-- `macos-x64/zajuna-core`;
-- `macos-arm64/zajuna-core`.
+- `linux-arm64/zajuna-core`.
 
 En esta estación Windows también se generó el instalador NSIS x64 en
 `dist/Zajuna App Setup 0.1.0.exe`. El staging final incluye tanto
 `zajuna-core.exe` como `core/playwright` (driver y Chromium). El smoke de Go, el
 smoke visual responsive y la sincronización `go:embed` pasan con el mismo
-build. DMG y AppImage deben
-producirse en macOS/Linux respectivamente, porque el runtime Chromium de
+build. El AppImage debe producirse en Linux, porque el runtime Chromium de
 Playwright y los firmados del instalador son específicos del sistema; la
 compilación cruzada de los cuatro cores no sustituye esa prueba nativa.
 
 Este documento separa lo medido en el artefacto actual de Windows x64 de las
 estimaciones que todavía deben confirmarse con una prueba de carga. Los
-números cambiarán cuando se optimice el runtime de Playwright y se publiquen
-los artefactos de macOS y Linux.
+números cambiarán cuando se optimice el runtime de Playwright y se publique
+el artefacto de Linux.
 
 ## Instalador y almacenamiento
 
@@ -93,5 +92,5 @@ Para hacer más capturas simultáneas sin degradar el equipo:
 6. Exponer en la UI el número de workers Chromium activos y pendientes.
 
 Antes de activar dos o más capturas simultáneas en producción se ejecutará una
-prueba de carga en Windows, macOS y Linux con páginas pequeñas, páginas reales
-de curso y páginas con imágenes/descargas.
+prueba de carga en Windows y Linux con páginas pequeñas, páginas reales de
+curso y páginas con imágenes/descargas.
