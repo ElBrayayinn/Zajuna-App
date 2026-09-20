@@ -24,6 +24,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test
       - run: npm run build
 
   core:
@@ -38,6 +39,11 @@ jobs:
         working-directory: core
       - run: go test ./...
         working-directory: core
+      - name: govulncheck
+        working-directory: core
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   scripts:
     name: Scripts
