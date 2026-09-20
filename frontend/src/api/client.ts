@@ -61,7 +61,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(path, options)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo contactar el core local.'
+    const message = error instanceof Error ? error.message : 'No se pudo contactar la aplicación local.'
     throw new ApiError(message, 0, path)
   }
   const body = await response.json().catch(() => ({}))
@@ -178,6 +178,7 @@ export const api = {
   uploadEvidence: (form: FormData) => request<Evidence>('/api/evidences/upload', { method: 'POST', body: form }),
 
   deleteEvidence: (id: string) => request<{ ok: boolean }>(`/api/evidences/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  clearEvidences: (fichaId?: string) => request<{ cleared: boolean; deletedRows: number; deletedFiles: number }>('/api/evidences/clear', json(fichaId ? { fichaId } : {})),
 
   listReports: (limit = 8) => request<Report[]>(`/api/reports?limit=${limit}`),
 

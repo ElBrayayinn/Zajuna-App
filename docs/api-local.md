@@ -487,6 +487,18 @@ opcional, `itemCode`. Acepta PNG, JPG, PDF y HTML hasta 25 MB. El archivo se
 guarda dentro del almacenamiento local, se calcula su SHA-256 y se registra
 con origen `manual`.
 
+### `POST /api/evidences/clear`
+
+Reinicia evidencias locales. Cuerpo opcional:
+
+```json
+{ "fichaId": "<id>" }
+```
+
+Sin `fichaId` elimina todas. **Actualizar la app no borra evidencias**; este
+endpoint (o Ajustes) es la forma explícita de hacerlo. Ver
+[`evidence/update-policy.md`](evidence/update-policy.md).
+
 ### `DELETE /api/evidences/{id}`
 
 Elimina con una operación explícita el archivo y su registro local. La API

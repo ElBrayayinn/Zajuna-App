@@ -28,3 +28,21 @@ El workflow manual `Native installers` ejecuta el empaquetado y smoke en
 `release-manifest.json` y `sbom.cyclonedx.json`; esos son los insumos que se
 deben adjuntar al gate de release. No se declara un release aprobado si falta
 el artefacto, el smoke o, en Windows, la firma válida.
+
+
+## Placeholders CI (sin secretos en el repositorio)
+
+El workflow `native-installers` / `packaging` espera estos secretos de GitHub Actions
+cuando exista un certificado real. **No** se deben commitear archivos `.pfx` ni
+contraseñas.
+
+| Secreto | Uso |
+|---|---|
+| `CSC_LINK` | Ruta o base64 del certificado Authenticode (electron-builder) |
+| `CSC_KEY_PASSWORD` | Contraseña del certificado |
+
+Si faltan, el job **sigue** empaquetando NSIS/AppImage y sube artefactos, pero el
+paso «Verify Windows Authenticode» se omite (`HAS_CSC_LINK != true`). El instalador
+sin firma no debe publicarse a canal amplio (SmartScreen).
+
+No se generan firmas falsas ni se simula Authenticode en CI.

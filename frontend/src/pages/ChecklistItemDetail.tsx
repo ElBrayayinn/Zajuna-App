@@ -200,7 +200,7 @@ export function ChecklistItemDetail() {
                 <span className="diagnostic-icon ok" aria-hidden="true" />
                 <div><strong>{evidenceCount ? `${evidenceCount} evidencia(s) guardada(s)` : 'Aún no hay evidencias'}</strong><small>Máximo permitido: {maxEvidences}</small></div>
               </div>
-              <div className="route-note">El historial conserva cada cambio manual de estado con fecha y origen. Los resultados de captura se consultan en el timeline del trabajo asociado.</div>
+              <div className="route-note">El historial conserva cada cambio manual de estado con fecha y origen. Los resultados de captura se consultan en el avance del trabajo asociado.</div>
             </div>
           </div>
         </section>

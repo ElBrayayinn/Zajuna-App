@@ -23,10 +23,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 12
+const currentSchemaVersion = 13
 
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	dataDir string
 }
 
 type FichaRecord struct {
@@ -119,7 +120,7 @@ func Open(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
-	store := &Store{db: db}
+	store := &Store{db: db, dataDir: dataDir}
 	store.db.SetMaxOpenConns(1)
 	store.db.SetMaxIdleConns(1)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -269,8 +270,19 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return fmt.Errorf("record schema version: %w", err)
 		}
 	}
+	if version < 13 {
+		if err := applyV13(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(13, ?)`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("record schema version: %w", err)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit migration: %w", err)
+	}
+	if err := (&Store{db: s.db, dataDir: s.dataDir}).GarbageCollectEvidenceFiles(ctx); err != nil {
+		return fmt.Errorf("garbage-collect evidence files after migration: %w", err)
 	}
 	return nil
 }
@@ -1197,13 +1209,19 @@ func (s *Store) listChecklistItems(ctx context.Context, fichaID string) ([]Check
 func (s *Store) listChecklistEvidences(ctx context.Context, fichaID string) (map[string][]evidence.Record, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, COALESCE(ficha_id, ''), item_code, slot_number, name, file_path, format, source, sha256, metadata_json, captured_at
-		FROM evidences WHERE ficha_id = ? ORDER BY item_code, slot_number, captured_at
+		FROM evidences WHERE ficha_id = ? ORDER BY item_code, slot_number, captured_at DESC, id DESC
 	`, fichaID)
 	if err != nil {
 		return nil, fmt.Errorf("list checklist evidences: %w", err)
 	}
 	defer rows.Close()
-	result := make(map[string][]evidence.Record)
+	type key struct {
+		item, source string
+		slot         int
+	}
+	seen := map[key]bool{}
+	raw := make(map[string][]evidence.Record)
+	maxByItem := map[string]int{}
 	for rows.Next() {
 		var item evidence.Record
 		var metadata, capturedAt string
@@ -1212,10 +1230,40 @@ func (s *Store) listChecklistEvidences(ctx context.Context, fichaID string) (map
 		}
 		item.Metadata = json.RawMessage(metadata)
 		item.CapturedAt, _ = time.Parse(time.RFC3339Nano, capturedAt)
-		result[item.ItemCode] = append(result[item.ItemCode], item)
+		k := key{item: item.ItemCode, source: item.Source, slot: item.SlotNumber}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		raw[item.ItemCode] = append(raw[item.ItemCode], item)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read checklist evidences: %w", err)
+	}
+	maxRows, err := s.db.QueryContext(ctx, `SELECT item_code, max_evidences FROM checklist_catalog_items`)
+	if err != nil {
+		return nil, fmt.Errorf("list max evidences: %w", err)
+	}
+	defer maxRows.Close()
+	for maxRows.Next() {
+		var code string
+		var max int
+		if err := maxRows.Scan(&code, &max); err != nil {
+			return nil, fmt.Errorf("scan max evidences: %w", err)
+		}
+		maxByItem[code] = max
+	}
+	if err := maxRows.Err(); err != nil {
+		return nil, err
+	}
+	result := make(map[string][]evidence.Record, len(raw))
+	for code, items := range raw {
+		limit := maxByItem[code]
+		if limit <= 0 || len(items) <= limit {
+			result[code] = items
+			continue
+		}
+		result[code] = items[:limit]
 	}
 	return result, nil
 }
@@ -1769,39 +1817,55 @@ func (s *Store) CreateEvidence(ctx context.Context, record evidence.Record) erro
 	if record.CapturedAt.IsZero() {
 		record.CapturedAt = time.Now().UTC()
 	}
-	// A checklist slot represents the current capture. Older database versions
-	// may contain a hash-based ID for the same slot, so update that row in place
-	// instead of turning a retry into a UNIQUE(ficha, item, slot, sha256) error.
-	if record.Source == "capture-checklist" && record.FichaID != "" && record.ItemCode != "" {
-		var existingID string
+	if record.SlotNumber < 1 {
+		record.SlotNumber = 1
+	}
+
+	// One current evidence per (ficha, item, slot, source). Replacing updates the
+	// existing row and removes the previous file when the path changes.
+	if record.FichaID != "" && record.ItemCode != "" {
+		var existingID, existingPath string
 		lookupErr := s.db.QueryRowContext(ctx, `
-			SELECT id FROM evidences
-			WHERE ficha_id = ? AND item_code = ? AND slot_number = ? AND source = 'capture-checklist'
+			SELECT id, file_path FROM evidences
+			WHERE ficha_id = ? AND item_code = ? AND slot_number = ? AND source = ?
 			ORDER BY captured_at DESC, id DESC LIMIT 1
-		`, record.FichaID, record.ItemCode, record.SlotNumber).Scan(&existingID)
+		`, record.FichaID, record.ItemCode, record.SlotNumber, record.Source).Scan(&existingID, &existingPath)
 		if lookupErr == nil {
 			_, err := s.db.ExecContext(ctx, `
-				UPDATE evidences SET name = ?, file_path = ?, format = ?, sha256 = ?, metadata_json = ?, captured_at = ?
+				UPDATE evidences SET id = ?, name = ?, file_path = ?, format = ?, sha256 = ?, metadata_json = ?, captured_at = ?
 				WHERE id = ?
-			`, record.Name, record.FilePath, record.Format, record.SHA256, metadata, record.CapturedAt.UTC().Format(time.RFC3339Nano), existingID)
+			`, record.ID, record.Name, record.FilePath, record.Format, record.SHA256, metadata, record.CapturedAt.UTC().Format(time.RFC3339Nano), existingID)
 			if err != nil {
-				return fmt.Errorf("update checklist evidence: %w", err)
+				return fmt.Errorf("update current evidence: %w", err)
+			}
+			if existingPath != "" && existingPath != record.FilePath {
+				_ = os.Remove(existingPath)
+			}
+			if err := s.enforceMaxEvidences(ctx, record.FichaID, record.ItemCode); err != nil {
+				return err
 			}
 			return nil
 		}
 		if !errors.Is(lookupErr, sql.ErrNoRows) {
-			return fmt.Errorf("find existing checklist evidence: %w", lookupErr)
+			return fmt.Errorf("find existing evidence: %w", lookupErr)
 		}
 	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO evidences(id, ficha_id, item_code, slot_number, name, file_path, format, source, sha256, metadata_json, captured_at)
 		VALUES(?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
+			ficha_id = excluded.ficha_id, item_code = excluded.item_code, slot_number = excluded.slot_number,
 			name = excluded.name, file_path = excluded.file_path, format = excluded.format,
 			source = excluded.source, sha256 = excluded.sha256, metadata_json = excluded.metadata_json, captured_at = excluded.captured_at
 	`, record.ID, record.FichaID, record.ItemCode, record.SlotNumber, record.Name, record.FilePath, record.Format, record.Source, record.SHA256, metadata, record.CapturedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("create evidence: %w", err)
+	}
+	if record.FichaID != "" && record.ItemCode != "" {
+		if err := s.enforceMaxEvidences(ctx, record.FichaID, record.ItemCode); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -1856,6 +1920,9 @@ func (s *Store) DeleteEvidence(ctx context.Context, id string) (evidence.Record,
 	}
 	if affected, _ := result.RowsAffected(); affected != 1 {
 		return evidence.Record{}, sql.ErrNoRows
+	}
+	if item.FilePath != "" {
+		_ = os.Remove(item.FilePath)
 	}
 	return item, nil
 }

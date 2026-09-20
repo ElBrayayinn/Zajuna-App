@@ -26,6 +26,7 @@ import {
   friendlyJobStatus,
   friendlyJobType,
   jobStatusClass,
+  friendlyJobStage,
 } from '../lib/format'
 import { Icon } from '../components/Icon'
 import { PageError, PageSkeleton } from '../components/AsyncState'
@@ -440,7 +441,7 @@ export function Overview() {
                 {currentJobEventsQuery.data.slice(-3).map((event, index) => (
                   <li key={`${event.createdAt}-${index}`}>
                     <span aria-hidden="true" />
-                    <div><strong>{event.stage || 'Actualización'}</strong><small>{friendlyJobMessage(event.message)}</small></div>
+                    <div><strong>{friendlyJobStage(event.stage)}</strong><small>{friendlyJobMessage(event.message)}</small></div>
                   </li>
                 ))}
               </ol>
@@ -507,9 +508,9 @@ export function Overview() {
                   </span>
                 )}
               </div>
-            <div className="category-grid" aria-label="Estado de cumplimiento por categoria">
+            <div className="category-grid" aria-label="Estado de cumplimiento por categoría">
                 {bars.length ? bars.map((bar) => {
-                  const status = bar.yes === bar.total ? 'Completa' : bar.no > 0 ? 'Requiere revision' : 'Pendiente'
+                  const status = bar.yes === bar.total ? 'Completa' : bar.no > 0 ? 'Requiere revisión' : 'Pendiente'
                   const statusClass = bar.yes === bar.total ? 'complete' : bar.no > 0 ? 'attention' : 'pending'
                   return (
                     <button
@@ -530,7 +531,7 @@ export function Overview() {
                       <span className="category-card-meta">{bar.yes} de {bar.total} cumplidas · {bar.pending} pendientes</span>
                     </button>
                   )
-                }) : <div className="empty">Todavia no hay categorias disponibles.</div>}
+                }) : <div className="empty">Todavía no hay categorías disponibles.</div>}
               </div>
               <div className="category-legend legacy-category-legend" aria-hidden="true">
                 {categories.map((category) => category.label || category.code || '').join(' · ')}
@@ -600,13 +601,13 @@ export function Overview() {
                       {currentJobEventsQuery.data.slice(-3).map((event, index) => (
                         <li key={`${event.createdAt}-${index}`}>
                           <span aria-hidden="true" />
-                          <div><strong>{event.stage || 'Actualización'}</strong><small>{friendlyJobMessage(event.message)}</small></div>
+                          <div><strong>{friendlyJobStage(event.stage)}</strong><small>{friendlyJobMessage(event.message)}</small></div>
                         </li>
                       ))}
                     </ol>
                   ) : null}
                   <Link className="button ghost small" style={{ marginTop: 10 }} to={`/trabajos/${encodeURIComponent(currentJob.id)}`}>
-                    Ver timeline completo
+                    Ver el avance completo
                   </Link>
                 </>
               ) : (

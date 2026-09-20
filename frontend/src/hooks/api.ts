@@ -367,6 +367,18 @@ export function useDeleteEvidence() {
   })
 }
 
+export function useClearEvidences() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (fichaId?: string) => api.clearEvidences(fichaId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['evidences'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['checklist'] })
+    },
+  })
+}
+
 export function useReports() {
   return useQuery({ queryKey: ['reports'], queryFn: () => api.listReports(50), refetchInterval: POLL_MS })
 }

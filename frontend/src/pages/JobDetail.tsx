@@ -6,6 +6,7 @@ import { friendlyError } from '../lib/friendlyError'
 import {
   formatDate,
   friendlyJobMessage,
+  friendlyJobStage,
   friendlyJobStatus,
   friendlyJobType,
   jobStatusClass,
@@ -18,7 +19,7 @@ function eventLabel(event: JobEvent) {
   if (kind.includes('wait')) return 'Revisión necesaria'
   if (kind.includes('complete') || kind.includes('finish')) return 'Resultado guardado'
   if (kind.includes('start') || kind.includes('begin')) return 'Proceso iniciado'
-  return event.stage || 'Actualización del proceso'
+  return friendlyJobStage(event.stage)
 }
 
 function eventClass(event: JobEvent) {
@@ -119,7 +120,7 @@ export function JobDetail() {
           <p className="job-detail-message">{friendlyJobMessage(job.message || job.stage)}</p>
 
           <div className="job-detail-meta">
-            <span><b>Etapa</b>{job.stage || '—'}</span>
+            <span><b>Etapa</b>{friendlyJobStage(job.stage)}</span>
             <span><b>Intento</b>{job.attempt || 0} / {job.maxAttempts || 0}</span>
             <span><b>Finalizado</b>{formatDate(job.finishedAt)}</span>
           </div>
@@ -143,7 +144,7 @@ export function JobDetail() {
         <div className="card-pad">
           <div className="side-title">
             <div>
-              <h3>Línea de tiempo</h3>
+              <h3>Avance del proceso</h3>
               <p className="helper" style={{ marginTop: 5 }}>
                 Cada actualización queda registrada localmente para que puedas retomar el trabajo.
               </p>

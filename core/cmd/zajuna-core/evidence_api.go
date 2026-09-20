@@ -247,6 +247,35 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": item.ID})
 	})
 
+	mux.HandleFunc("POST /api/evidences/clear", func(w http.ResponseWriter, r *http.Request) {
+		clearStore, ok := store.(evidence.ClearStore)
+		if !ok {
+			writeError(w, http.StatusNotImplemented, errors.New("el reinicio de evidencias no está disponible"))
+			return
+		}
+		var body struct {
+			FichaID string `json:"fichaId"`
+		}
+		if r.ContentLength > 0 {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+				writeError(w, http.StatusBadRequest, errors.New("cuerpo de reinicio inválido"))
+				return
+			}
+		}
+		deletedRows, deletedFiles, err := clearStore.ClearEvidences(r.Context(), strings.TrimSpace(body.FichaID))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"cleared": true,
+			"deletedRows": deletedRows,
+			"deletedFiles": deletedFiles,
+			"fichaId": strings.TrimSpace(body.FichaID),
+			"note": "Actualizar la aplicación no borra evidencias; use este endpoint o Ajustes para reiniciarlas.",
+		})
+	})
+
 	mux.HandleFunc("GET /api/evidences/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			writeError(w, http.StatusServiceUnavailable, errors.New("el almacenamiento de evidencias no está disponible"))

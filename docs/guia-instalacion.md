@@ -236,12 +236,16 @@ evidencias.
 
 ### Primera ejecución
 
+El artefacto de CI se llama `Zajuna App-<versión>.AppImage` (con espacio).
+Usa comillas o renómbralo a algo sin espacios.
+
 ```bash
 cd ~/Downloads   # o ~/Descargas
 ls -lh
-chmod +x ZajunaApp.AppImage
-ls -l ZajunaApp.AppImage      # confirmar el permiso
-./ZajunaApp.AppImage
+chmod +x "Zajuna App-0.1.1.AppImage"
+ls -l "Zajuna App-0.1.1.AppImage"      # confirmar el permiso
+./"Zajuna App-0.1.1.AppImage"
+# opcional: mv "Zajuna App-0.1.1.AppImage" ZajunaApp.AppImage
 ```
 
 Se recomienda iniciarla con el usuario habitual del sistema, no como root, por
@@ -263,9 +267,9 @@ desde cualquier terminal:
 
 ```bash
 sudo mkdir -p /opt/ZajunaApp
-sudo mv ~/Downloads/ZajunaApp.AppImage /opt/ZajunaApp/ZajunaApp.AppImage
-sudo chmod +x /opt/ZajunaApp/ZajunaApp.AppImage
-sudo ln -sf /opt/ZajunaApp/ZajunaApp.AppImage /usr/local/bin/zajunaapp
+sudo mv ~/Downloads/"Zajuna App-0.1.1.AppImage" /opt/ZajunaApp/"Zajuna App.AppImage"
+sudo chmod +x /opt/ZajunaApp/"Zajuna App.AppImage"
+sudo ln -sf /opt/ZajunaApp/"Zajuna App.AppImage" /usr/local/bin/zajunaapp
 ```
 
 Después se inicia con `zajunaapp` desde cualquier carpeta.
@@ -276,8 +280,8 @@ Reemplaza el archivo conservando el mismo nombre y repite el permiso de
 ejecución:
 
 ```bash
-sudo cp ZajunaApp.AppImage /opt/ZajunaApp/ZajunaApp.AppImage
-sudo chmod +x /opt/ZajunaApp/ZajunaApp.AppImage
+sudo cp "Zajuna App-0.1.1.AppImage" /opt/ZajunaApp/"Zajuna App.AppImage"
+sudo chmod +x /opt/ZajunaApp/"Zajuna App.AppImage"
 ```
 
 ### Solución de problemas comunes
@@ -285,8 +289,8 @@ sudo chmod +x /opt/ZajunaApp/ZajunaApp.AppImage
 **"Permission denied" al ejecutar** — falta el permiso de ejecución:
 
 ```bash
-chmod +x ZajunaApp.AppImage
-./ZajunaApp.AppImage
+chmod +x "Zajuna App-0.1.1.AppImage"
+./"Zajuna App-0.1.1.AppImage"
 ```
 
 **`dlopen(): error loading libfuse.so.2` al ejecutar** — el runtime del
@@ -294,10 +298,10 @@ AppImage necesita `libfuse2` (API FUSE 2.x). Ubuntu la trae como paquete de
 transición (`libfuse2t64`), pero **Kali Linux/Debian rolling ya no la
 empaquetan en absoluto** — solo ofrecen `fuse3`/`libfuse3-4` (verificado en
 Kali 2026.3, MDL-123). No hay paquete que instalar para resolverlo en Kali:
-usa la extracción temporal, que no depende de FUSE:
+usa la extracción temporal, que no depende de FUSE (detalle en [`packaging/linux-kali-fuse2.md`](packaging/linux-kali-fuse2.md)):
 
 ```bash
-./ZajunaApp.AppImage --appimage-extract-and-run
+./"Zajuna App-0.1.1.AppImage" --appimage-extract-and-run
 ```
 
 En otras distribuciones que sí ofrezcan `libfuse2`/`libfuse2t64`, instalarla

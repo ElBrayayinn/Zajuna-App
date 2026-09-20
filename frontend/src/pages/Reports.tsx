@@ -5,19 +5,8 @@ import { PageError, PageSkeleton } from '../components/AsyncState'
 import { Icon } from '../components/Icon'
 import { useCreateBackup, useDashboard, useGenerateReport, useReports, isNotFound } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
-import { formatDate, jobStatusClass } from '../lib/format'
+import { formatDate, jobStatusClass, reportStatusLabel } from '../lib/format'
 import type { JobStatus, Report } from '../types'
-
-const REPORT_STATUS_LABELS: Record<string, string> = {
-  completed: 'Listo',
-  pending: 'En espera',
-  running: 'Preparando',
-  failed: 'No se pudo generar',
-}
-
-function reportStatusLabel(value?: string) {
-  return REPORT_STATUS_LABELS[String(value || '').toLowerCase()] || 'En revisión'
-}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)

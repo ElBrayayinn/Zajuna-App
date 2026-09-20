@@ -16,7 +16,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const checks = diagnostics.data?.checks || []
   const hasError = checks.some((check) => check.status === 'error')
   const hasWarn = checks.some((check) => check.status === 'warn')
-  const healthTitle = diagnostics.isError || hasError ? 'Núcleo local con problemas' : 'Núcleo local activo'
+  const healthTitle = diagnostics.isError || hasError ? 'Aplicación con problemas' : 'Aplicación lista'
   const healthDetail = diagnostics.isLoading
     ? 'Comprobando…'
     : diagnostics.isError
@@ -25,7 +25,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         ? 'con incidencias'
         : hasWarn
           ? 'con avisos'
-          : '127.0.0.1 · listo'
+          : 'Lista en este equipo'
 
   return (
     <aside id="primary-nav" className={`sidebar${open ? ' mobile-open' : ''}`} aria-label="Navegación principal">

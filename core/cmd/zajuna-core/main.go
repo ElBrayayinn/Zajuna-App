@@ -72,7 +72,8 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("no se pudo crear la carpeta local de datos: %v", err)
 	}
-	if restored, err := backup.ApplyPending(dataDir); err != nil {
+	restored, err := backup.ApplyPending(dataDir)
+	if err != nil {
 		log.Fatalf("no se pudo aplicar la restauración pendiente: %v", err)
 	} else if restored {
 		log.Printf("restauración local aplicada antes de abrir SQLite")
@@ -90,6 +91,10 @@ func main() {
 		}
 	} else if err := backup.CommitApplied(dataDir); err != nil {
 		log.Printf("la base restaurada abrió, pero no se pudo confirmar el restore: %v", err)
+	} else if restored {
+		if err := localStore.ReconcileEvidenceFilesAfterRestore(context.Background()); err != nil {
+			log.Printf("no se pudieron reconciliar evidencias tras restaurar: %v", err)
+		}
 	}
 	defer localStore.Close()
 	zajunaClient, err := zajuna.NewClient(zajuna.DefaultBaseURL)
