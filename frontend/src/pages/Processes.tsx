@@ -109,7 +109,7 @@ export function Processes() {
           <div className="eyebrow">Lectura rápida</div>
           <h3 style={{ marginTop: 7 }}>¿Qué significa cada estado?</h3>
           <div className="status-guide-list">
-            <div className="route-note"><strong>En espera:</strong> el trabajo fue aceptado y espera que el núcleo local le asigne turno. No es un error.</div>
+            <div className="route-note"><strong>En espera:</strong> el trabajo fue aceptado y espera que la aplicación le asigne turno. No es un error.</div>
             <div className="route-note"><strong>En curso:</strong> la aplicación está ejecutando la tarea. El porcentaje y la barra muestran su avance.</div>
             <div className="route-note"><strong>Necesita tu revisión:</strong> la aplicación encontró una decisión que no debe resolver sola; abre el detalle y confirma o corrige.</div>
             <div className="route-note"><strong>Reintentando:</strong> hubo un fallo temporal y el proceso volverá a intentarlo automáticamente.</div>

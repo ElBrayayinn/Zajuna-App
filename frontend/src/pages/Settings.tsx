@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { backupDownloadUrl } from '../api/client'
 import { PageError, PageSkeleton } from '../components/AsyncState'
-import { useBackups, useCleanupBackups, useCreateBackup, useDashboard, useDeleteBackup, useFichas, useRestoreBackup, useSaveSettings, useSaveSetup, useSettings, useSetupStatus } from '../hooks/api'
+import { useBackups, useCleanupBackups, useCreateBackup, useDashboard, useDeleteBackup, useFichas, useRestoreBackup, useClearEvidences, useSaveSettings, useSaveSetup, useSettings, useSetupStatus } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import type { AppSettings } from '../types'
@@ -46,6 +46,7 @@ export function Settings() {
   const settingsQuery = useSettings()
   const settings = settingsQuery.data
   const saveSetup = useSaveSetup()
+  const clearEvidences = useClearEvidences()
   const saveSettings = useSaveSettings()
   const createBackup = useCreateBackup()
   const deleteBackup = useDeleteBackup()
@@ -292,15 +293,15 @@ export function Settings() {
             </div>
             <div className="settings-row">
               <div>
-                <strong>Sesión Chromium reutilizable</strong>
+                <strong>Sesión del navegador reutilizable</strong>
                 <span>Reduce el tiempo entre capturas sin volver a iniciar sesión.</span>
               </div>
-              <Toggle pressed={preferences.capture.reuseSession} label="Reutilizar la sesión de Chromium" onClick={() => togglePreference('capture', 'reuseSession')} />
+              <Toggle pressed={preferences.capture.reuseSession} label="Reutilizar la sesión del navegador" onClick={() => togglePreference('capture', 'reuseSession')} />
             </div>
             <div className="settings-row">
               <div>
                 <strong>Animaciones de carga</strong>
-                <span>Muestra skeleton mientras llegan los datos locales o de Zajuna.</span>
+                <span>Muestra una animación de carga mientras llegan los datos locales o de Zajuna.</span>
               </div>
               <Toggle pressed={preferences.capture.motion} label="Mostrar animaciones de carga" onClick={() => togglePreference('capture', 'motion')} />
             </div>
@@ -395,6 +396,26 @@ export function Settings() {
             </div>
             <div className="card-pad">
               <div className="route-note">Almacenamiento local de evidencias y reportes activo.</div>
+              <div className="settings-row" style={{ marginTop: 16 }}>
+                <div>
+                  <strong>Borrar evidencias locales</strong>
+                  <span>Actualizar la aplicación no borra evidencias. Usa esta acción solo si quieres empezar de cero en este equipo.</span>
+                </div>
+                <button
+                  className="button ghost danger-outline"
+                  type="button"
+                  disabled={clearEvidences.isPending}
+                  onClick={() => {
+                    if (!window.confirm('¿Borrar todas las evidencias guardadas en este equipo? Esta acción no se puede deshacer.')) return
+                    clearEvidences.mutate(undefined, {
+                      onSuccess: () => toast('Evidencias locales borradas.'),
+                      onError: (error) => toast(friendlyError(error instanceof Error ? error.message : String(error)), true),
+                    })
+                  }}
+                >
+                  {clearEvidences.isPending ? 'Borrando…' : 'Borrar evidencias'}
+                </button>
+              </div>
             </div>
           </section>
         </div>

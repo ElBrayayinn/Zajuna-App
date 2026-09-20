@@ -87,6 +87,52 @@ export function friendlyJobMessage(value?: string) {
     .replace(/running/gi, 'en curso')
     .replace(/completed/gi, 'listo')
     .replace(/failed/gi, 'no se pudo completar')
+    .replace(/waiting_user/gi, 'necesita tu revisión')
+    .replace(/retrying/gi, 'reintentando')
+    .replace(/cancelled/gi, 'cancelado')
+    .replace(/authenticating/gi, 'iniciando sesión')
+    .replace(/discovering/gi, 'revisando el contenido')
+    .replace(/capturing/gi, 'preparando evidencias')
+    .replace(/exporting/gi, 'generando el reporte')
+}
+
+
+const JOB_STAGE_LABELS: Record<string, string> = {
+  queued: 'En espera',
+  running: 'En curso',
+  starting: 'Iniciando',
+  authenticating: 'Iniciando sesión en Zajuna',
+  syncing: 'Sincronizando fichas',
+  discovering: 'Revisando el contenido del curso',
+  capturing: 'Preparando evidencias',
+  capturing_checklist: 'Preparando evidencias del checklist',
+  capturing_browser: 'Preparando la captura',
+  exporting: 'Generando el reporte',
+  backing_up: 'Creando la copia de respaldo',
+  waiting_user: 'Necesita tu revisión',
+  retrying: 'Reintentando',
+  completed: 'Listo',
+  failed: 'No se pudo completar',
+  cancelled: 'Cancelado',
+}
+
+export function friendlyJobStage(value?: string) {
+  const raw = String(value || '').trim()
+  if (!raw) return 'Actualización'
+  const key = raw.toLowerCase().replace(/[\s-]+/g, '_')
+  if (JOB_STAGE_LABELS[key]) return JOB_STAGE_LABELS[key]
+  if (JOB_STAGE_LABELS[raw]) return JOB_STAGE_LABELS[raw]
+  return friendlyJobMessage(raw)
+}
+
+export function reportStatusLabel(value?: string) {
+  const key = String(value || '').toLowerCase()
+  if (key === 'completed' || key === 'ready' || key === 'listo') return 'Listo'
+  if (key === 'pending' || key === 'queued') return 'En espera'
+  if (key === 'running' || key === 'processing') return 'Preparando'
+  if (key === 'failed' || key === 'error') return 'No se pudo generar'
+  if (key === 'cancelled') return 'Cancelado'
+  return 'En revisión'
 }
 
 export interface Confidence {

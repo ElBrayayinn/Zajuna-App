@@ -6,6 +6,7 @@ import { friendlyError } from '../lib/friendlyError'
 import {
   formatDate,
   friendlyJobMessage,
+  friendlyJobStage,
   friendlyJobStatus,
   friendlyJobType,
   jobStatusClass,
@@ -18,7 +19,7 @@ function eventLabel(event: JobEvent) {
   if (kind.includes('wait')) return 'Revisión necesaria'
   if (kind.includes('complete') || kind.includes('finish')) return 'Resultado guardado'
   if (kind.includes('start') || kind.includes('begin')) return 'Proceso iniciado'
-  return event.stage || 'Actualización del proceso'
+  return friendlyJobStage(event.stage)
 }
 
 function eventClass(event: JobEvent) {
