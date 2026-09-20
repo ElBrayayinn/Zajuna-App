@@ -46,6 +46,13 @@ type DeleteStore interface {
 	DeleteEvidence(ctx context.Context, id string) (Record, error)
 }
 
+// ClearStore resets evidence rows and files. App updates never clear data
+// automatically; callers must invoke this explicitly.
+type ClearStore interface {
+	Store
+	ClearEvidences(ctx context.Context, fichaID string) (deletedRows int, deletedFiles int, err error)
+}
+
 // GroupStore is optional so existing capture workers and test doubles can
 // continue to use the basic evidence contract.
 type GroupStore interface {

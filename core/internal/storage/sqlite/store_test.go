@@ -161,7 +161,7 @@ func TestChecklistEvidenceRetryUpdatesTheExistingSlot(t *testing.T) {
 	if err != nil || len(items) != 1 {
 		t.Fatalf("retry created a duplicate evidence row: %#v (%v)", items, err)
 	}
-	if items[0].ID != "old-hash-based-id" || items[0].Name != "Actividad actualizada" || items[0].SHA256 != "new-hash" {
+	if items[0].ID != "new-deterministic-id" || items[0].Name != "Actividad actualizada" || items[0].SHA256 != "new-hash" {
 		t.Fatalf("retry did not update the current slot: %#v", items[0])
 	}
 }

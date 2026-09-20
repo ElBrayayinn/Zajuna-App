@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/zajuna-app/core/internal/storage/sqlite"
 	"context"
 	"database/sql"
 	"errors"
@@ -53,15 +54,15 @@ func collectDiagnostics(ctx context.Context, store any, dataDir string) diagnost
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	view := diagnosticsView{GeneratedAt: now, Checks: make([]diagnosticCheck, 0, 6), Incidents: make([]diagnosticIncident, 0)}
 	view.Checks = append(view.Checks, diagnosticCheck{
-		ID: "core", Title: "Core local", Description: "El servidor local responde y mantiene la interfaz en este equipo.",
-		Status: "ok", Detail: "Loopback activo", CheckedAt: now,
+		ID: "core", Title: "Aplicación local", Description: "La aplicación responde y mantiene la interfaz en este equipo.",
+		Status: "ok", Detail: "Servicio local activo", CheckedAt: now,
 	})
 
 	if dbStore, ok := store.(diagnosticsDB); ok && dbStore.DB() != nil {
 		view.Checks = append(view.Checks, checkSQLite(ctx, dbStore.DB(), now))
 	} else {
 		view.Checks = append(view.Checks, diagnosticCheck{
-			ID: "sqlite", Title: "Base local", Description: "Comprobación rápida de la base de datos SQLite.",
+			ID: "sqlite", Title: "Base local", Description: "Comprobación rápida de la base de datos local.",
 			Status: "error", Detail: "El almacenamiento no está disponible", CheckedAt: now,
 		})
 	}
@@ -82,7 +83,7 @@ func collectDiagnostics(ctx context.Context, store any, dataDir string) diagnost
 
 	browser := capture.Resolve("")
 	browserCheck := diagnosticCheck{
-		ID: "chromium", Title: "Chromium local", Description: "El navegador incluido permite realizar capturas autenticadas sin depender de un navegador remoto.",
+		ID: "chromium", Title: "Navegador incluido", Description: "El navegador incluido permite realizar capturas autenticadas sin depender de un navegador externo.",
 		Status: "warn", Detail: "Instala el runtime local antes de capturar", CheckedAt: now,
 	}
 	if browser.Installed() {
@@ -125,18 +126,18 @@ func collectDiagnostics(ctx context.Context, store any, dataDir string) diagnost
 
 func checkSQLite(ctx context.Context, db *sql.DB, checkedAt string) diagnosticCheck {
 	check := diagnosticCheck{
-		ID: "sqlite", Title: "Base local", Description: "Comprobación rápida de integridad de SQLite y su esquema.",
+		ID: "sqlite", Title: "Base local", Description: "Comprobación rápida de integridad de la base de datos local y su esquema.",
 		Status: "error", Detail: "No se pudo comprobar la base local", CheckedAt: checkedAt,
 	}
 	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
-		check.Detail = "SQLite no responde"
+		check.Detail = "La base de datos local no responde"
 		return check
 	}
 	var result string
 	if err := db.QueryRowContext(pingCtx, `PRAGMA quick_check`).Scan(&result); err != nil {
-		check.Detail = "La comprobación de SQLite falló"
+		check.Detail = "La comprobación de la base de datos local falló"
 		return check
 	}
 	if strings.EqualFold(strings.TrimSpace(result), "ok") {
@@ -150,13 +151,13 @@ func checkSQLite(ctx context.Context, db *sql.DB, checkedAt string) diagnosticCh
 		check.Detail = formatSchemaDetail(version)
 	} else {
 		check.Status = "error"
-		check.Detail = "SQLite reportó una inconsistencia"
+		check.Detail = "La base de datos local reportó una inconsistencia"
 	}
 	return check
 }
 
 func formatSchemaDetail(version int) string {
-	if version >= 11 {
+	if version >= sqlite.CurrentSchemaVersion() {
 		return "Integridad correcta · esquema v" + strconv.Itoa(version)
 	}
 	return "Integridad correcta · esquema antiguo v" + strconv.Itoa(version)
