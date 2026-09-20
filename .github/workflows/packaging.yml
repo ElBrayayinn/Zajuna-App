@@ -1,16 +1,19 @@
-﻿name: Native installers
+name: Packaging
 
-# Manual only. Automatic packaging on tags lives in packaging.yml.
+# Empaqueta Windows (NSIS) + Linux (AppImage) en tags v* y bajo demanda.
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
 
 jobs:
-  package-and-smoke:
-    name: ${{ matrix.name }} installer
+  package:
+    name: ${{ matrix.name }} package
     runs-on: ${{ matrix.runner }}
     env:
       HAS_CSC_LINK: ${{ secrets.CSC_LINK != '' }}
@@ -37,7 +40,7 @@ jobs:
         run: npm ci
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
-      - name: Package native installer
+      - name: Package
         run: npm run ${{ matrix.package_script }}
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -60,10 +63,10 @@ jobs:
           if ($null -eq $installer) { throw 'No se encontró el instalador NSIS.' }
           $signature = Get-AuthenticodeSignature $installer.FullName
           if ($signature.Status -ne 'Valid') { throw "Firma inválida: $($signature.Status)" }
-      - name: Upload release evidence
+      - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: zajuna-${{ matrix.name }}-native
+          name: zajuna-${{ matrix.name }}-package
           if-no-files-found: error
           path: |
             dist/*.exe
