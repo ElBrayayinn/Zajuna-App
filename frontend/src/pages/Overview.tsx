@@ -510,7 +510,7 @@ export function Overview() {
               </div>
             <div className="category-grid" aria-label="Estado de cumplimiento por categoría">
                 {bars.length ? bars.map((bar) => {
-                  const status = bar.yes === bar.total ? 'Completa' : bar.no > 0 ? 'Requiere revision' : 'Pendiente'
+                  const status = bar.yes === bar.total ? 'Completa' : bar.no > 0 ? 'Requiere revisión' : 'Pendiente'
                   const statusClass = bar.yes === bar.total ? 'complete' : bar.no > 0 ? 'attention' : 'pending'
                   return (
                     <button

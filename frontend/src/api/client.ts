@@ -61,7 +61,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   try {
     response = await fetch(path, options)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo contactar el aplicación local.'
+    const message = error instanceof Error ? error.message : 'No se pudo contactar la aplicación local.'
     throw new ApiError(message, 0, path)
   }
   const body = await response.json().catch(() => ({}))

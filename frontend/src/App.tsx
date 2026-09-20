@@ -24,7 +24,7 @@ function App() {
   }
 
   if (isError) {
-    return <PageError message="No pudimos contactar al aplicación local." action={<button className="button" onClick={() => refetch()}>Reintentar</button>} />
+    return <PageError message="No pudimos contactar a la aplicación local." action={<button className="button" onClick={() => refetch()}>Reintentar</button>} />
   }
 
   if (!setup?.setupComplete) {

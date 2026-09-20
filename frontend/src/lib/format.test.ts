@@ -29,6 +29,8 @@ describe('friendlyError', () => {
   it('avoids technical jargon in user-facing errors', () => {
     const msg = friendlyError('No se pudo contactar el core local.')
     expect(msg.toLowerCase()).not.toContain('core local')
+    expect(msg).toMatch(/la aplicación local/i)
+    expect(msg.toLowerCase()).not.toMatch(/\bel aplicación\b/)
     expect(friendlyError('selector css no encontrado')).toMatch(/información esperada/i)
   })
 })
