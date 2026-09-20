@@ -294,7 +294,7 @@ AppImage necesita `libfuse2` (API FUSE 2.x). Ubuntu la trae como paquete de
 transición (`libfuse2t64`), pero **Kali Linux/Debian rolling ya no la
 empaquetan en absoluto** — solo ofrecen `fuse3`/`libfuse3-4` (verificado en
 Kali 2026.3, MDL-123). No hay paquete que instalar para resolverlo en Kali:
-usa la extracción temporal, que no depende de FUSE:
+usa la extracción temporal, que no depende de FUSE (detalle en [`packaging/linux-kali-fuse2.md`](packaging/linux-kali-fuse2.md)):
 
 ```bash
 ./ZajunaApp.AppImage --appimage-extract-and-run
