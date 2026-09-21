@@ -1,8 +1,8 @@
 {
   "name": "zajuna-app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "Zajuna App",
-  "description": "Aplicación de escritorio multiplataforma para Zajuna",
+  "description": "Aplicaci\u00f3n de escritorio multiplataforma para Zajuna",
   "private": true,
   "main": "desktop/main.cjs",
   "scripts": {
