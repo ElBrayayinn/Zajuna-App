@@ -433,3 +433,140 @@ func toInt(value any) int {
 		return -1
 	}
 }
+
+func TestEvidenciasBrowserSmoke(t *testing.T) {
+	if os.Getenv("ZAJUNA_RUN_BROWSER_SMOKE") != "1" {
+		t.Skip("browser smoke disabled")
+	}
+
+	dataDir := t.TempDir()
+	store, err := sqlite.Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := writeConfig(dataDir, appConfig{SetupComplete: true, ZajunaUsername: "qa-user", CredentialsStored: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpsertFichas(context.Background(), []zajuna.Ficha{{ExternalID: "qa-ficha", Name: "Ficha de prueba", CourseID: "qa-course"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(newRouterWithServices(dataDir, &memoryCredentialStore{}, nil, store, nil))
+	defer server.Close()
+
+	runtime := capture.Resolve("")
+	pw, err := runtime.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pw.Stop()
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args:     []string{"--disable-gpu", "--disable-lcd-text", "--font-render-hinting=none"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browser.Close()
+	browserContext, err := browser.NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer browserContext.Close()
+	page, err := browserContext.NewPage()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := page.Goto(server.URL + "/evidencias"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#dashboard-main").WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("evidencias main landmark: %v", err)
+	}
+
+	pageTitle, err := page.Locator("#page-title").TextContent()
+	if err != nil || pageTitle != "Evidencias" {
+		t.Fatalf("unexpected evidencias title %q: %v", pageTitle, err)
+	}
+	eyebrow, err := page.Locator(".page-head .eyebrow").First().TextContent()
+	if err != nil || eyebrow != "Tus evidencias" {
+		t.Fatalf("unexpected evidencias eyebrow %q: %v", eyebrow, err)
+	}
+
+	activeNav, err := page.Locator(`a.sidebar-item.active[href="/evidencias"]`).Count()
+	if err != nil || activeNav != 1 {
+		t.Fatalf("evidencias nav not active: count=%d err=%v", activeNav, err)
+	}
+
+	for _, selector := range []string{".evidence-gallery", "#evidence-group-search", "#evidence-group-filter", ".gallery-summary"} {
+		if err := page.Locator(selector).First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+			t.Fatalf("evidencias missing %s: %v", selector, err)
+		}
+	}
+
+	emptyOrGrid, err := page.Evaluate(`() => {
+		const empty = document.querySelector('.evidence-gallery .empty')
+		const grid = document.querySelector('.evidence-gallery-grid')
+		return {
+			hasEmpty: !!empty,
+			emptyText: empty?.textContent?.trim() || '',
+			hasGrid: !!grid,
+		}
+	}`)
+	if err != nil {
+		t.Fatalf("inspect evidencias gallery: %v", err)
+	}
+	gallery, _ := emptyOrGrid.(map[string]any)
+	if gallery["hasGrid"] != true {
+		t.Fatalf("evidencias gallery grid missing: %#v", emptyOrGrid)
+	}
+	if gallery["hasEmpty"] == true {
+		text := fmt.Sprint(gallery["emptyText"])
+		if text != "Todavía no hay evidencias en esta ficha." && text != "No encontramos grupos con esos filtros." {
+			t.Fatalf("unexpected empty gallery copy: %q", text)
+		}
+	}
+
+	// Configuración → Almacenamiento: ruta de borrado visible sin credenciales reales.
+	// El confirm del navegador se descarta automáticamente sin listener OnDialog.
+	if _, err := page.Goto(server.URL + "/configuracion?tab=storage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := page.Locator("#settings-panel-storage").WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("settings storage panel: %v", err)
+	}
+	clearButton := page.Locator(`button:has-text("Borrar evidencias")`)
+	if err := clearButton.WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible}); err != nil {
+		t.Fatalf("clear evidences control: %v", err)
+	}
+	dialogSeen := false
+	page.OnDialog(func(dialog playwright.Dialog) {
+		dialogSeen = true
+		message := dialog.Message()
+		if message != "¿Borrar todas las evidencias guardadas en este equipo? Esta acción no se puede deshacer." {
+			t.Errorf("unexpected clear dialog: %q", message)
+		}
+		if err := dialog.Dismiss(); err != nil {
+			t.Errorf("dismiss clear dialog: %v", err)
+		}
+	})
+	if err := clearButton.Click(); err != nil {
+		t.Fatalf("click clear evidences: %v", err)
+	}
+	page.WaitForTimeout(200)
+	if !dialogSeen {
+		t.Fatal("expected clear-evidences confirm dialog")
+	}
+	label, err := clearButton.TextContent()
+	if err != nil || label != "Borrar evidencias" {
+		t.Fatalf("clear button should remain idle after dismiss, got %q err=%v", label, err)
+	}
+	selected, err := page.Locator(`#settings-tab-storage[aria-selected='true']`).Count()
+	if err != nil || selected != 1 {
+		t.Fatalf("storage tab should stay selected: count=%d err=%v", selected, err)
+	}
+
+	t.Log("evidencias smoke: gallery=ok clear-path=ok (confirm dismissed)")
+}
