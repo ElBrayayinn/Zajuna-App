@@ -6,10 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
+	"sync"
+	"sync/atomic"
 
 	"github.com/zajuna-app/core/internal/capture"
 	"github.com/zajuna-app/core/internal/checklist"
@@ -17,12 +16,14 @@ import (
 	"github.com/zajuna-app/core/internal/evidence"
 	"github.com/zajuna-app/core/internal/jobs"
 	"github.com/zajuna-app/core/internal/secrets"
-	"github.com/zajuna-app/core/internal/security"
 	"github.com/zajuna-app/core/internal/storage/sqlite"
 	"github.com/zajuna-app/core/internal/zajuna"
 )
 
-const CaptureChecklistWorkerID = "capture-checklist"
+const (
+	CaptureChecklistWorkerID       = "capture-checklist"
+	CaptureChecklistTargetWorkerID = "capture-checklist-target"
+)
 
 type CaptureChecklistInput struct {
 	FichaID      string   `json:"fichaId"`
@@ -52,6 +53,7 @@ type CaptureChecklistWorker struct {
 	mapStore    coursemaps.Store
 	fichaStore  checklistCaptureFichaStore
 	evidence    evidence.Store
+	concurrency int
 }
 
 func NewCaptureChecklistWorker(runtime capture.Runtime, dataDir string, client authenticatedCaptureClient, credentials secrets.Store, mapStore coursemaps.Store, fichaStore checklistCaptureFichaStore, evidenceStore evidence.Store) (*CaptureChecklistWorker, error) {
@@ -65,6 +67,20 @@ func NewCaptureChecklistWorker(runtime capture.Runtime, dataDir string, client a
 }
 
 func (w *CaptureChecklistWorker) ID() string { return CaptureChecklistWorkerID }
+
+// SetConcurrency limits parallel Chromium sessions used by checklist fan-out.
+// Clamped via jobs.ResolveConcurrency (default 2, range 1–4).
+func (w *CaptureChecklistWorker) SetConcurrency(n int) {
+	w.concurrency = jobs.ResolveConcurrency(n)
+}
+
+func (w *CaptureChecklistWorker) fanoutConcurrency() int {
+	if w.concurrency < 1 {
+		return jobs.DefaultConcurrency
+	}
+	return w.concurrency
+}
+
 
 func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, reporter jobs.Reporter) jobs.Result {
 	var input CaptureChecklistInput
@@ -143,131 +159,93 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if err != nil || baseURL.Host == "" {
 		return jobs.Result{ErrorCode: "invalid_zajuna_session", ErrorMessage: "la sesión de Zajuna no tiene un origen válido"}
 	}
-	var browserSession *capture.BrowserSession
-	if strings.EqualFold(baseURL.Hostname(), "zajuna.sena.edu.co") {
-		loginURL := *baseURL
-		loginURL.Path = "/zajuna/login/index.php"
-		loginURL.RawQuery = ""
-		browserSession, err = w.runtime.OpenBrowserSession(ctx, capture.BrowserCredentials{
-			LoginURL:     loginURL.String(),
-			DocumentType: input.DocumentType,
-			Document:     input.Username,
-			Password:     password,
-		})
-		if err != nil {
-			return jobs.Result{Retryable: retryableZajunaError(err) && !errors.Is(err, capture.ErrBlockedPage), ErrorCode: "zajuna_browser_login_failed", ErrorMessage: fmt.Sprintf("no se pudo iniciar sesión en Chromium para el checklist: %v", err)}
-		}
-		defer browserSession.Close()
-	}
+	useBrowser := strings.EqualFold(baseURL.Hostname(), "zajuna.sena.edu.co")
 	ownerName := ""
-	if browserSession != nil && checklist.RequiresInstructorIdentity(targets) {
+	if useBrowser && checklist.RequiresInstructorIdentity(targets) {
 		if err := reporter.Progress(ctx, "identity", 16, "Identificando al instructor autenticado para filtrar foros y anuncios"); err != nil {
 			return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 		}
-		ownerName, err = browserSession.AuthenticatedOwnerName(ctx, record.ProfileURL)
+		identitySession, identityErr := w.openChecklistBrowserSession(ctx, baseURL, input, password)
+		if identityErr != nil {
+			return jobs.Result{Retryable: retryableZajunaError(identityErr) && !errors.Is(identityErr, capture.ErrBlockedPage), ErrorCode: "zajuna_browser_login_failed", ErrorMessage: fmt.Sprintf("no se pudo iniciar sesión en Chromium para el checklist: %v", identityErr)}
+		}
+		ownerName, err = identitySession.AuthenticatedOwnerName(ctx, record.ProfileURL)
+		identitySession.Close()
 		if err != nil {
 			return jobs.Result{ErrorCode: "instructor_identity_unavailable", ErrorMessage: fmt.Sprintf("no se pudo verificar el instructor autenticado: %v", err)}
 		}
 	}
 
-	captured := 0
-	evidenceRecords := 0
-	failed := 0
-	failures := make([]string, 0)
 	targetItemCodes := make(map[string]bool)
 	for _, target := range targets {
 		for _, itemCode := range coveredItemCodes(target) {
 			targetItemCodes[itemCode] = true
 		}
 	}
-	for index, target := range targets {
-		if err := ctx.Err(); err != nil {
-			return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error()}
-		}
-		percent := 18 + ((index * 76) / len(targets))
-		if err := reporter.Progress(ctx, "capture", percent, fmt.Sprintf("Capturando %s · evidencia %d de %d", target.ItemCode, target.SlotNumber, len(targets))); err != nil {
-			return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
-		}
-		parsedTarget, parseErr := security.ValidateHTTPURL(target.URL, []string{baseURL.String()}, false)
-		if parseErr != nil || parsedTarget.Host == "" || parsedTarget.Scheme != baseURL.Scheme || parsedTarget.Host != baseURL.Host {
-			failed++
-			failures = append(failures, target.ItemCode+": origen de URL no permitido")
-			continue
-		}
-		outputPath := filepath.Join(w.dataDir, "evidences", "checklist", safePathPart(input.FichaID), safePathPart(target.ItemCode), fmt.Sprintf("slot-%d.png", target.SlotNumber))
-		var captureResult capture.CaptureResult
-		var captureErr error
-		options := capture.CaptureOptions{Selector: target.CSSSelector, Selectors: target.CSSSelectorFallbacks, RevealSelectors: target.RevealSelectors, HideSelectors: target.HideSelectors, ViewportWidth: target.ViewportWidth, ViewportHeight: target.ViewportHeight, FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: ownerName, RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly}
-		if browserSession != nil {
-			captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
-		} else {
-			cookies := make([]capture.BrowserCookie, 0)
-			for _, cookie := range session.CookiesForURL(target.URL) {
-				converted, convErr := capture.BrowserCookieForTarget(cookie, parsedTarget)
-				if convErr != nil {
-					continue
-				}
-				cookies = append(cookies, converted)
-			}
-			if len(cookies) == 0 {
-				failed++
-				failures = append(failures, target.ItemCode+": sesión sin cookies para la ruta")
-				continue
-			}
-			captureResult, captureErr = w.runtime.CaptureURLWithMetadataAndCookiesAndOptions(ctx, target.URL, outputPath, cookies, options)
-		}
-		if captureErr != nil {
-			failed++
-			if errors.Is(captureErr, capture.ErrLoginPage) {
-				failures = append(failures, target.ItemCode+": sesión de Zajuna expirada o página de login")
-			} else if errors.Is(captureErr, capture.ErrChallengePage) {
-				failures = append(failures, target.ItemCode+": Zajuna pidió CAPTCHA o MFA")
-			} else {
-				failures = append(failures, target.ItemCode+": "+captureErr.Error())
-			}
-			continue
-		}
-		if isZajunaLoginURL(captureResult.FinalURL) {
-			failed++
-			failures = append(failures, target.ItemCode+": Zajuna redirigió a login")
-			continue
-		}
-		if _, finalErr := security.ValidateHTTPURL(captureResult.FinalURL, []string{baseURL.String()}, false); finalErr != nil {
-			failed++
-			failures = append(failures, target.ItemCode+": redirección fuera del origen permitido")
-			continue
-		}
-		hash, hashErr := fileSHA256(outputPath)
-		if hashErr != nil {
-			failed++
-			failures = append(failures, target.ItemCode+": no se pudo calcular el hash")
-			continue
-		}
-		metadata, _ := json.Marshal(map[string]any{
-			"url": security.RedactURL(target.URL), "finalUrl": security.RedactURL(captureResult.FinalURL), "title": security.RedactText(captureResult.Title), "routeKey": target.RouteKey, "reviewStatus": target.ReviewStatus,
-			"selector": captureResult.Selector, "selectorFallbacks": target.CSSSelectorFallbacks, "selectorMatched": captureResult.SelectorMatched,
-			"labelHint": target.LabelHint, "routeKind": target.RouteKind, "groupName": target.GroupName, "revealSelectors": target.RevealSelectors, "hideSelectors": target.HideSelectors, "viewportWidth": target.ViewportWidth, "viewportHeight": target.ViewportHeight, "fullPage": target.FullPage, "phaseSection": target.PhaseSection, "jobId": job.ID,
-			"activityId": target.ActivityID, "activityTitle": target.ActivityTitle, "technical": target.Technical, "ownerOnly": target.OwnerOnly,
-			"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
-		})
-		capturedAt := time.Now().UTC()
-		for _, itemCode := range coveredItemCodes(target) {
-			evidenceID := artifactID("evidence", input.FichaID, itemCode+"#"+strconv.Itoa(target.SlotNumber), "")
-			if err := w.evidence.CreateEvidence(ctx, evidence.Record{
-				ID: evidenceID, FichaID: input.FichaID, ItemCode: itemCode, SlotNumber: target.SlotNumber,
-				Name: target.Name, FilePath: outputPath, Format: "png", Source: "capture-checklist", SHA256: hash,
-				Metadata: metadata, CapturedAt: capturedAt,
-			}); err != nil {
-				failed++
-				failures = append(failures, itemCode+": no se pudo registrar la evidencia")
-				continue
-			}
-			evidenceRecords++
-			_ = reporter.Event(ctx, "evidence_alias_created", "Criterio asociado a la misma captura", map[string]any{"itemCode": itemCode, "slotNumber": target.SlotNumber, "evidenceId": evidenceID, "captureUnitKey": target.RouteKey})
-		}
-		captured++
-		_ = reporter.Event(ctx, "evidence_captured", "Evidencia guardada", map[string]any{"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target), "slotNumber": target.SlotNumber, "selectorMatched": captureResult.SelectorMatched})
+
+	outcomes := make([]targetOutcome, len(targets))
+	var completed int64
+	concurrency := w.fanoutConcurrency()
+	if err := reporter.Progress(ctx, "capture", 18, fmt.Sprintf("Capturando %d evidencias con hasta %d sesiones en paralelo", len(targets), concurrency)); err != nil {
+		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
+
+	// Contiguous FIFO fan-out of target indices. Each in-flight target uses its
+	// own Chromium session when browser auth is required: BrowserSession is not
+	// safe to share across goroutines. Trade-off: up to C parallel logins.
+	var cookieMu sync.Mutex
+	fanoutErr := orderedFanout(ctx, len(targets), concurrency, func(taskCtx context.Context, index int) error {
+		target := targets[index]
+		if err := taskCtx.Err(); err != nil {
+			outcomes[index] = targetOutcome{failure: target.ItemCode + ": captura cancelada"}
+			return err
+		}
+		outcome := w.captureChecklistTarget(taskCtx, checklistTargetParams{
+			JobID:      job.ID,
+			Input:      input,
+			Target:     target,
+			BaseURL:    baseURL,
+			Session:    session,
+			Password:   password,
+			OwnerName:  ownerName,
+			UseBrowser: useBrowser,
+			CookieMu:   &cookieMu,
+		})
+		outcomes[index] = outcome
+		done := int(atomic.AddInt64(&completed, 1))
+		percent := 18 + ((done * 76) / len(targets))
+		_ = reporter.Progress(taskCtx, "capture", percent, fmt.Sprintf("Captura checklist %d de %d", done, len(targets)))
+		if outcome.captured {
+			_ = reporter.Event(taskCtx, "evidence_captured", "Evidencia guardada", map[string]any{
+				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
+				"slotNumber": target.SlotNumber, "index": index,
+			})
+		}
+		return nil
+	})
+	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
+		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error()}
+	}
+	if err := ctx.Err(); err != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error()}
+	}
+
+	captured := 0
+	evidenceRecords := 0
+	failed := 0
+	failures := make([]string, 0)
+	for _, outcome := range outcomes {
+		if outcome.captured {
+			captured++
+			evidenceRecords += outcome.evidenceRecords
+			continue
+		}
+		failed++
+		if outcome.failure != "" {
+			failures = append(failures, outcome.failure)
+		}
+	}
+
 	groupCount := 0
 	if groupStore, ok := w.evidence.(evidence.GroupStore); ok {
 		groups, groupErr := groupStore.RebuildEvidenceGroups(ctx, input.FichaID)

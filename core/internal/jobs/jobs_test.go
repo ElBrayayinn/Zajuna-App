@@ -262,3 +262,104 @@ func TestRuntimeRecoversInterruptedJobsAfterRestart(t *testing.T) {
 	queued, _ := store.GetJob(context.Background(), "job-queued")
 	t.Fatalf("interrupted jobs were not recovered: orphan=%s queued=%s", orphan.Status, queued.Status)
 }
+
+type orderedDemoWorker struct {
+	mu          *sync.Mutex
+	started     *[]int
+	release     chan struct{}
+	firstWindow chan struct{}
+}
+
+func (w orderedDemoWorker) ID() string { return "ordered-demo" }
+
+func (w orderedDemoWorker) Execute(ctx context.Context, job Job, reporter Reporter) Result {
+	var input struct {
+		Index int `json:"index"`
+	}
+	_ = json.Unmarshal(job.Input, &input)
+	w.mu.Lock()
+	*w.started = append(*w.started, input.Index)
+	n := len(*w.started)
+	w.mu.Unlock()
+	if n == 2 {
+		select {
+		case w.firstWindow <- struct{}{}:
+		default:
+		}
+	}
+	select {
+	case <-w.release:
+	case <-ctx.Done():
+		return Result{ErrorCode: "cancelled", ErrorMessage: ctx.Err().Error()}
+	}
+	return Result{Output: map[string]any{"index": input.Index}}
+}
+
+func TestRuntimeSubmitPreservesFIFOStartOrderWithConcurrency2(t *testing.T) {
+	store := newMemoryStore()
+	runtime, err := NewRuntime(store, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	started := make([]int, 0, 6)
+	release := make(chan struct{})
+	firstWindow := make(chan struct{}, 1)
+	worker := orderedDemoWorker{mu: &mu, started: &started, release: release, firstWindow: firstWindow}
+	if err := runtime.Register(worker); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Start(context.Background())
+	defer runtime.Close()
+
+	for i := 0; i < 6; i++ {
+		if _, err := runtime.Submit(context.Background(), "ordered-demo", map[string]int{"index": i}); err != nil {
+			t.Fatalf("submit %d: %v", i, err)
+		}
+	}
+
+	select {
+	case <-firstWindow:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for first concurrency window")
+	}
+	mu.Lock()
+	window := append([]int(nil), started...)
+	mu.Unlock()
+	if len(window) != 2 {
+		t.Fatalf("expected exactly 2 in-flight jobs in the first window, got %#v", window)
+	}
+	seen := map[int]bool{window[0]: true, window[1]: true}
+	if !seen[0] || !seen[1] {
+		t.Fatalf("expected first window to contain indices 0 and 1, got %#v", window)
+	}
+
+	for i := 0; i < 6; i++ {
+		release <- struct{}{}
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		done := len(started) == 6
+		mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(started) != 6 {
+		t.Fatalf("expected 6 starts, got %#v", started)
+	}
+	present := map[int]bool{}
+	for _, index := range started {
+		present[index] = true
+	}
+	for i := 0; i < 6; i++ {
+		if !present[i] {
+			t.Fatalf("missing index %d in start set %#v", i, started)
+		}
+	}
+}
+

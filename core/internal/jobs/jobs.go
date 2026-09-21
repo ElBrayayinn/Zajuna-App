@@ -96,6 +96,15 @@ type Runtime struct {
 	inFlight    map[string]struct{}
 }
 
+
+func queueBufferSize(concurrency int) int {
+	size := concurrency * 4
+	if size < 256 {
+		return 256
+	}
+	return size
+}
+
 func NewRuntime(store Store, concurrency int) (*Runtime, error) {
 	if store == nil {
 		return nil, errors.New("job store is required")
@@ -106,12 +115,14 @@ func NewRuntime(store Store, concurrency int) (*Runtime, error) {
 	return &Runtime{
 		store:       store,
 		workers:     map[string]Worker{},
-		queue:       make(chan string, concurrency*4),
+		queue:       make(chan string, queueBufferSize(concurrency)),
 		concurrency: concurrency,
 		cancels:     map[string]context.CancelFunc{},
 		inFlight:    map[string]struct{}{},
 	}, nil
 }
+
+func (r *Runtime) Concurrency() int { return r.concurrency }
 
 func (r *Runtime) Register(worker Worker) error {
 	if worker == nil || worker.ID() == "" {
