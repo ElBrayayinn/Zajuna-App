@@ -58,6 +58,21 @@ El frontend consume detalle de tarea e historial (`/checklist/:itemCode`),
 timeline de jobs (`/trabajos/:id`), programación local, preferencias de
 captura/avisos, diagnóstico real, centro histórico de notificaciones, gestión
 de backups (incluida retención configurable) y galería plana de miniaturas.
+## Pruebas unitarias (Vitest)
+
+En `frontend/`:
+
+```bash
+npm ci
+npm run test
+```
+
+Cubre helpers puros (`format`, `friendlyError`, `nav`, URLs de descarga de
+evidencias/reportes). El entorno es `node` (CI-friendly); no hace falta
+navegador ni `@testing-library` para esta capa.
+
+## Smoke de navegador (core)
+
 `npm run test:visual:core` verifica la composición de Resumen en desktop,
 tablet y móvil con baselines SHA-256. La deuda restante está documentada en
 `../docs/ui-qa-audit.md` y `../docs/accessibility-audit.md`.
