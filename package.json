@@ -35,12 +35,18 @@
     "test:e2e:zajuna": "powershell -NoProfile -Command \"$env:ZAJUNA_PLAYWRIGHT_DIR=(Join-Path (Get-Location) 'core/bin/playwright'); go -C core test ./cmd/zajuna-core -run TestAuthenticatedZajunaE2E -v\""
   },
   "devDependencies": {
-    "electron": "^37.10.3",
+    "electron": "44.4.3",
     "electron-builder": "^26.0.0"
   },
   "build": {
     "appId": "com.zajuna.app",
     "productName": "Zajuna App",
+    "artifactName": "Zajuna.App-${version}.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "icon": "build/icon.png",
     "files": [
       "desktop/**/*",
       "package.json"
@@ -51,11 +57,27 @@
         "to": "core"
       }
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "medialabctm-hub",
+        "repo": "Zajuna-App"
+      }
+    ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "artifactName": "Zajuna.App.Setup-${version}.${ext}"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "build/icons",
+      "category": "Education"
     }
+  },
+  "dependencies": {
+    "electron-updater": "~6.8.9"
   }
 }

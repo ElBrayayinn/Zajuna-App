@@ -37,7 +37,7 @@ Descarga **solo** el archivo que te entregue el equipo de Medialab / el canal
 oficial. El nombre típico es:
 
 ```text
-Zajuna App Setup 0.1.0.exe
+Zajuna.App.Setup-0.1.0.exe
 ```
 
 El número de versión puede cambiar. Si te pasan también un
@@ -55,7 +55,7 @@ El número de versión puede cambiar. Si te pasan también un
 3. Ejecuta, cambiando el nombre si tu archivo es otro:
 
 ```powershell
-Get-FileHash -Algorithm SHA256 ".\Zajuna App Setup 0.1.0.exe"
+Get-FileHash -Algorithm SHA256 ".\Zajuna.App.Setup-0.1.0.exe"
 ```
 
 4. Compara el valor `Hash` con el `sha256` del manifiesto. Deben coincidir
@@ -69,7 +69,7 @@ Get-FileHash -Algorithm SHA256 ".\Zajuna App Setup 0.1.0.exe"
 
 1. En el Explorador de archivos, ve a Descargas (o la carpeta donde lo
    guardaste).
-2. Doble clic en `Zajuna App Setup ….exe`.
+2. Doble clic en `Zajuna.App.Setup-….exe`.
 3. Windows puede pedir permiso de administrador (**Control de cuentas de
    usuario**). Si el diálogo muestra *Zajuna App*, pulsa **Sí**.
 
@@ -95,7 +95,7 @@ reconocida*. El botón grande suele ser **No ejecutar**.
 1. **Más información** (abajo a la izquierda; en inglés: *More info*).
    Hasta que no pulses eso, no aparece la opción de continuar.
 2. Revisa que el nombre del archivo sea el instalador oficial
-   (`Zajuna App Setup ….exe`).
+   (`Zajuna.App.Setup-….exe`).
 3. **Ejecutar de todas formas** (en inglés: *Run anyway*).
 4. Si pide administrador, **Sí**.
 
@@ -236,16 +236,14 @@ evidencias.
 
 ### Primera ejecución
 
-El artefacto de CI se llama `Zajuna App-<versión>.AppImage` (con espacio).
-Usa comillas o renómbralo a algo sin espacios.
+El artefacto de CI se llama `Zajuna.App-<versión>.AppImage` (sin espacios; puntos en el nombre de producto).
 
 ```bash
 cd ~/Downloads   # o ~/Descargas
 ls -lh
-chmod +x "Zajuna App-0.1.1.AppImage"
-ls -l "Zajuna App-0.1.1.AppImage"      # confirmar el permiso
-./"Zajuna App-0.1.1.AppImage"
-# opcional: mv "Zajuna App-0.1.1.AppImage" ZajunaApp.AppImage
+chmod +x Zajuna.App-0.1.1.AppImage
+ls -l Zajuna.App-0.1.1.AppImage      # confirmar el permiso
+./Zajuna.App-0.1.1.AppImage
 ```
 
 Se recomienda iniciarla con el usuario habitual del sistema, no como root, por
@@ -267,9 +265,9 @@ desde cualquier terminal:
 
 ```bash
 sudo mkdir -p /opt/ZajunaApp
-sudo mv ~/Downloads/"Zajuna App-0.1.1.AppImage" /opt/ZajunaApp/"Zajuna App.AppImage"
-sudo chmod +x /opt/ZajunaApp/"Zajuna App.AppImage"
-sudo ln -sf /opt/ZajunaApp/"Zajuna App.AppImage" /usr/local/bin/zajunaapp
+sudo mv ~/Downloads/Zajuna.App-0.1.1.AppImage /opt/ZajunaApp/Zajuna.App.AppImage
+sudo chmod +x /opt/ZajunaApp/Zajuna.App.AppImage
+sudo ln -sf /opt/ZajunaApp/Zajuna.App.AppImage /usr/local/bin/zajunaapp
 ```
 
 Después se inicia con `zajunaapp` desde cualquier carpeta.
@@ -280,8 +278,8 @@ Reemplaza el archivo conservando el mismo nombre y repite el permiso de
 ejecución:
 
 ```bash
-sudo cp "Zajuna App-0.1.1.AppImage" /opt/ZajunaApp/"Zajuna App.AppImage"
-sudo chmod +x /opt/ZajunaApp/"Zajuna App.AppImage"
+sudo cp Zajuna.App-0.1.1.AppImage /opt/ZajunaApp/Zajuna.App.AppImage
+sudo chmod +x /opt/ZajunaApp/Zajuna.App.AppImage
 ```
 
 ### Solución de problemas comunes
@@ -289,8 +287,8 @@ sudo chmod +x /opt/ZajunaApp/"Zajuna App.AppImage"
 **"Permission denied" al ejecutar** — falta el permiso de ejecución:
 
 ```bash
-chmod +x "Zajuna App-0.1.1.AppImage"
-./"Zajuna App-0.1.1.AppImage"
+chmod +x Zajuna.App-0.1.1.AppImage
+./Zajuna.App-0.1.1.AppImage
 ```
 
 **`dlopen(): error loading libfuse.so.2` al ejecutar** — el runtime del
@@ -301,7 +299,7 @@ Kali 2026.3, MDL-123). No hay paquete que instalar para resolverlo en Kali:
 usa la extracción temporal, que no depende de FUSE (detalle en [`packaging/linux-kali-fuse2.md`](packaging/linux-kali-fuse2.md)):
 
 ```bash
-./"Zajuna App-0.1.1.AppImage" --appimage-extract-and-run
+./Zajuna.App-0.1.1.AppImage --appimage-extract-and-run
 ```
 
 En otras distribuciones que sí ofrezcan `libfuse2`/`libfuse2t64`, instalarla
@@ -317,6 +315,23 @@ arquitectura, el mensaje exacto de la terminal y los pasos previos. Nunca
 incluyas credenciales, tokens ni información sensible.
 
 ---
+
+
+---
+
+## Actualizaciones automáticas (escritorio)
+
+En builds empaquetados, Electron comprueba GitHub Releases
+(`medialabctm-hub/Zajuna-App`) después de arrancar el core. La descarga ocurre
+en segundo plano y la instalación se aplica **al cerrar** la app (no se fuerza
+un reinicio a mitad de una captura).
+
+**Windows sin firma Authenticode:** SmartScreen o la política del equipo pueden
+bloquear la descarga o la aplicación del parche. CSC/Authenticode sigue siendo
+**opcional** en el pipeline; sin certificado, el auto-update puede fallar y eso
+queda en el log (`%APPDATA%\zajuna-app\logs\zajuna-core.log`). Mientras no haya
+firma (MDL-29), la vía segura es descargar el instalador oficial y comprobar el
+SHA256 del manifiesto.
 
 ## Relación con otras tareas
 
