@@ -60,6 +60,7 @@ func main() {
 	port := flag.String("port", os.Getenv("ZAJUNA_PORT"), "Puerto local; usa 0 para elegir uno libre")
 	noBrowser := flag.Bool("no-browser", os.Getenv("ZAJUNA_NO_BROWSER") == "1", "No abrir el navegador automáticamente")
 	endpointFile := flag.String("endpoint-file", "", "Archivo donde se publica el endpoint local")
+	jobsConcurrency := flag.String("jobs-concurrency", os.Getenv("ZAJUNA_JOBS_CONCURRENCY"), "Workers concurrentes del runtime de jobs (1–4; default 2)")
 	flag.Parse()
 	if *port == "" {
 		*port = "0"
@@ -101,10 +102,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("no se pudo configurar el cliente de Zajuna: %v", err)
 	}
-	jobRuntime, err := jobs.NewRuntime(localStore, 2)
+	concurrency := jobs.ResolveConcurrencyFromString(*jobsConcurrency, jobs.DefaultConcurrency)
+	jobRuntime, err := jobs.NewRuntime(localStore, concurrency)
 	if err != nil {
 		log.Fatalf("no se pudo crear el runtime de jobs: %v", err)
 	}
+	log.Printf("runtime de jobs con concurrencia %d", concurrency)
 	syncWorker, err := workers.NewSyncFichasWorker(zajunaClient, secrets.SystemStore{}, localStore)
 	if err != nil {
 		log.Fatalf("no se pudo registrar SyncFichasWorker: %v", err)
