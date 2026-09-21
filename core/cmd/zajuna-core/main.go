@@ -141,8 +141,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("no se pudo crear CaptureChecklistWorker: %v", err)
 	}
+	checklistCaptureWorker.SetConcurrency(concurrency)
 	if err := jobRuntime.Register(checklistCaptureWorker); err != nil {
 		log.Fatalf("no se pudo registrar CaptureChecklistWorker: %v", err)
+	}
+	checklistTargetWorker, err := workers.NewCaptureChecklistTargetWorker(checklistCaptureWorker)
+	if err != nil {
+		log.Fatalf("no se pudo crear CaptureChecklistTargetWorker: %v", err)
+	}
+	if err := jobRuntime.Register(checklistTargetWorker); err != nil {
+		log.Fatalf("no se pudo registrar CaptureChecklistTargetWorker: %v", err)
 	}
 	htmlCaptureWorker, err := workers.NewCaptureEvidenceWorker(dataDir, localStore, zajuna.DefaultBaseURL)
 	if err != nil {
