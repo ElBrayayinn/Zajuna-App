@@ -46,3 +46,12 @@ paso «Verify Windows Authenticode» se omite (`HAS_CSC_LINK != true`). El insta
 sin firma no debe publicarse a canal amplio (SmartScreen).
 
 No se generan firmas falsas ni se simula Authenticode en CI.
+
+## Auto-update y firma
+
+`electron-updater` usa el proveedor GitHub Releases del mismo repositorio. Sin
+`CSC_LINK` / Authenticode, Windows puede bloquear la descarga o la aplicación del
+update (SmartScreen). Eso no es un fallo del pipeline: la firma sigue siendo
+opcional; documenta el bloqueo y publica el instalador firmado cuando exista
+certificado (MDL-29).
+

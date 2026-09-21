@@ -307,6 +307,63 @@ async function stopCore() {
   return stopCorePromise;
 }
 
+
+function setupAutoUpdater() {
+  // Packaged builds only. Dev runs stay on the local Electron binary and never
+  // talk to GitHub Releases. CSC/Authenticode remains optional: unsigned
+  // Windows installs may fail the download/apply step (SmartScreen / code
+  // integrity); we log and continue so the launcher still works.
+  if (!app.isPackaged || process.env.ZAJUNA_DISABLE_AUTO_UPDATE === '1') {
+    return;
+  }
+
+  let autoUpdater;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (error) {
+    void appendCoreLog(`[updater] electron-updater no disponible: ${error.message}\n`);
+    return;
+  }
+
+  // Download in the background; install only when the app quits. This is a
+  // silent launcher (no BrowserWindow / no in-app prompt), so forcing
+  // quitAndInstall mid-session would interrupt the core and any capture work.
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
+
+  autoUpdater.on('checking-for-update', () => {
+    void appendCoreLog('[updater] Comprobando actualizaciones (GitHub Releases)…\n');
+  });
+  autoUpdater.on('update-available', (info) => {
+    void appendCoreLog(`[updater] Actualización disponible: ${info.version}\n`);
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    void appendCoreLog(`[updater] Sin actualizaciones (actual ${info.version}).\n`);
+  });
+  autoUpdater.on('error', (error) => {
+    void appendCoreLog(
+      `[updater] Error al actualizar: ${error.message}. ` +
+        'En Windows sin firma Authenticode SmartScreen puede bloquear la descarga/aplicación; ' +
+        'CSC_LINK sigue siendo opcional.\n',
+    );
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Number.isFinite(progress.percent) ? progress.percent.toFixed(1) : '?';
+    void appendCoreLog(`[updater] Descarga ${pct}%\n`);
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    void appendCoreLog(
+      `[updater] Actualización ${info.version} descargada. ` +
+        'Se instalará al cerrar la aplicación (no se fuerza el cierre ahora).\n',
+    );
+  });
+
+  void autoUpdater.checkForUpdates().catch((error) => {
+    void appendCoreLog(`[updater] checkForUpdates falló: ${error.message}\n`);
+  });
+}
+
 if (!hasSingleInstanceLock) {
   app.exit(0);
 } else {
@@ -323,6 +380,7 @@ if (!hasSingleInstanceLock) {
     try {
       coreEndpoint = await startCore();
       await openExternalBrowser(coreEndpoint.url);
+      setupAutoUpdater();
     } catch (error) {
       await appendCoreLog(`[launcher] No se pudo iniciar Zajuna App: ${error.message}\n`);
       await stopCore();

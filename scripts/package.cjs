@@ -66,14 +66,23 @@ if (!fs.existsSync(playwrightSource)) {
 fs.cpSync(playwrightSource, path.join(stagingDir, 'playwright'), { recursive: true });
 
 const configPath = path.join(projectRoot, 'tmp', `electron-builder.${targetId}.cjs`);
+const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+const build = packageJson.build || {};
 const config = {
-  appId: 'com.zajuna.app',
-  productName: 'Zajuna App',
-  files: ['desktop/**/*', 'package.json'],
+  appId: build.appId || 'com.zajuna.app',
+  productName: build.productName || 'Zajuna App',
+  artifactName: build.artifactName || 'Zajuna.App-${version}.${ext}',
+  files: build.files || ['desktop/**/*', 'package.json'],
   extraResources: [{ from: path.relative(projectRoot, stagingDir).replaceAll(path.sep, '/'), to: 'core' }],
-  directories: { output: 'dist' },
-  win: { target: 'nsis' },
-  linux: { target: 'AppImage' },
+  directories: {
+    output: 'dist',
+    buildResources: build.directories?.buildResources || 'build',
+  },
+  icon: build.icon || 'build/icon.png',
+  publish: build.publish,
+  nsis: build.nsis || { artifactName: 'Zajuna.App.Setup-${version}.${ext}' },
+  win: { ...(build.win || {}), target: 'nsis' },
+  linux: { ...(build.linux || {}), target: 'AppImage' },
 };
 // electron-builder's JSON config can't carry a function, and afterPack (the
 // Linux --no-sandbox/--ozone-platform wrapper, see linux-no-sandbox-wrapper.cjs)

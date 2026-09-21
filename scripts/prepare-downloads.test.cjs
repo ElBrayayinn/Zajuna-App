@@ -10,7 +10,7 @@ function testForbidsBypassLanguage() {
     productName: 'Zajuna App',
     version: '0.1.0',
     signed: false,
-    artifacts: [{ file: 'Zajuna App Setup 0.1.0.exe', size: 346000000, sha256: 'abc123' }],
+    artifacts: [{ file: 'Zajuna.App.Setup-0.1.0.exe', size: 346000000, sha256: 'abc123' }],
   });
   for (const phrase of BYPASS_PHRASES) {
     assert.equal(html.toLowerCase().includes(phrase.toLowerCase()), false, `found bypass phrase: ${phrase}`);
