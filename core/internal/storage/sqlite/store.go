@@ -1839,7 +1839,7 @@ func (s *Store) CreateEvidence(ctx context.Context, record evidence.Record) erro
 				return fmt.Errorf("update current evidence: %w", err)
 			}
 			if existingPath != "" && existingPath != record.FilePath {
-				_ = os.Remove(existingPath)
+				s.removeEvidenceFileIfUnreferenced(ctx, existingPath)
 			}
 			if err := s.enforceMaxEvidences(ctx, record.FichaID, record.ItemCode); err != nil {
 				return err
@@ -1922,9 +1922,19 @@ func (s *Store) DeleteEvidence(ctx context.Context, id string) (evidence.Record,
 		return evidence.Record{}, sql.ErrNoRows
 	}
 	if item.FilePath != "" {
-		_ = os.Remove(item.FilePath)
+		s.removeEvidenceFileIfUnreferenced(ctx, item.FilePath)
 	}
 	return item, nil
+}
+
+// removeEvidenceFileIfUnreferenced preserves screenshots used by aliases or
+// other checklist items. Evidence rows intentionally share a file when one
+// capture covers more than one criterion.
+func (s *Store) removeEvidenceFileIfUnreferenced(ctx context.Context, path string) {
+	var remaining int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM evidences WHERE file_path = ?`, path).Scan(&remaining); err == nil && remaining == 0 {
+		_ = os.Remove(path)
+	}
 }
 
 func (s *Store) CreateReport(ctx context.Context, record reports.Record) error {

@@ -11,6 +11,8 @@ import {
   friendlyJobType,
   jobStatusClass,
 } from '../lib/format'
+import { explainJobFailure } from '../lib/jobFailure'
+import { FailureGuide } from '../components/FailureGuide'
 import type { JobEvent } from '../types'
 
 function eventLabel(event: JobEvent) {
@@ -77,6 +79,7 @@ export function JobDetail() {
 
   const progress = Math.max(0, Math.min(100, Number(job.progress) || 0))
   const canCancel = ['queued', 'running', 'waiting_user', 'retrying'].includes(job.status)
+  const failedOrCancelled = job.status === 'failed' || job.status === 'cancelled'
   const events = eventsQuery.data || []
 
   function handleCancel() {
@@ -117,7 +120,9 @@ export function JobDetail() {
             </div>
             <strong>{progress}%</strong>
           </div>
-          <p className="job-detail-message">{friendlyJobMessage(job.message || job.stage)}</p>
+          <p className="job-detail-message">
+            {failedOrCancelled ? explainJobFailure(job).title : friendlyJobMessage(job.message || job.stage)}
+          </p>
 
           <div className="job-detail-meta">
             <span><b>Etapa</b>{friendlyJobStage(job.stage)}</span>
@@ -125,7 +130,7 @@ export function JobDetail() {
             <span><b>Finalizado</b>{formatDate(job.finishedAt)}</span>
           </div>
 
-          {job.errorMessage ? <div className="job-detail-error" role="alert">{friendlyJobMessage(job.errorMessage)}</div> : null}
+          {failedOrCancelled ? <FailureGuide job={job} showDismiss={job.status === 'failed'} /> : null}
 
           <div className="job-detail-actions">
             {canCancel ? (

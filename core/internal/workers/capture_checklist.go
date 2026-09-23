@@ -132,6 +132,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	} else {
 		targets = checklist.ApplyRouteReviews(targets, nil)
 	}
+	plannedTargets := targets
 	targets = filterCaptureTargets(targets, input.ItemCodes)
 	if input.MaxTargets > 0 && len(targets) > input.MaxTargets {
 		targets = targets[:input.MaxTargets]
@@ -220,6 +221,11 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
 				"slotNumber": target.SlotNumber, "index": index,
 			})
+		} else if outcome.skipped {
+			_ = reporter.Event(taskCtx, "evidence_skipped", "Lote de filas vacío: espacio no necesario", map[string]any{
+				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
+				"slotNumber": target.SlotNumber, "index": index,
+			})
 		}
 		return nil
 	})
@@ -230,19 +236,19 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error()}
 	}
 
-	captured := 0
-	evidenceRecords := 0
-	failed := 0
-	failures := make([]string, 0)
-	for _, outcome := range outcomes {
-		if outcome.captured {
-			captured++
-			evidenceRecords += outcome.evidenceRecords
-			continue
+	tally := tallyTargetOutcomes(outcomes)
+	captured, skipped, failed, evidenceRecords, failures := tally.captured, tally.skipped, tally.failed, tally.evidenceRecords, tally.failures
+
+	prunedEvidences := 0
+	if pruneStore, ok := w.evidence.(captureChecklistPruneStore); ok {
+		itemCodes, keep := captureChecklistPrunePlan(plannedTargets, targets, outcomes)
+		pruned, pruneErr := pruneStore.PruneCaptureChecklistEvidence(ctx, input.FichaID, itemCodes, keep)
+		if pruneErr != nil {
+			return jobs.Result{ErrorCode: "evidence_prune_failed", ErrorMessage: fmt.Sprintf("no se pudieron retirar las evidencias obsoletas: %v", pruneErr), Retryable: true}
 		}
-		failed++
-		if outcome.failure != "" {
-			failures = append(failures, outcome.failure)
+		prunedEvidences = pruned
+		if pruned > 0 {
+			_ = reporter.Event(ctx, "evidence_pruned", "Evidencias obsoletas retiradas", map[string]any{"fichaId": input.FichaID, "pruned": pruned})
 		}
 	}
 
@@ -255,11 +261,16 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		groupCount = len(groups)
 		_ = reporter.Event(ctx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
 	}
-	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d con error", captured, failed)); err != nil {
+	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
 	if failed > 0 {
-		message := fmt.Sprintf("captura incompleta: %d guardadas, %d con error", captured, failed)
+		message := fmt.Sprintf("captura incompleta: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)
+		// Sin Output en un fallo, el mensaje es lo único que llega a la UI:
+		// listamos todos los ítems afectados, no solo el primero.
+		if codes := failedItemCodes(failures); len(codes) > 0 {
+			message += " (ítems " + strings.Join(codes, ", ") + ")"
+		}
 		if len(failures) > 0 {
 			message += ". Primer error: " + failures[0]
 		}
@@ -267,9 +278,112 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 	return jobs.Result{Output: map[string]any{
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
-		"failed": failed, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
+		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
 		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
 	}}
+}
+
+// captureChecklistPruneStore is optional (like evidence.GroupStore) so test
+// doubles and older stores keep working without stale-evidence pruning.
+type captureChecklistPruneStore interface {
+	PruneCaptureChecklistEvidence(ctx context.Context, fichaID string, itemCodes []string, keep map[string]map[int]bool) (int, error)
+}
+
+type targetOutcomeTally struct {
+	captured, skipped, failed, evidenceRecords int
+	failures                                   []string
+}
+
+// tallyTargetOutcomes aggregates fan-out results. Skipped slots (empty row
+// batches) are neither captured nor failed.
+func tallyTargetOutcomes(outcomes []targetOutcome) targetOutcomeTally {
+	tally := targetOutcomeTally{failures: make([]string, 0)}
+	for _, outcome := range outcomes {
+		switch {
+		case outcome.captured:
+			tally.captured++
+			tally.evidenceRecords += outcome.evidenceRecords
+		case outcome.skipped:
+			tally.skipped++
+		default:
+			tally.failed++
+			if outcome.failure != "" {
+				tally.failures = append(tally.failures, outcome.failure)
+			}
+		}
+	}
+	return tally
+}
+
+// captureChecklistPrunePlan returns the item codes covered by the executed
+// targets and, per item, the slots whose evidence must survive: captured
+// slots (fresh evidence), failed slots (previous evidence is kept) and slots
+// of the full plan that this run did not execute (filtered out by itemCodes
+// or cut by maxTargets). Skipped slots (empty row batches) and slots no longer
+// in the plan are left out, so their evidence is pruned.
+func captureChecklistPrunePlan(planned, executed []checklist.CaptureTarget, outcomes []targetOutcome) ([]string, map[string]map[int]bool) {
+	keep := make(map[string]map[int]bool)
+	mark := func(target checklist.CaptureTarget) {
+		for _, itemCode := range coveredItemCodes(target) {
+			if keep[itemCode] == nil {
+				keep[itemCode] = make(map[int]bool)
+			}
+			keep[itemCode][normalizedSlot(target.SlotNumber)] = true
+		}
+	}
+	executedKeys := make(map[string]bool, len(executed))
+	for _, target := range executed {
+		executedKeys[captureTargetSlotKey(target)] = true
+	}
+	for _, target := range planned {
+		if !executedKeys[captureTargetSlotKey(target)] {
+			mark(target)
+		}
+	}
+	seen := make(map[string]bool)
+	itemCodes := make([]string, 0)
+	for index, target := range executed {
+		for _, itemCode := range coveredItemCodes(target) {
+			if !seen[itemCode] {
+				seen[itemCode] = true
+				itemCodes = append(itemCodes, itemCode)
+			}
+		}
+		if index < len(outcomes) && outcomes[index].skipped {
+			continue
+		}
+		mark(target)
+	}
+	return itemCodes, keep
+}
+
+func captureTargetSlotKey(target checklist.CaptureTarget) string {
+	return target.ItemCode + "#" + fmt.Sprint(normalizedSlot(target.SlotNumber))
+}
+
+// normalizedSlot mirrors the store, which persists slot numbers below 1 as 1.
+func normalizedSlot(slot int) int {
+	if slot < 1 {
+		return 1
+	}
+	return slot
+}
+
+// failedItemCodes extracts the unique "<itemCode>" prefix of each
+// "<itemCode>: <detalle>" failure, preserving capture order.
+func failedItemCodes(failures []string) []string {
+	seen := make(map[string]bool, len(failures))
+	codes := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		code, _, found := strings.Cut(failure, ":")
+		code = strings.TrimSpace(code)
+		if !found || code == "" || strings.Contains(code, " ") || seen[code] {
+			continue
+		}
+		seen[code] = true
+		codes = append(codes, code)
+	}
+	return codes
 }
 
 func captureRequiresActivitySelection(itemCodes []string) bool {

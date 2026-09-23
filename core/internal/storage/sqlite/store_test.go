@@ -275,7 +275,7 @@ func TestEvidenceGroupsShareEquivalentPageSignatures(t *testing.T) {
 	metadata := json.RawMessage(`{"finalUrl":"https://zajuna.sena.edu.co/zajuna/user/profile.php?id=7","selector":"#page-user-profile","selectorMatched":true,"groupName":"perfil_instructor"}`)
 	for _, record := range []evidence.Record{
 		{ID: "profile-1", FichaID: fichaID, ItemCode: "2.1.1", SlotNumber: 1, Name: "Perfil académico", FilePath: "profile-1.png", Format: "png", Source: "capture-checklist", SHA256: "hash-one", Metadata: metadata},
-		{ID: "profile-2", FichaID: fichaID, ItemCode: "2.1.2", SlotNumber: 1, Name: "Correo institucional", FilePath: "profile-2.png", Format: "png", Source: "capture-checklist", SHA256: "hash-two", Metadata: metadata},
+		{ID: "profile-2", FichaID: fichaID, ItemCode: "2.1.2", SlotNumber: 1, Name: "Correo institucional", FilePath: "profile-2.png", Format: "png", Source: "capture-checklist", SHA256: "hash-one", Metadata: metadata},
 		{ID: "course-1", FichaID: fichaID, ItemCode: "4.1", SlotNumber: 1, Name: "Menú del curso", FilePath: "course.png", Format: "png", Source: "capture-checklist", SHA256: "hash-three", Metadata: json.RawMessage(`{"finalUrl":"https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080","selector":"#region-main .course-content","selectorMatched":true,"groupName":"menu_curso"}`)},
 	} {
 		if err := store.CreateEvidence(context.Background(), record); err != nil {
@@ -296,7 +296,7 @@ func TestEvidenceGroupsShareEquivalentPageSignatures(t *testing.T) {
 			profileGroup = &groups[index]
 		}
 	}
-	if profileGroup == nil || profileGroup.Confidence != "suggested" || len(profileGroup.Evidences) != 2 {
+	if profileGroup == nil || profileGroup.Confidence != "exact" || len(profileGroup.Evidences) != 2 {
 		t.Fatalf("profile evidence was not grouped: %#v", groups)
 	}
 	loaded, err := store.ListEvidenceGroups(context.Background(), fichaID)

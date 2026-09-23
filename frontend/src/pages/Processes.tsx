@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { PageError, PageSkeleton } from '../components/AsyncState'
 import { useJobs } from '../hooks/api'
 import { friendlyJobMessage, friendlyJobStatus, friendlyJobType, jobStatusClass } from '../lib/format'
+import { explainJobFailure } from '../lib/jobFailure'
 import type { Job, JobStatus } from '../types'
 
 type JobFilterValue = 'all' | 'running' | 'queued' | 'waiting_user' | 'retrying' | 'completed' | 'failed' | 'cancelled'
@@ -35,7 +36,11 @@ function JobRow({ job }: { job: Job }) {
           {status}
         </span>
       </div>
-      <small>{friendlyJobMessage(job.message || job.stage)} · {progress}%</small>
+      <small>
+        {job.status === 'failed' || job.status === 'cancelled'
+          ? `${explainJobFailure(job).title}. Abre el detalle para ver qué hacer.`
+          : `${friendlyJobMessage(job.message || job.stage)} · ${progress}%`}
+      </small>
       <div className={`progress${isRunning ? ' running' : ''}`}>
         <i style={{ width: `${progress}%` }} />
       </div>
@@ -114,7 +119,7 @@ export function Processes() {
             <div className="route-note"><strong>Necesita tu revisión:</strong> la aplicación encontró una decisión que no debe resolver sola; abre el detalle y confirma o corrige.</div>
             <div className="route-note"><strong>Reintentando:</strong> hubo un fallo temporal y el proceso volverá a intentarlo automáticamente.</div>
             <div className="route-note"><strong>Listo:</strong> el resultado quedó guardado en este equipo y puedes revisar sus evidencias o reportes.</div>
-            <div className="route-note"><strong>Fallido:</strong> el trabajo terminó sin completar todo. Abre “Ver detalle” para conocer el primer error y el siguiente paso.</div>
+            <div className="route-note"><strong>Fallido:</strong> el trabajo terminó sin completar todo. Abre “Ver detalle”: te explicamos qué pasó, qué hacer y te damos el botón para resolverlo. Un fallo se da por resuelto cuando el mismo proceso vuelve a terminar bien.</div>
           </div>
         </div>
       </section>

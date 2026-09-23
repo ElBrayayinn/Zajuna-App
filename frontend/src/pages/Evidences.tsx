@@ -25,6 +25,56 @@ interface GroupConfidence {
 
 const EMPTY_GROUPS: EvidenceGroup[] = []
 
+/** A unique visual content (same bytes or same file) and every row that uses it. */
+export interface EvidenceContent {
+  key: string
+  evidence: Evidence
+  evidenceIds: string[]
+  itemCodes: string[]
+}
+
+function evidenceContentKey(evidence: Evidence): string {
+  const hash = String(evidence.sha256 || '').trim().toLowerCase()
+  if (hash) return `hash:${hash}`
+  const path = String(evidence.filePath || '').trim().replace(/\\/g, '/').toLowerCase()
+  if (path) return `path:${path}`
+  return `id:${evidence.id}`
+}
+
+function compareItemCodes(left: string, right: string) {
+  return left.localeCompare(right, 'es', { numeric: true })
+}
+
+/**
+ * Collapses evidence rows that point to identical content (same SHA-256, or
+ * same file path when the hash is missing) so each image is shown once, while
+ * keeping the list of checklist items it covers. Order of first appearance is
+ * preserved.
+ */
+// oxlint-disable-next-line react/only-export-components
+export function dedupeEvidencesByContent(evidences: Evidence[]): EvidenceContent[] {
+  const byKey = new Map<string, EvidenceContent>()
+  for (const evidence of evidences) {
+    if (!evidence?.id) continue
+    const key = evidenceContentKey(evidence)
+    let entry = byKey.get(key)
+    if (!entry) {
+      entry = { key, evidence, evidenceIds: [], itemCodes: [] }
+      byKey.set(key, entry)
+    }
+    if (!entry.evidenceIds.includes(evidence.id)) entry.evidenceIds.push(evidence.id)
+    const code = String(evidence.itemCode || '').trim()
+    if (code && !entry.itemCodes.includes(code)) entry.itemCodes.push(code)
+  }
+  const result = [...byKey.values()]
+  result.forEach((entry) => entry.itemCodes.sort(compareItemCodes))
+  return result
+}
+
+function usedInLabel(itemCodes: string[]) {
+  return `Usada en ${itemCodes.length} ítem${itemCodes.length === 1 ? '' : 's'}`
+}
+
 function groupConfidence(value?: string): GroupConfidence {
   const raw = String(value || '').toLowerCase()
   if (raw.includes('manual')) return { key: 'manual', label: 'Agregada por ti' }
@@ -70,6 +120,8 @@ export function Evidences() {
     })
   }, [groups])
   const flatEvidences = evidences?.length ? evidences : groupedEvidences
+  // Byte-identical captures shared by several ítems are shown once.
+  const uniqueContents = useMemo(() => dedupeEvidencesByContent(flatEvidences), [flatEvidences])
 
   if (dashboardQuery.isLoading) return <PageSkeleton label="Cargando galería de evidencias" />
   if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
@@ -140,12 +192,13 @@ export function Evidences() {
     }
   }
 
-  const previewIndex = preview ? flatEvidences.findIndex((evidence) => evidence.id === preview.id) : -1
+  const previewIndex = preview ? uniqueContents.findIndex((content) => content.evidenceIds.includes(preview.id)) : -1
+  const previewContent = previewIndex >= 0 ? uniqueContents[previewIndex] : undefined
   const showPrevious = () => {
-    if (previewIndex > 0) setPreview(flatEvidences[previewIndex - 1])
+    if (previewIndex > 0) setPreview(uniqueContents[previewIndex - 1].evidence)
   }
   const showNext = () => {
-    if (previewIndex >= 0 && previewIndex < flatEvidences.length - 1) setPreview(flatEvidences[previewIndex + 1])
+    if (previewIndex >= 0 && previewIndex < uniqueContents.length - 1) setPreview(uniqueContents[previewIndex + 1].evidence)
   }
 
   return (
@@ -166,7 +219,8 @@ export function Evidences() {
           onPreview={setPreview}
         />
         <EvidenceMiniatures
-          evidences={flatEvidences}
+          contents={uniqueContents}
+          totalRows={flatEvidences.length}
           selectedIds={selectedEvidenceIds}
           onSelectionChange={setSelectedEvidenceIds}
           onPreview={setPreview}
@@ -241,7 +295,7 @@ export function Evidences() {
           </div>
         </section>
       </aside>
-      {preview && <PreviewModal evidence={preview} index={previewIndex} total={flatEvidences.length} onPrevious={showPrevious} onNext={showNext} onClose={() => setPreview(null)} onDelete={handleDelete} />}
+      {preview && <PreviewModal evidence={preview} sharedItemCodes={previewContent?.itemCodes || []} index={previewIndex} total={uniqueContents.length} onPrevious={showPrevious} onNext={showNext} onClose={() => setPreview(null)} onDelete={handleDelete} />}
     </div>
   )
 }
@@ -262,16 +316,19 @@ interface EvidenceGalleryProps {
 }
 
 function EvidenceMiniatures({
-  evidences,
+  contents,
+  totalRows,
   selectedIds,
   onSelectionChange,
   onPreview,
 }: {
-  evidences: Evidence[]
+  contents: EvidenceContent[]
+  totalRows: number
   selectedIds: Set<string>
   onSelectionChange: (ids: Set<string>) => void
   onPreview: (evidence: Evidence) => void
 }) {
+  const evidences = contents.map((content) => content.evidence)
   const toggle = (id: string) => {
     const next = new Set(selectedIds)
     if (next.has(id)) next.delete(id)
@@ -296,7 +353,10 @@ function EvidenceMiniatures({
           <span className="badge">{selectedIds.size} seleccionadas</span>
         </div>
         <div className="miniature-toolbar">
-          <span className="helper">{evidences.length} archivos en esta ficha</span>
+          <span className="helper">
+            {evidences.length} imagen{evidences.length === 1 ? '' : 'es'} única{evidences.length === 1 ? '' : 's'}
+            {totalRows > evidences.length ? ` (${totalRows} registros de evidencia)` : ''}
+          </span>
           <div className="inline">
             <button className="button ghost small" type="button" onClick={selectAll} disabled={!evidences.length}>Seleccionar todas</button>
             <button className="button ghost small" type="button" onClick={clearAll} disabled={!selectedIds.size}>Limpiar</button>
@@ -304,12 +364,13 @@ function EvidenceMiniatures({
         </div>
         {evidences.length ? (
           <div className="evidence-miniature-grid">
-            {evidences.map((evidence) => {
+            {contents.map(({ key, evidence, itemCodes }) => {
               const format = String(evidence.format || '').toLowerCase()
               const image = format.includes('png') || format.includes('jpg') || format.includes('jpeg') || format.includes('webp')
               const selected = selectedIds.has(evidence.id)
+              const shared = itemCodes.length > 1
               return (
-                <article key={evidence.id} className={`evidence-miniature${selected ? ' selected' : ''}`}>
+                <article key={key} className={`evidence-miniature${selected ? ' selected' : ''}`}>
                   <button
                     className="evidence-miniature-select"
                     type="button"
@@ -324,6 +385,13 @@ function EvidenceMiniatures({
                     <span className="evidence-miniature-copy">
                       <strong>{evidence.name || 'Evidencia local'}</strong>
                       <small>{String(evidence.format || 'archivo').toUpperCase()} · {formatDate(evidence.capturedAt)}</small>
+                      {shared ? (
+                        <span className="badge" title={`Ítems: ${itemCodes.join(', ')}`}>
+                          {usedInLabel(itemCodes)}: {itemCodes.join(', ')}
+                        </span>
+                      ) : itemCodes.length === 1 ? (
+                        <small className="mono">Ítem {itemCodes[0]}</small>
+                      ) : null}
                     </span>
                   </button>
                   <button className="evidence-miniature-open" type="button" onClick={() => onPreview(evidence)}>Vista previa</button>
@@ -376,7 +444,7 @@ function EvidenceGallery({
     return (filter === 'all' || confidence === filter) && (!normalizedQuery || haystack.includes(normalizedQuery)) && formatOk
   })
 
-  const total = matches.reduce((sum, group) => sum + (group.evidences?.length || 0), 0)
+  const total = dedupeEvidencesByContent(matches.flatMap((group) => group.evidences ?? [])).length
   const visible = expanded ? matches : matches.slice(0, 6)
 
   return (
@@ -387,7 +455,7 @@ function EvidenceGallery({
             <div className="eyebrow">Evidencias organizadas</div>
             <h3 style={{ marginTop: 7 }}>Galería de evidencias</h3>
             <p className="helper" style={{ marginTop: 6 }}>
-              Agrupamos archivos que muestran la misma sección para evitar repeticiones en tu reporte.
+              Agrupamos las imágenes idénticas (aunque cubran varios ítems) para que cada una aparezca una sola vez en tu reporte.
             </p>
           </div>
           <button className="button ghost small" type="button" disabled={rebuilding} onClick={onRebuild}>
@@ -432,7 +500,7 @@ function EvidenceGallery({
         ) : null}
         <div className="gallery-summary">
           <div className="gallery-summary-stat"><strong>{matches.length}</strong><span>grupos visibles</span></div>
-          <div className="gallery-summary-stat"><strong>{total}</strong><span>archivos relacionados</span></div>
+          <div className="gallery-summary-stat"><strong>{total}</strong><span>imágenes únicas</span></div>
           <div className="gallery-summary-stat"><strong>{groups.length}</strong><span>grupos totales</span></div>
         </div>
         <div className="evidence-gallery-grid">
@@ -468,17 +536,21 @@ function EvidenceGroupCard({ group, onPreview }: { group: EvidenceGroup; onPrevi
   const evidences = group.evidences ?? []
   const evidence = evidences[0]
   const confidence = groupConfidence(group.confidence)
-  const codes = group.itemCodes || []
+  const codes = [...(group.itemCodes || [])].sort(compareItemCodes)
   const itemsLabel = codes.slice(0, 5).join(' · ') + (codes.length > 5 ? ' · …' : '')
-  const count = evidences.length
+  // Rows that share the same bytes count as one file.
+  const count = dedupeEvidencesByContent(evidences).length
 
   return (
     <article className="evidence-group-card">
       <div className="evidence-group-top">
         <span className={`confidence ${confidence.key}`}>{confidence.label}</span>
         <span className="confidence-stamp">
-          {count} archivo{count === 1 ? '' : 's'}
+          {count} imagen{count === 1 ? '' : 'es'}
         </span>
+        {codes.length > 1 ? (
+          <span className="badge" title={`Ítems: ${codes.join(', ')}`}>{usedInLabel(codes)}</span>
+        ) : null}
       </div>
       <h4>{group.title || 'Evidencia agrupada'}</h4>
       <p className="helper">{itemsLabel || 'Evidencia general de la ficha'}</p>
@@ -583,6 +655,7 @@ function Task({
 
 function PreviewModal({
   evidence,
+  sharedItemCodes,
   index,
   total,
   onPrevious,
@@ -591,6 +664,7 @@ function PreviewModal({
   onDelete,
 }: {
   evidence: Evidence
+  sharedItemCodes: string[]
   index: number
   total: number
   onPrevious: () => void
@@ -666,6 +740,7 @@ function PreviewModal({
         <div className="evidence-dialog-foot">
           <span className="helper">
             {evidence.source || 'Evidencia local'} · {formatDate(evidence.capturedAt)}
+            {sharedItemCodes.length > 1 ? ` · ${usedInLabel(sharedItemCodes)}: ${sharedItemCodes.join(', ')}` : ''}
           </span>
           <a className="button secondary small" href={src} target="_blank" rel="noreferrer">
             Descargar

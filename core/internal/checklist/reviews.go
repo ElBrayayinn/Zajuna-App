@@ -37,9 +37,15 @@ func ValidRouteReviewStatus(value string) bool {
 // RouteKey is deliberately derived from the same fields that the UI uses to
 // group targets. It stays stable when several checklist items share a capture.
 func RouteKey(target CaptureTarget) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d",
+	key := fmt.Sprintf("%s|%s|%s|%s|%s|%d|%d",
 		strings.TrimSpace(target.GroupName), canonicalRouteURL(target.URL), strings.TrimSpace(target.RouteKind),
 		strings.TrimSpace(target.CSSSelector), strings.TrimSpace(target.ActivityID), target.PhaseSection, target.SlotNumber)
+	if target.RowBatch > 0 {
+		// Different row batches of one list are different evidence; they
+		// must not share a route review or a selector-report entry.
+		key += fmt.Sprintf("|rows%d", target.RowBatch)
+	}
+	return key
 }
 
 func legacyRouteKey(target CaptureTarget) string {

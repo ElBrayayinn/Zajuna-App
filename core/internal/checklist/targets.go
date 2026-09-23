@@ -50,6 +50,13 @@ type CaptureTarget struct {
 	RouteKind            string   `json:"routeKind,omitempty"`
 	RequireSelector      bool     `json:"requireSelector,omitempty"`
 	OwnerOnly            bool     `json:"ownerOnly,omitempty"`
+	// Row batching for list/table evidence: slot N shows only rows
+	// [RowBatch*RowsPerShot, RowBatch*RowsPerShot+RowsPerShot) of the rows
+	// matched by RowSelector inside the captured container (the header stays
+	// visible). A batch past the last row yields no evidence.
+	RowSelector string `json:"rowSelector,omitempty"`
+	RowsPerShot int    `json:"rowsPerShot,omitempty"`
+	RowBatch    int    `json:"rowBatch,omitempty"`
 }
 
 type CapturePlanSummary struct {
@@ -173,6 +180,20 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 	targets := make([]CaptureTarget, 0)
 	summary := CapturePlanSummary{ItemCount: len(CaptureSpecs())}
 	for _, spec := range CaptureSpecs() {
+		if selectionBoundItem(spec.ItemCode) && len(selectedActivityIDs) > 0 {
+			// 10.1.x prove grading and feedback, which live in each selected
+			// activity's grading table, not in the course-page card used by
+			// 6.1 (that produced byte-identical evidence for 6.1 and 10.1.x).
+			added := appendGradingBatchTargets(&targets, record, spec, selectedActivities(activitiesByID, selectedActivityIDs))
+			if added > 0 {
+				summary.ResolvedItems++
+				summary.SlotCount += added
+			} else {
+				summary.UnresolvedItems++
+			}
+			summary.MaxSlotCount += spec.MaxSlots
+			continue
+		}
 		if activityBoundItem(spec.ItemCode) && len(selectedActivityIDs) > 0 {
 			selected := selectedActivities(activitiesByID, selectedActivityIDs)
 			if len(selected) > spec.MaxSlots {
@@ -209,52 +230,83 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 		}
 		summary.ResolvedItems++
 		summary.MaxSlotCount += spec.MaxSlots
-		limit := len(urls)
-		if limit > spec.MaxSlots {
-			limit = spec.MaxSlots
+		type eligibleURL struct {
+			url        string
+			activityID string
 		}
-		addedCount := 0
-		for index := 0; index < limit; index++ {
-			route := routeForURL(record, urls[index])
+		eligible := make([]eligibleURL, 0, len(urls))
+		for _, candidate := range urls {
+			route := routeForURL(record, candidate)
 			if route != nil && !eligibleRouteForGroup(spec.GroupName, *route, selectedActivityIDs, activitiesByID) {
 				continue
 			}
-			activityID := activityIDForURL(record, urls[index])
+			activityID := activityIDForURL(record, candidate)
 			if selectionBoundItem(spec.ItemCode) && len(selectedActivityIDs) > 0 {
 				if activityID == "" || !selectedActivityIDs[activityID] {
 					continue
 				}
 			}
+			eligible = append(eligible, eligibleURL{url: candidate, activityID: activityID})
+		}
+		if len(eligible) > spec.MaxSlots {
+			eligible = eligible[:spec.MaxSlots]
+		}
+		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
+		batchesPerURL := 1
+		if batched && len(eligible) > 0 {
+			batchesPerURL = spec.MaxSlots / len(eligible)
+			if batchesPerURL < 1 {
+				batchesPerURL = 1
+			}
+		}
+		addedCount := 0
+		for index, entry := range eligible {
 			hint := ""
 			if len(spec.LabelHints) > 0 {
 				hint = spec.LabelHints[index%len(spec.LabelHints)]
 			}
 			activityTitle := ""
 			technical := false
-			if activity, ok := activitiesByID[activityID]; ok {
+			if activity, ok := activitiesByID[entry.activityID]; ok {
 				activityTitle = activity.Title
 				technical = activity.Technical
-			}
-			name := spec.Name
-			if spec.MaxSlots > 1 {
-				name = fmt.Sprintf("%s — Evidencia %d", name, addedCount+1)
 			}
 			plan := captureGroupPlan(spec.GroupName)
 			ownerOnly := ownerOnlyForItem(spec.ItemCode)
 			selector := captureSelectorForItem(spec.ItemCode, spec.GroupName, spec.CSSSelector)
-			targets = append(targets, CaptureTarget{
-				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,
-				Name: name, URL: urls[index], SlotNumber: index + 1,
-				ActivityID: activityID, ActivityTitle: activityTitle, Technical: technical,
-				CSSSelector: selector, CSSSelectorFallbacks: captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector),
-				HideSelectors: forumConfigurationHideSelectors(spec.ItemCode, spec.GroupName),
-				ViewportWidth: viewportWidthForGroup(spec.GroupName), ViewportHeight: viewportHeightForGroup(spec.GroupName),
-				FullPage:  fullPageForGroup(spec.GroupName),
-				LabelHint: hint, RouteKind: routeKindForURL(record, spec.ItemCode, urls[index]),
-				RequireSelector: plan.ownerOnly || spec.GroupName == "perfil_instructor" || hint != "" || ownerFilteredGroup(spec.GroupName) || spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente",
-				OwnerOnly:       ownerOnly,
-			})
-			addedCount++
+			fallbacks := captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector)
+			if batched {
+				// The container that holds the rows goes first; the previous
+				// chain stays as fallback (then captured without batching).
+				selector = rows.container
+				fallbacks = append([]string{rows.container}, fallbacks...)
+			}
+			for batch := 0; batch < batchesPerURL; batch++ {
+				// Slots are contiguous: skipped routes never leave holes
+				// (a gap used to leave items with only "slot 2").
+				slot := addedCount + 1
+				name := spec.Name
+				if spec.MaxSlots > 1 {
+					name = fmt.Sprintf("%s — Evidencia %d", name, slot)
+				}
+				target := CaptureTarget{
+					ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,
+					Name: name, URL: entry.url, SlotNumber: slot,
+					ActivityID: entry.activityID, ActivityTitle: activityTitle, Technical: technical,
+					CSSSelector: selector, CSSSelectorFallbacks: fallbacks,
+					HideSelectors: forumConfigurationHideSelectors(spec.ItemCode, spec.GroupName),
+					ViewportWidth: viewportWidthForGroup(spec.GroupName), ViewportHeight: viewportHeightForGroup(spec.GroupName),
+					FullPage:  fullPageForGroup(spec.GroupName) && !batched,
+					LabelHint: hint, RouteKind: routeKindForURL(record, spec.ItemCode, entry.url),
+					RequireSelector: plan.ownerOnly || spec.GroupName == "perfil_instructor" || hint != "" || ownerFilteredGroup(spec.GroupName) || spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente",
+					OwnerOnly:       ownerOnly,
+				}
+				if batched {
+					target.RowSelector, target.RowsPerShot, target.RowBatch = rows.rowSelector, RowsPerShot, batch
+				}
+				targets = append(targets, target)
+				addedCount++
+			}
 		}
 		summary.SlotCount += addedCount
 	}
@@ -314,6 +366,9 @@ func captureUnitKey(target CaptureTarget) string {
 		strconv.FormatBool(target.FullPage),
 		strconv.FormatBool(target.RequireSelector),
 		strconv.FormatBool(target.OwnerOnly),
+		strings.TrimSpace(target.RowSelector),
+		strconv.Itoa(target.RowsPerShot),
+		strconv.Itoa(target.RowBatch),
 	}, "\x1f")
 }
 
@@ -322,9 +377,15 @@ func captureUnitKey(target CaptureTarget) string {
 // example, grading and deadline checks may use the same activity context but
 // still require different semantic validators. The allow-list covers
 // genuinely shared visual contexts and leaves the rest item-specific.
+// Forum/announcement lists and the grading table are shared too: several
+// items are proven by the very same rows (e.g. 10.1.1 grading and 10.1.2
+// feedback deadline), and capturing them once per item only produced
+// byte-identical duplicate evidence. Units still merge only when every other
+// capture setting (URL, selectors, owner filter, row batch) is identical.
 func captureShareKey(itemCode, groupName string) string {
 	switch groupName {
-	case "cronograma_general", "cronograma_vigente", "perfil_instructor", "sesiones_semanales":
+	case "cronograma_general", "cronograma_vigente", "perfil_instructor", "sesiones_semanales",
+		"foros", "anuncios_fase", "anuncios_semanales", "conclusion_foros", "evidencias_aprendizaje":
 		return groupName
 	default:
 		return strings.TrimSpace(groupName) + "|" + strings.TrimSpace(itemCode)
@@ -651,8 +712,16 @@ func captureGroupPlan(groupName string) groupPlan {
 		return groupPlan{[]string{"course"}, "#region-main .course-content", nil, false}
 	case "calificaciones":
 		return groupPlan{[]string{"grading"}, "#region-main .gradereport-grader-table", []string{"calificaciones"}, false}
-	case "configuracion", "seguimiento_evaluacion", "seguimiento_documentos", "sesiones_linea", "documentos_retencion":
+	case "configuracion":
 		return groupPlan{[]string{"page", "course", "phase"}, "#region-main .course-content .section", nil, false}
+	case "seguimiento_evaluacion", "seguimiento_documentos", "documentos_retencion":
+		// `.section` alone took the first section of the course page (the
+		// ANUNCIOS banner, section 0) for every item. Playwright's :has-text
+		// scopes it to the named section; the fallback chain then uses the
+		// whole course content instead of an unrelated banner.
+		return groupPlan{[]string{"page", "course", "phase"}, `#region-main .course-content li.section:has(.sectionname:has-text("Seguimiento y Evaluaci")), #region-main .course-content .section:has(> .content > .sectionname:has-text("Seguimiento y Evaluaci"))`, nil, false}
+	case "sesiones_linea":
+		return groupPlan{[]string{"page", "course", "phase"}, `#region-main .course-content li.section:has(.sectionname:has-text("Sesiones en l")), #region-main .course-content .section:has(> .content > .sectionname:has-text("Sesiones en l"))`, nil, false}
 	case "foros", "anuncios_fase", "anuncios_semanales", "conclusion_foros", "netiqueta":
 		return groupPlan{[]string{"forum"}, "#region-main .forum_list .forum", []string{"Foro", "Anuncio", "sesión en línea"}, true}
 	case "evidencias_aprendizaje":
@@ -759,4 +828,74 @@ func captureSpecFor(itemCode string) CaptureSpec {
 		}
 	}
 	return CaptureSpec{ItemCode: itemCode, RouteKinds: []string{"route"}}
+}
+
+// RowsPerShot is the batch size for list/table evidence: slot 1 shows rows
+// 1–2, slot 2 rows 3–4, and so on, up to the item's evidence limit.
+const RowsPerShot = 2
+
+type rowBatchPlan struct {
+	container   string
+	rowSelector string
+}
+
+// rowBatchPlanFor lists the list/table-shaped evidence captured in row
+// batches instead of one whole element (or a single row) per slot.
+func rowBatchPlanFor(itemCode, groupName string) (rowBatchPlan, bool) {
+	if groupName == "calificaciones" {
+		return rowBatchPlan{container: "#region-main .gradereport-grader-table", rowSelector: "tbody tr.userrow, tbody tr[data-uid]"}, true
+	}
+	if ownerOnlyForItem(itemCode) {
+		// Instructor-authored discussions/announcements; the capture worker
+		// applies the owner filter per row.
+		return rowBatchPlan{container: "#region-main table.discussion-list, #region-main table.forumheaderlist", rowSelector: "tbody tr"}, true
+	}
+	return rowBatchPlan{}, false
+}
+
+const gradingTableSelector = "#region-main table.generaltable"
+
+// appendGradingBatchTargets captures each selected activity's grading table
+// (grade, feedback and modification date) in row batches, splitting the
+// item's evidence limit among the activities.
+func appendGradingBatchTargets(targets *[]CaptureTarget, record coursemaps.Record, spec CaptureSpec, selected []coursemaps.Activity) int {
+	type gradingActivity struct {
+		activity coursemaps.Activity
+		url      string
+	}
+	withGrading := make([]gradingActivity, 0, len(selected))
+	for _, activity := range selected {
+		for _, route := range record.Routes {
+			if route.Kind == "grading" && strings.TrimSpace(route.ActivityID) == strings.TrimSpace(activity.ID) && strings.TrimSpace(route.URL) != "" {
+				withGrading = append(withGrading, gradingActivity{activity: activity, url: route.URL})
+				break
+			}
+		}
+	}
+	if len(withGrading) > spec.MaxSlots {
+		withGrading = withGrading[:spec.MaxSlots]
+	}
+	if len(withGrading) == 0 {
+		return 0
+	}
+	batches := spec.MaxSlots / len(withGrading)
+	if batches < 1 {
+		batches = 1
+	}
+	added := 0
+	for _, entry := range withGrading {
+		for batch := 0; batch < batches; batch++ {
+			added++
+			*targets = append(*targets, CaptureTarget{
+				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,
+				Name: fmt.Sprintf("%s — %s", spec.Name, entry.activity.Title), URL: entry.url, SlotNumber: added,
+				ActivityID: entry.activity.ID, ActivityTitle: entry.activity.Title, PhaseSection: entry.activity.PhaseSection, Technical: entry.activity.Technical,
+				CSSSelector:          gradingTableSelector,
+				CSSSelectorFallbacks: []string{gradingTableSelector, "#region-main .gradingtable table", "#region-main table"},
+				RouteKind:            "grading", RequireSelector: true,
+				RowSelector: "tbody tr:not(.emptyrow)", RowsPerShot: RowsPerShot, RowBatch: batch,
+			})
+		}
+	}
+	return added
 }

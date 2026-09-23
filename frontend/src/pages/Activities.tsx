@@ -1,62 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
-import { useActivities, useDashboard, useSaveActivities, isNotFound } from '../hooks/api'
-import { useToast } from '../hooks/useToast'
-import { friendlyError } from '../lib/friendlyError'
-import type { Activity } from '../types'
+import { useActivities, useDashboard, isNotFound } from '../hooks/api'
 import { RouteDiscoveryAction } from '../components/RouteDiscoveryAction'
-
-function ActivityRow({
-  activity,
-  checked,
-  onToggle,
-}: {
-  activity: Activity
-  checked: boolean
-  onToggle: (id: string) => void
-}) {
-  return (
-    <label className="activity-row">
-      <input
-        type="checkbox"
-        name="activity-id"
-        value={activity.id}
-        checked={checked}
-        onChange={() => onToggle(activity.id)}
-      />
-      <span>
-        <span className="activity-title">{activity.title || 'Actividad sin título'}</span>
-        <span className="activity-meta">
-          <span>{activity.technical ? 'Área técnica' : 'Por revisar'}</span>
-          {activity.phaseName ? <span>{activity.phaseName}</span> : null}
-          <span>Referencia {activity.id}</span>
-        </span>
-      </span>
-      <span className="badge">{activity.technical ? 'Técnica' : 'Revisar'}</span>
-    </label>
-  )
-}
+import { ActivitySelector } from '../components/ActivitySelector'
 
 export function Activities() {
-  const toast = useToast()
   const dashboardQuery = useDashboard()
   const dashboard = dashboardQuery.data
   const activeFichaId = dashboard?.activeFichaId
   const activitiesQuery = useActivities(activeFichaId)
   const data = activitiesQuery.data
-  const saveActivities = useSaveActivities()
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [selectionDirty, setSelectionDirty] = useState(false)
-  const syncedFichaRef = useRef<string | undefined>(undefined)
-
-  useEffect(() => {
-    if (!data || !activeFichaId) return
-    if (syncedFichaRef.current === activeFichaId && selectionDirty) return
-    setSelectedIds(new Set(data.activities.filter((activity) => activity.selected).map((activity) => activity.id)))
-    setSelectionDirty(false)
-    syncedFichaRef.current = activeFichaId
-  }, [activeFichaId, data, selectionDirty])
 
   if (dashboardQuery.isLoading || (activeFichaId && activitiesQuery.isLoading)) return <PageSkeleton label="Cargando actividades" />
   if (dashboardQuery.isError && isNotFound(dashboardQuery.error)) {
@@ -93,82 +46,9 @@ export function Activities() {
     )
   }
 
-  const activities = data.activities || []
-  const selected = selectedIds.size
-
-  const toggleActivity = (id: string) => {
-    setSelectionDirty(true)
-    setSelectedIds((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const handleSave = () => {
-    if (!activeFichaId) return
-    const selectedActivityIds = Array.from(selectedIds)
-    if (!selectedActivityIds.length) {
-      toast('Selecciona al menos una actividad antes de preparar las evidencias.', true)
-      return
-    }
-    saveActivities.mutate(
-      { fichaId: activeFichaId, selectedActivityIds },
-      {
-        onSuccess: async () => {
-          await activitiesQuery.refetch()
-          setSelectionDirty(false)
-          toast(`Guardamos ${selectedActivityIds.length} actividades a tu cargo.`)
-        },
-        onError: (error) => {
-          toast(friendlyError(error.message), true)
-        },
-      },
-    )
-  }
-
   return (
     <div className="grid">
-      <section className="card">
-        <div className="card-pad">
-          <div className="side-title">
-            <div>
-              <h3>Actividades a mi cargo</h3>
-              <p className="helper" style={{ marginTop: 5 }}>
-                Selecciona las actividades que corresponden a tu trabajo. Las fechas y evidencias se limitarán a esta
-                selección.
-              </p>
-            </div>
-            <span className="badge">{selected} seleccionadas</span>
-          </div>
-          {selected ? (
-            <p className="helper">Solo se prepararán evidencias relacionadas con estas actividades.</p>
-          ) : (
-            <div className="activity-warning">Selecciona al menos una actividad antes de preparar las evidencias.</div>
-          )}
-          <div className="activity-list">
-            {activities.length ? (
-              activities.map((activity) => (
-                <ActivityRow
-                  key={activity.id}
-                  activity={activity}
-                  checked={selectedIds.has(activity.id)}
-                  onToggle={toggleActivity}
-                />
-              ))
-            ) : (
-              <div className="empty">Todavía no hay actividades disponibles. Actualiza el contenido del curso para buscarlas.</div>
-            )}
-          </div>
-          <div className="activity-actions">
-            <span className="helper">{activities.length} actividades encontradas</span>
-            <button className="button small" onClick={handleSave} disabled={saveActivities.isPending}>
-              {saveActivities.isPending ? 'Procesando…' : 'Guardar selección'}
-            </button>
-          </div>
-        </div>
-      </section>
+      <ActivitySelector key={activeFichaId} data={data} fichaId={activeFichaId} />
     </div>
   )
 }
