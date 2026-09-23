@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { findNavItem } from '../lib/nav'
 import { useSettings } from '../hooks/api'
+import { WorkflowSteps } from './WorkflowSteps'
 
 export function AppShell() {
   const location = useLocation()
@@ -52,6 +53,7 @@ export function AppShell() {
               {navItem?.label || 'Espacio de trabajo de Zajuna App'}
             </h1>
           )}
+          {navItem?.group === 'Operación' ? <WorkflowSteps /> : null}
           {navItem?.showGenericHeader && (
             <section className="page-head">
               <div>

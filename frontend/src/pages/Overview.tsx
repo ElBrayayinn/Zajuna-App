@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   useActivities,
-  useCapture,
   useDashboard,
   useEvidenceGroups,
   useFichas,
@@ -15,7 +14,6 @@ import {
   useReports,
   useSetActiveFicha,
   useSetupStatus,
-  useSyncFichas,
   useTargets,
   useDismissJobs,
   isNotFound,
@@ -38,6 +36,7 @@ import { friendlyError } from '../lib/friendlyError'
 import { reportDownloadUrl } from '../api/client'
 import type { DashboardCategory, EvidenceGroup, Job, Report, Schedule } from '../types'
 import { RouteDiscoveryAction } from '../components/RouteDiscoveryAction'
+import { CaptureAction, SyncFichasAction } from '../components/WorkflowActions'
 
 type BarStyle = CSSProperties & { '--bar-height'?: string }
 
@@ -148,9 +147,7 @@ export function Overview() {
   const setupQuery = useSetupStatus()
   const schedulesQuery = useSchedules()
 
-  const syncFichas = useSyncFichas()
   const setActiveFicha = useSetActiveFicha()
-  const capture = useCapture()
   const createSchedule = useCreateSchedule()
   const setScheduleEnabled = useSetScheduleEnabled()
   const dismissJobs = useDismissJobs()
@@ -201,14 +198,7 @@ export function Overview() {
               <span className="onboarding-step"><b>2</b><strong>Buscar rutas</strong><small>Encontrar las secciones del curso</small></span>
               <span className="onboarding-step"><b>3</b><strong>Preparar evidencias</strong><small>Capturar y revisar resultados</small></span>
             </div>
-            <button
-              className="button primary"
-              type="button"
-              onClick={() => syncFichas.mutate({ username: setupQuery.data?.zajunaUsername || '', documentType: setupQuery.data?.zajunaDocumentType || 'CC' }, { onSuccess: () => toast('Estamos sincronizando tus fichas.'), onError: (error) => toast(friendlyError(error.message), true) })}
-              disabled={syncFichas.isPending}
-            >
-              {syncFichas.isPending ? 'Sincronizando…' : 'Sincronizar fichas'}
-            </button>
+            <SyncFichasAction />
             {jobs.some((job) => job.type === 'sync-fichas' && ['queued', 'running', 'retrying'].includes(job.status)) ? <p className="helper" style={{ marginTop: 10 }}>La sincronización está en curso. Puedes abrir Trabajos para ver el avance.</p> : null}
           </div>
         </section>
@@ -272,41 +262,12 @@ export function Overview() {
     value: clamp(Math.round(((Number(category.yes) || 0) / Math.max(Number(category.total) || 1, 1)) * 100), 0, 100),
   }))
 
-  function handleSync() {
-    syncFichas.mutate(
-      { username: setupQuery.data?.zajunaUsername || '', documentType: setupQuery.data?.zajunaDocumentType || 'CC' },
-      {
-        onSuccess: () => toast('Estamos actualizando tus fichas.'),
-        onError: (error) => toast(friendlyError(error.message), true),
-      },
-    )
-  }
-
   function handleFichaChange(event: ChangeEvent<HTMLSelectElement>) {
     const value = event.target.value
     if (!value) return
     setActiveFicha.mutate(value, {
       onError: (error) => toast(friendlyError(error.message), true),
     })
-  }
-
-  function handleCapture() {
-    if (!dashboard) return
-    if (routeCount === 0) {
-      toast('Primero busca las rutas de esta ficha.', true)
-      return
-    }
-    capture.mutate(
-      {
-        fichaId: dashboard.activeFichaId,
-        username: setupQuery.data?.zajunaUsername || '',
-        documentType: setupQuery.data?.zajunaDocumentType || 'CC',
-      },
-      {
-        onSuccess: () => toast('Estamos preparando tus evidencias.'),
-        onError: (error) => toast(friendlyError(error.message), true),
-      },
-    )
   }
 
   function handleRefresh() {
@@ -367,9 +328,7 @@ export function Overview() {
               ))}
             </select>
           </div>
-          <button className="button primary" onClick={handleSync} disabled={syncFichas.isPending}>
-            Sincronizar fichas
-          </button>
+          <SyncFichasAction />
         </div>
       </div>
 
@@ -651,15 +610,14 @@ export function Overview() {
               )}
             </div>
             <RouteDiscoveryAction compact variant="primary" label="Buscar rutas" />
-            <button
-              className="button"
-              style={{ width: '100%', marginTop: 16 }}
-              onClick={handleCapture}
-              disabled={capture.isPending || routeCount === 0}
-            >
-              Preparar evidencias
-            </button>
-            {routeCount === 0 ? <p className="helper" style={{ marginTop: 8 }}>Busca las rutas del curso antes de preparar evidencias.</p> : null}
+            <div style={{ marginTop: 16 }}>
+              <CaptureAction fullWidth />
+            </div>
+            {evidenceCount > 0 ? (
+              <Link className="button ghost" style={{ width: '100%', marginTop: 10 }} to="/revision">
+                Revisar evidencias (paso 5)
+              </Link>
+            ) : null}
           </section>
 
           <section className="card schedule-card">

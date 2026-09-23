@@ -15,6 +15,7 @@ import { PageSkeleton, PageError } from './components/AsyncState'
 import { JobDetail } from './pages/JobDetail'
 import { ChecklistItemDetail } from './pages/ChecklistItemDetail'
 import { Notifications } from './pages/Notifications'
+import { Review } from './pages/Review'
 
 function App() {
   const { data: setup, isLoading, isError, refetch } = useSetupStatus()
@@ -41,6 +42,7 @@ function App() {
         <Route path="/checklist/:itemCode" element={<ChecklistItemDetail />} />
         <Route path="/actividades" element={<Activities />} />
         <Route path="/evidencias" element={<Evidences />} />
+        <Route path="/revision" element={<Review />} />
         <Route path="/trabajos" element={<Processes />} />
         <Route path="/trabajos/:jobId" element={<JobDetail />} />
         <Route path="/reportes" element={<Reports />} />

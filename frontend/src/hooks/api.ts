@@ -143,6 +143,7 @@ export function useJobs() {
     queryClient.invalidateQueries({ queryKey: ['targets'] })
     queryClient.invalidateQueries({ queryKey: ['reviews'] })
     queryClient.invalidateQueries({ queryKey: ['reports'] })
+    queryClient.invalidateQueries({ queryKey: ['evidenceReview'] })
   }, [query.data, queryClient])
 
   return query
@@ -415,5 +416,35 @@ export function useCreateBackup() {
   return useMutation({
     mutationFn: api.createBackup,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['backups'] }),
+  })
+}
+
+export function useEvidenceReview(fichaId?: string) {
+  return useQuery({
+    queryKey: ['evidenceReview', fichaId],
+    queryFn: () => api.getEvidenceReview(fichaId as string),
+    enabled: !!fichaId,
+    retry: retryTransient,
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useVerifyEvidences() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (fichaId: string) => api.verifyEvidences(fichaId),
+    onSuccess: (data, fichaId) => {
+      queryClient.setQueryData(['evidenceReview', fichaId], data)
+      queryClient.invalidateQueries({ queryKey: ['evidenceReview'] })
+    },
+  })
+}
+
+export function useSetEvidenceReview() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ evidenceId, ...input }: { evidenceId: string; status: 'approved' | 'pending' | 'rejected'; note?: string }) =>
+      api.setEvidenceReview(evidenceId, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['evidenceReview'] }),
   })
 }

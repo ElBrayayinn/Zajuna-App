@@ -334,3 +334,119 @@ func TestApplyRouteReviewsPersistsDecisionAndManualOverrides(t *testing.T) {
 		t.Fatalf("manual route override was not applied: %#v", updated[0])
 	}
 }
+
+func TestTransversalActivitiesNeverProduceEvidence(t *testing.T) {
+	record := coursemaps.Record{
+		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080",
+		Routes: []coursemaps.Route{
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=1", ActivityID: "1", Title: "Técnica", PhaseSection: 3, Technical: true},
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=2", ActivityID: "2", Title: "Ética", PhaseSection: 2, Technical: false},
+		},
+	}
+	// A selection saved by an older version may still include transversal ones.
+	targets, _, err := BuildCaptureTargetsForActivities(record, map[string]bool{"1": true, "2": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if target.ActivityID == "2" {
+			t.Fatalf("transversal activity leaked into the plan: %#v", target)
+		}
+	}
+	if ActivityEvidenceSlots() != 5 {
+		t.Fatalf("6.1 admits 5 evidences, got %d", ActivityEvidenceSlots())
+	}
+}
+
+func TestAnnouncementItemsFilterRowsByTheirOwnTopic(t *testing.T) {
+	forum := `["https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=77&forceview=1"]`
+	record := coursemaps.Record{
+		ByItemCode: map[string]json.RawMessage{"11.1.1": json.RawMessage(forum), "11.2.1": json.RawMessage(forum), "11.2.2": json.RawMessage(forum), "11.2.3": json.RawMessage(forum), "11.3": json.RawMessage(forum)},
+		Routes:     []coursemaps.Route{{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=77", Title: "Anuncios"}},
+	}
+	targets, _, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := map[string]string{}
+	for _, target := range targets {
+		for _, code := range target.CoveredItemCodes {
+			topics[code] = strings.Join(target.RowMatch, "|")
+		}
+	}
+	for code, want := range map[string]string{"11.2.1": "inicio de actividad", "11.2.2": "cierre de actividad", "11.3": "aprobados"} {
+		if topics[code] != want {
+			t.Fatalf("%s must filter by %q, got %q", code, want, topics[code])
+		}
+	}
+	if !strings.Contains(topics["11.2.3"], "invitacion a sesion") || !strings.Contains(topics["11.1.1"], "apertura de fase") {
+		t.Fatalf("unexpected topics: %#v", topics)
+	}
+	if topics["11.2.1"] == topics["11.2.2"] {
+		t.Fatal("different announcement items must not share the same rows")
+	}
+}
+
+func TestSeguimientoItemsTargetTheirOwnSubsection(t *testing.T) {
+	want := map[string]string{"7.3.1": "Comités evaluativos", "7.3.3": "Reuniones EEF", "7.4.2": "Planes de Mejoramiento", "7.4.3": "Registro de Novedades", "7.4.4": "Llamados de atenci"}
+	seen := map[string]string{}
+	for item, title := range want {
+		if got := courseSectionTitleForItem(item); got != title {
+			t.Fatalf("%s must target %q, got %q", item, title, got)
+		}
+		if other, dup := seen[title]; dup {
+			t.Fatalf("%s and %s must not share a subsection", item, other)
+		}
+		seen[title] = item
+	}
+	if chain := captureSelectorChainForItem("7.4.3", "seguimiento_documentos", courseSectionByTitle("Registro de Novedades")); !strings.Contains(chain[1], comitesSectionTitle) {
+		t.Fatalf("7.4.x must fall back to Comités evaluativos, got %v", chain)
+	}
+}
+
+func TestSiteNewsForumIsNeverCourseEvidence(t *testing.T) {
+	record := coursemaps.Record{
+		ByItemCode: map[string]json.RawMessage{"11.4": json.RawMessage(`["https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=3010173&forceview=1","https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=26790&forceview=1"]`)},
+		Routes: []coursemaps.Route{
+			{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=3010173", Title: "ANUNCIOS"},
+			{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=26790", Title: "Anuncios de la página"},
+		},
+	}
+	targets, _, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if strings.Contains(target.URL, "id=26790") {
+			t.Fatalf("the site news forum must not be captured: %#v", target)
+		}
+	}
+}
+
+func TestTransversalOnlySelectionNeverFallsBackToEveryActivity(t *testing.T) {
+	record := coursemaps.Record{
+		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080",
+		ByItemCode: map[string]json.RawMessage{
+			"6.1":    json.RawMessage(`["https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=1"]`),
+			"10.1.1": json.RawMessage(`["https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=1"]`),
+		},
+		Routes: []coursemaps.Route{
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=1", ActivityID: "1", Title: "Técnica", PhaseSection: 3, Technical: true},
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=2", ActivityID: "2", Title: "Ética", PhaseSection: 2, Technical: false},
+		},
+	}
+	targets, _, err := BuildCaptureTargetsForActivities(record, map[string]bool{"2": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		for _, code := range target.CoveredItemCodes {
+			if code == "6.1" || code == "10.1.1" || code == "10.1.2" {
+				t.Fatalf("a transversal-only selection must not capture activity items: %#v", target)
+			}
+		}
+	}
+	if len(TechnicalSelectionForRecord(record, map[string]bool{"2": true})) != 0 {
+		t.Fatal("transversal-only selection must count as no selection")
+	}
+}

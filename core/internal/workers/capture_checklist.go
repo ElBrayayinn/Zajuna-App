@@ -116,8 +116,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			return jobs.Result{ErrorCode: "activity_selection_read_failed", ErrorMessage: fmt.Sprintf("no se pudieron leer las actividades seleccionadas: %v", err), Retryable: true}
 		}
 	}
-	if hasSelectionStore && len(selectedActivityIDs) == 0 && captureRequiresActivitySelection(input.ItemCodes) {
-		return jobs.Result{ErrorCode: "activities_not_selected", ErrorMessage: "selecciona primero las actividades que pertenecen al instructor para filtrar fechas y evidencias"}
+	if hasSelectionStore && len(checklist.TechnicalSelectionForRecord(record, selectedActivityIDs)) == 0 && captureRequiresActivitySelection(input.ItemCodes) {
+		return jobs.Result{ErrorCode: "activities_not_selected", ErrorMessage: "selecciona primero las actividades técnicas que pertenecen al instructor para filtrar fechas y evidencias"}
 	}
 	targets, summary, err := checklist.BuildCaptureTargetsForActivities(record, selectedActivityIDs)
 	if err != nil {
@@ -285,6 +285,13 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		}
 		groupCount = len(groups)
 		_ = reporter.Event(ctx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
+	}
+	// Best effort: prepare the review screen. A verification error never fails
+	// the capture.
+	if verifier, ok := w.evidence.(evidence.ReviewVerifier); ok {
+		if report, verifyErr := verifier.VerifyEvidenceReviews(ctx, input.FichaID); verifyErr == nil {
+			_ = reporter.Event(ctx, "evidence_reviews_verified", "Evidencias revisadas automáticamente", map[string]any{"fichaId": input.FichaID, "approved": report.Summary.Approved, "pending": report.Summary.Pending, "rejected": report.Summary.Rejected})
+		}
 	}
 	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}

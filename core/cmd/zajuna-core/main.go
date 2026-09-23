@@ -408,6 +408,7 @@ func newRouterWithServices(dataDir string, credentials secrets.Store, jobRuntime
 		reportStore = candidate
 	}
 	registerEvidenceRoutes(mux, evidenceStore, dataDir)
+	registerEvidenceReviewRoutes(mux, evidenceStore)
 	registerReportRoutes(mux, reportStore, jobRuntime, dataDir)
 
 	staticFS, err := fs.Sub(webFiles, "web")

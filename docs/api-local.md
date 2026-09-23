@@ -543,6 +543,28 @@ originales, pero no publica en grupos ni reportes una captura automática que
 termine en la página pública/login de Zajuna, que use un selector legado de
 perfil/foro o que sea un fixture fuera del catálogo del checklist.
 
+### Revisión de evidencias
+
+Cada evidencia queda `approved`, `pending` o `rejected` (tabla
+`evidence_reviews`, schema v14). La verificación automática detecta problemas
+técnicos: `file_missing` y `login_page` (rechazada); `too_wide` (> 4000 px),
+`too_tall` (> 9000 px), `too_small` (< 200×120 px), `mostly_blank` (≥ 96 %
+casi blanco), `generic_selector` y `duplicate_content` (pendiente). Una
+decisión manual se respeta mientras el `sha256` no cambie; al recapturar se
+vuelve a verificar. `capture-checklist` ejecuta la verificación al terminar
+(sin hacer fallar la captura).
+
+- `GET /api/evidences/review?fichaId=<id>`: estado guardado (solo verifica las
+  evidencias sin revisión). Responde `{fichaId, verifiedAt, summary,
+  evidences[], missingItems[]}`; cada evidencia trae `status`, `source`
+  (`auto`/`manual`), `note`, `reasons[{code,message}]`, `width`, `height`,
+  `sha256` y `sharedWith`.
+- `POST /api/evidences/verify` con `{ "fichaId": "…" }`: re-verifica toda la
+  ficha y devuelve el mismo payload.
+- `PUT /api/evidences/{id}/review` con `{ "status": "approved"|"rejected"|"pending", "note": "" }`:
+  guarda la decisión manual (`pending` la borra y vuelve a la verificación
+  automática). Devuelve la evidencia actualizada.
+
 ### `POST /api/reports`
 
 Encola la generación de un reporte mediante `export-report`.

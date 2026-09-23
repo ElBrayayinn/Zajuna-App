@@ -66,6 +66,8 @@ type CaptureOptions struct {
 	// matches, the capture returns ErrNoRowsInBatch ("not needed") instead of
 	// a failure.
 	OptionalSlot bool
+	// RowMatch keeps only rows whose text contains one of these terms.
+	RowMatch []string
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -254,6 +256,9 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 		return CaptureResult{}, blockedErr
 	}
 	prepareCourseMenu(page, options)
+	if err := ensureStillOn(page, finalURL); err != nil {
+		return CaptureResult{}, err
+	}
 	prepareHiddenEvidenceRegions(page, options.HideSelectors)
 	// Moodle flash notifications (e.g. "No dispone de permiso para ver los
 	// debates de este foro") must never leak into evidence.
@@ -358,6 +363,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				if selector == strings.TrimSpace(options.Selector) {
 					emptyPrimaryContainer = true
 				}
+				if len(options.RowMatch) > 0 {
+					// A topic filter found no rows: the legacy whole-container
+					// capture would show other topics' rows as this item's.
+					continue
+				}
 				if options.OwnerOnly {
 					filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: strings.TrimSpace(options.OwnerName)})
 					if ownerCount, ownerErr := filtered.Count(); ownerErr != nil || ownerCount == 0 {
@@ -386,6 +396,9 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if batching && options.RowBatch == 0 && options.OwnerOnly && emptyPrimaryContainer {
 		// The list exists but none of its rows is by the instructor: a real
 		// absence of evidence, reported in plain words.
+		if len(options.RowMatch) > 0 {
+			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado sobre «%s»", ErrSelectorNotFound, strings.Join(options.RowMatch, "» o «"))
+		}
 		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado", ErrSelectorNotFound)
 	}
 	if batching && options.RowBatch > 0 && emptyPrimaryContainer {
@@ -512,6 +525,7 @@ const rowBatchHideScript = `(container, args) => {
 		.trim()
 		.toLowerCase();
 	const owner = normalize(args.owner);
+	const topics = (args.rowMatch || []).map(normalize).filter(Boolean);
 	const all = Array.from(container.querySelectorAll(args.rowSelector));
 	const counted = [];
 	const hide = [];
@@ -520,7 +534,8 @@ const rowBatchHideScript = `(container, args) => {
 		// still show the instructor as its last poster.
 		const author = row.querySelector('td.author, .author, [data-region="author-name"]');
 		const ownerText = author ? author.textContent : row.textContent;
-		if (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner))) {
+		const topicOK = topics.length === 0 || topics.some((topic) => normalize(row.textContent).includes(topic));
+		if (!topicOK || (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner)))) {
 			hide.push(row);
 		} else {
 			counted.push(row);
@@ -578,6 +593,7 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		"ownerOnly":   options.OwnerOnly,
 		"perShot":     options.RowsPerShot,
 		"batch":       options.RowBatch,
+		"rowMatch":    options.RowMatch,
 	}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
 	restore := func() { _, _ = page.Evaluate(rowBatchRestoreScript) }
 	if err != nil {
@@ -674,11 +690,16 @@ func prepareCourseMenu(page playwright.Page, options CaptureOptions) {
 		page.WaitForTimeout(300)
 		return
 	}
+	// Only in-page collapse toggles. A generic `a[aria-expanded='false']`
+	// also matched real activity links: clicking one navigated to another
+	// page (e.g. "Material de apoyo al instructor") whose screenshot was then
+	// saved as the course section evidence.
 	collapseSelectors := []string{
-		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false']",
-		"#region-main .course-content a[aria-expanded='false']",
-		"#region-main .course-content [aria-expanded='false'][role='button']",
-		"#region-main .course-content [aria-expanded='false'].collapsed",
+		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][href^='#']",
+		"#region-main .course-content button[data-toggle='collapse'][aria-expanded='false']",
+		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][data-target]",
+		"#region-main .course-content [data-bs-toggle='collapse'][aria-expanded='false'][href^='#']",
+		"#region-main .course-content button[data-bs-toggle='collapse'][aria-expanded='false']",
 	}
 	clicked := 0
 	for round := 0; round < 16 && clicked < 40; round++ {
@@ -813,4 +834,32 @@ func (c BrowserCookie) playwrightCookie() (playwright.OptionalCookie, bool) {
 		item.SameSite = playwright.SameSiteAttributeLax
 	}
 	return item, true
+}
+
+// ensureStillOn returns to the captured URL if preparing the page navigated
+// away, so a screenshot can never show a different page than the one
+// recorded as the evidence's finalUrl.
+func ensureStillOn(page playwright.Page, expected string) error {
+	if sameCapturePage(page.URL(), expected) {
+		return nil
+	}
+	if _, err := page.Goto(expected); err != nil {
+		return fmt.Errorf("la página cambió al prepararla y no se pudo volver a %s: %w", expected, err)
+	}
+	_ = page.WaitForLoadState()
+	if !sameCapturePage(page.URL(), expected) {
+		return fmt.Errorf("la página cambió al prepararla (%s en lugar de %s)", page.URL(), expected)
+	}
+	return nil
+}
+
+// sameCapturePage compares two URLs ignoring the fragment (#section-N).
+func sameCapturePage(current, expected string) bool {
+	strip := func(value string) string {
+		if index := strings.Index(value, "#"); index >= 0 {
+			return value[:index]
+		}
+		return value
+	}
+	return strip(strings.TrimSpace(current)) == strip(strings.TrimSpace(expected))
 }

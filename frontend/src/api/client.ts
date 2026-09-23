@@ -19,6 +19,9 @@ import type {
   SetupStatus,
   SetupSaveResponse,
   TargetsResponse,
+  EvidenceReview,
+  EvidenceReviewEntry,
+  EvidenceReviewStatus,
 } from '../types'
 
 export class ApiError extends Error {
@@ -195,4 +198,15 @@ export const api = {
     request<Job>('/api/reports', json(input)),
 
   createBackup: () => request<Backup>('/api/backups', { method: 'POST' }),
+
+  getEvidenceReview: (fichaId: string) =>
+    request<EvidenceReview>(`/api/evidences/review?fichaId=${encodeURIComponent(fichaId)}`),
+
+  verifyEvidences: (fichaId: string) => request<EvidenceReview>('/api/evidences/verify', json({ fichaId })),
+
+  setEvidenceReview: (id: string, input: { status: EvidenceReviewStatus; note?: string }) =>
+    request<EvidenceReviewEntry>(`/api/evidences/${encodeURIComponent(id)}/review`, {
+      ...json({ status: input.status, note: input.note || '' }),
+      method: 'PUT',
+    }),
 }

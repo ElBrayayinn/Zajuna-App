@@ -81,7 +81,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
-		OptionalSlot: target.OptionalSlot,
+		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch,
 	}
 
 	var captureResult capture.CaptureResult

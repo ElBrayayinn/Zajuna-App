@@ -15,7 +15,7 @@ var forumResolveModes = map[string]string{
 	"9.1.1": "dudas_singleton", "9.1.2": "dudas_singleton", "9.1.5": "dudas_singleton",
 	"9.1.3": "tematico_slot", "9.1.4": "tematico_slot", "9.1.6": "tematico_slot", "9.1.7": "tematico_slot",
 	"11.1.1": "anuncios_singleton", "11.1.2": "anuncios_singleton", "11.1.3": "anuncios_singleton", "11.1.4": "anuncios_singleton",
-	"11.2.1": "anuncios_singleton", "11.2.2": "anuncios_singleton", "11.2.3": "sesion_slot",
+	"11.2.1": "anuncios_singleton", "11.2.2": "anuncios_singleton", "11.2.3": "anuncios_singleton",
 	"11.3": "anuncios_singleton", "11.4": "anuncio_slot",
 	"14.1.1": "tematico_slot", "14.1.2": "tematico_slot", "15.1": "netiqueta_singleton",
 }

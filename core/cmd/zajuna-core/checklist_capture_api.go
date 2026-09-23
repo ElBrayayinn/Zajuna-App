@@ -137,6 +137,12 @@ func registerChecklistCaptureRoutes(mux *http.ServeMux, store checklistCaptureSt
 				writeError(w, http.StatusBadRequest, fmt.Errorf("la actividad %s no pertenece al mapa del curso", activityID))
 				return
 			}
+			if !activity.Technical {
+				// Transversal competencies are taught by other instructors: their
+				// dates, grades and feedback are not this instructor's evidence.
+				writeError(w, http.StatusBadRequest, fmt.Errorf("«%s» es de una competencia transversal y no se puede seleccionar: su evidencia corresponde a otro instructor", activity.Title))
+				return
+			}
 			seen[activityID] = true
 			selected = append(selected, activity)
 		}
@@ -203,7 +209,7 @@ func registerChecklistCaptureRoutes(mux *http.ServeMux, store checklistCaptureSt
 				writeError(w, http.StatusInternalServerError, err)
 				return
 			}
-			selectionConfigured = len(selectedActivityIDs) > 0
+			selectionConfigured = len(checklist.TechnicalSelectionForRecord(record, selectedActivityIDs)) > 0
 		}
 		targets, summary, err := checklist.BuildCaptureTargetsForActivities(record, selectedActivityIDs)
 		if err != nil {
@@ -453,21 +459,36 @@ type checklistActivityView struct {
 	Subsection   string `json:"subsection,omitempty"`
 	Technical    bool   `json:"technical"`
 	Selected     bool   `json:"selected"`
+	// Selectable is false for transversal competencies (another instructor's
+	// evidence); BlockedReason explains it in the UI.
+	Selectable    bool   `json:"selectable"`
+	BlockedReason string `json:"blockedReason,omitempty"`
 }
 
 func checklistActivitiesView(fichaID, courseID string, record coursemaps.Record, selected map[string]bool) map[string]any {
 	activities := coursemaps.Activities(record)
 	views := make([]checklistActivityView, 0, len(activities))
+	selectedCount := 0
 	for _, activity := range activities {
-		views = append(views, checklistActivityView{
+		view := checklistActivityView{
 			ID: activity.ID, Title: activity.Title, URL: activity.URL, PhaseName: activity.PhaseName,
 			PhaseSection: activity.PhaseSection, Subsection: activity.Subsection,
-			Technical: activity.Technical, Selected: selected[activity.ID],
-		})
+			Technical: activity.Technical, Selectable: activity.Technical,
+			// A transversal activity saved by an older version is ignored.
+			Selected: selected[activity.ID] && activity.Technical,
+		}
+		if !activity.Technical {
+			view.BlockedReason = "Competencia transversal: la orienta otro instructor, así que sus fechas, calificaciones y retroalimentación no son evidencia tuya."
+		}
+		if view.Selected {
+			selectedCount++
+		}
+		views = append(views, view)
 	}
 	return map[string]any{
 		"fichaId": fichaID, "courseId": courseID, "activities": views,
-		"mapReady": true, "selectedCount": len(selected), "selectionConfigured": len(selected) > 0,
+		"mapReady": true, "selectedCount": selectedCount, "selectionConfigured": selectedCount > 0,
+		"slotsPerItem": checklist.ActivityEvidenceSlots(),
 	}
 }
 
