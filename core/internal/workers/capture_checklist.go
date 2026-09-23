@@ -162,6 +162,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 	useBrowser := strings.EqualFold(baseURL.Hostname(), "zajuna.sena.edu.co")
 	ownerName := ""
+	var identitySeed *capture.BrowserSession
 	if useBrowser && checklist.RequiresInstructorIdentity(targets) {
 		if err := reporter.Progress(ctx, "identity", 16, "Identificando al instructor autenticado para filtrar foros y anuncios"); err != nil {
 			return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
@@ -171,10 +172,11 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			return jobs.Result{Retryable: retryableZajunaError(identityErr) && !errors.Is(identityErr, capture.ErrBlockedPage), ErrorCode: "zajuna_browser_login_failed", ErrorMessage: fmt.Sprintf("no se pudo iniciar sesión en Chromium para el checklist: %v", identityErr)}
 		}
 		ownerName, err = identitySession.AuthenticatedOwnerName(ctx, record.ProfileURL)
-		identitySession.Close()
 		if err != nil {
+			identitySession.Close()
 			return jobs.Result{ErrorCode: "instructor_identity_unavailable", ErrorMessage: fmt.Sprintf("no se pudo verificar el instructor autenticado: %v", err)}
 		}
+		identitySeed = identitySession
 	}
 
 	targetItemCodes := make(map[string]bool)
@@ -195,6 +197,20 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	// own Chromium session when browser auth is required: BrowserSession is not
 	// safe to share across goroutines. Trade-off: up to C parallel logins.
 	var cookieMu sync.Mutex
+	var sessions *browserSessionPool
+	if useBrowser {
+		sessions = newBrowserSessionPool(func(openCtx context.Context) (checklistBrowserSession, error) {
+			return w.openChecklistBrowserSession(openCtx, baseURL, input, password)
+		})
+		defer sessions.closeAll()
+		if identitySeed != nil {
+			// The identity check already logged in: reuse that session.
+			sessions.all = append(sessions.all, identitySeed)
+			sessions.release(identitySeed, true)
+		}
+	} else if identitySeed != nil {
+		identitySeed.Close()
+	}
 	fanoutErr := orderedFanout(ctx, len(targets), concurrency, func(taskCtx context.Context, index int) error {
 		target := targets[index]
 		if err := taskCtx.Err(); err != nil {
@@ -211,6 +227,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			OwnerName:  ownerName,
 			UseBrowser: useBrowser,
 			CookieMu:   &cookieMu,
+			Sessions:   sessions,
 		})
 		outcomes[index] = outcome
 		done := int(atomic.AddInt64(&completed, 1))
@@ -221,7 +238,15 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
 				"slotNumber": target.SlotNumber, "index": index,
 			})
-		} else if outcome.skipped {
+		} else if outcome.failure != "" && !outcome.skipped {
+			// Keep every failure in the job history, not only the first one
+			// that fits in the final message.
+			_ = reporter.Event(taskCtx, "evidence_failed", outcome.failure, map[string]any{
+				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
+				"slotNumber": target.SlotNumber, "index": index,
+			})
+		}
+		if outcome.skipped {
 			_ = reporter.Event(taskCtx, "evidence_skipped", "Lote de filas vacío: espacio no necesario", map[string]any{
 				"itemCode": target.ItemCode, "coveredItemCodes": coveredItemCodes(target),
 				"slotNumber": target.SlotNumber, "index": index,

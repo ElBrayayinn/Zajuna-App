@@ -57,6 +57,9 @@ type CaptureTarget struct {
 	RowSelector string `json:"rowSelector,omitempty"`
 	RowsPerShot int    `json:"rowsPerShot,omitempty"`
 	RowBatch    int    `json:"rowBatch,omitempty"`
+	// OptionalSlot: the slot may not exist on this course (no evidence, not
+	// a failure). Used for per-phase course sections.
+	OptionalSlot bool `json:"optionalSlot,omitempty"`
 }
 
 type CapturePlanSummary struct {
@@ -251,6 +254,19 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 		if len(eligible) > spec.MaxSlots {
 			eligible = eligible[:spec.MaxSlots]
 		}
+		if spec.GroupName == "sesiones_semanales" && len(eligible) == 1 && isCourseViewURL(eligible[0].url) {
+			for index := 0; index < spec.MaxSlots; index++ {
+				selector := grabacionesSectionSelector(index)
+				targets = append(targets, CaptureTarget{
+					ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,
+					Name: fmt.Sprintf("%s — Evidencia %d", spec.Name, index+1), URL: eligible[0].url, SlotNumber: index + 1,
+					CSSSelector: selector, CSSSelectorFallbacks: []string{selector},
+					RouteKind: "course", RequireSelector: true, OptionalSlot: true,
+				})
+			}
+			summary.SlotCount += spec.MaxSlots
+			continue
+		}
 		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
 		batchesPerURL := 1
 		if batched && len(eligible) > 0 {
@@ -369,6 +385,7 @@ func captureUnitKey(target CaptureTarget) string {
 		strings.TrimSpace(target.RowSelector),
 		strconv.Itoa(target.RowsPerShot),
 		strconv.Itoa(target.RowBatch),
+		strconv.FormatBool(target.OptionalSlot),
 	}, "\x1f")
 }
 
@@ -719,9 +736,9 @@ func captureGroupPlan(groupName string) groupPlan {
 		// ANUNCIOS banner, section 0) for every item. Playwright's :has-text
 		// scopes it to the named section; the fallback chain then uses the
 		// whole course content instead of an unrelated banner.
-		return groupPlan{[]string{"page", "course", "phase"}, `#region-main .course-content li.section:has(.sectionname:has-text("Seguimiento y Evaluaci")), #region-main .course-content .section:has(> .content > .sectionname:has-text("Seguimiento y Evaluaci"))`, nil, false}
+		return groupPlan{[]string{"page", "course", "phase"}, courseSectionByTitle(seguimientoSectionTitle), nil, false}
 	case "sesiones_linea":
-		return groupPlan{[]string{"page", "course", "phase"}, `#region-main .course-content li.section:has(.sectionname:has-text("Sesiones en l")), #region-main .course-content .section:has(> .content > .sectionname:has-text("Sesiones en l"))`, nil, false}
+		return groupPlan{[]string{"page", "course", "phase"}, courseSectionByTitle(sesionesSectionTitle), nil, false}
 	case "foros", "anuncios_fase", "anuncios_semanales", "conclusion_foros", "netiqueta":
 		return groupPlan{[]string{"forum"}, "#region-main .forum_list .forum", []string{"Foro", "Anuncio", "sesión en línea"}, true}
 	case "evidencias_aprendizaje":
@@ -785,11 +802,73 @@ func captureSelectorForItem(itemCode, groupName, fallback string) string {
 	if groupName == "foros" && (itemCode == "9.1.1" || itemCode == "9.1.2" || itemCode == "9.1.3" || itemCode == "9.1.4") {
 		return "#page-mod-forum-view #region-main"
 	}
+	if title := courseSectionTitleForItem(itemCode); title != "" {
+		return courseSectionByTitle(title)
+	}
 	return fallback
 }
 
 func captureSelectorChainForItem(itemCode, groupName, primary string) []string {
-	return captureSelectorChain(groupName, primary)
+	chain := captureSelectorChain(groupName, primary)
+	if title := courseSectionTitleForItem(itemCode); title != "" && title != seguimientoSectionTitle && title != sesionesSectionTitle {
+		// A missing subsection falls back to its parent section, never to
+		// the whole course page or its first (banner) section.
+		parent := seguimientoSectionTitle
+		if strings.HasPrefix(itemCode, "8.") {
+			parent = sesionesSectionTitle
+		}
+		chain = append([]string{primary, courseSectionByTitle(parent)}, chain...)
+	}
+	return chain
+}
+
+const (
+	seguimientoSectionTitle = "Seguimiento y Evaluaci"
+	sesionesSectionTitle    = "Sesiones en l"
+)
+
+// courseSectionTitleForItem maps checklist items to the Moodle section or
+// subsection whose own title identifies them. Verified against a real SENA
+// course (docs/api-local.md): "Seguimiento y Evaluación" holds "Reporte del
+// Curso", "Seguimiento a la Formación", "Comités evaluativos - Actas" and
+// "Documentos de retención de aprendices"; "Sesiones en línea" holds the
+// per-phase "Grabaciones sesiones en línea" subsections. Titles are
+// substrings matched case-insensitively by Playwright's :has-text.
+func courseSectionTitleForItem(itemCode string) string {
+	switch itemCode {
+	case "7.1.1", "7.1.2":
+		return seguimientoSectionTitle
+	case "7.2", "13.2.1", "13.2.2":
+		return "Reporte del Curso"
+	case "7.3.1", "7.3.3":
+		return "Seguimiento a la Formaci"
+	case "7.3.2", "13.1.3":
+		return "Documentos de retenci"
+	case "7.4.1", "7.4.2", "7.4.3", "7.4.4", "13.1.2":
+		return "Comités evaluativos"
+	case "13.1.1":
+		return "Reuniones EEF"
+	case "8.1", "8.2", "8.3":
+		return sesionesSectionTitle
+	}
+	return ""
+}
+
+// courseSectionByTitle matches the section whose OWN header carries the
+// title. `.section:has-text()` also matched every ancestor section (e.g.
+// "Información general" containing a nested "Seguimiento y evaluación").
+func courseSectionByTitle(title string) string {
+	return fmt.Sprintf(`#region-main .course-content li.section:has(> .course-section-header .sectionname:has-text(%q))`, title)
+}
+
+// grabacionesSectionSelector picks the N-th per-phase recordings section.
+func grabacionesSectionSelector(index int) string {
+	return courseSectionByTitle("Grabaciones sesiones en l") + fmt.Sprintf(" >> nth=%d", index)
+}
+
+func isCourseViewURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && strings.HasSuffix(strings.ToLower(parsed.Path), "/course/view.php")
 }
 
 func forumConfigurationHideSelectors(itemCode, groupName string) []string {

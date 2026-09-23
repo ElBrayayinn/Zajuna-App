@@ -61,6 +61,11 @@ type CaptureOptions struct {
 	RowSelector string
 	RowsPerShot int
 	RowBatch    int
+	// OptionalSlot marks a slot that may legitimately not exist (e.g. the
+	// 5th "Grabaciones" section of a course with 4 phases): when no selector
+	// matches, the capture returns ErrNoRowsInBatch ("not needed") instead of
+	// a failure.
+	OptionalSlot bool
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -350,6 +355,9 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				// No rows at all on the first batch: fall back to the legacy
 				// container capture, including the container-level owner filter.
 				selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d rows=0", selector, rawCount))
+				if selector == strings.TrimSpace(options.Selector) {
+					emptyPrimaryContainer = true
+				}
 				if options.OwnerOnly {
 					filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: strings.TrimSpace(options.OwnerName)})
 					if ownerCount, ownerErr := filtered.Count(); ownerErr != nil || ownerCount == 0 {
@@ -363,6 +371,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			if options.FullPage {
 				_, captureErr = page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(absoluteOutput), FullPage: playwright.Bool(true), Timeout: playwright.Float(timeout)})
 			} else {
+				expandCourseSection(locator.First(), timeout)
 				_, captureErr = locator.First().Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
 			}
 			if captureErr == nil {
@@ -374,10 +383,18 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			}
 		}
 	}
+	if batching && options.RowBatch == 0 && options.OwnerOnly && emptyPrimaryContainer {
+		// The list exists but none of its rows is by the instructor: a real
+		// absence of evidence, reported in plain words.
+		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado", ErrSelectorNotFound)
+	}
 	if batching && options.RowBatch > 0 && emptyPrimaryContainer {
 		// The real list container rendered but holds no (owner) rows: later
 		// batches are simply not needed. A missing container stays a failure.
 		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene filas", ErrNoRowsInBatch)
+	}
+	if options.OptionalSlot && matchedCandidates == 0 {
+		return CaptureResult{}, fmt.Errorf("%w: el espacio opcional no existe en esta página", ErrNoRowsInBatch)
 	}
 	if options.RequireSelector {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)
@@ -420,6 +437,41 @@ func prepareHiddenEvidenceRegions(page playwright.Page, selectors []string) {
 			return true;
 		}`, selector)
 	}
+}
+
+// expandCourseSectionScript opens a collapsed Moodle 4 course section (and
+// its nested subsections) in place. Section content is already in the DOM as
+// `.content.collapse` with display:none, so a capture of a collapsed section
+// only showed its title bar. Nothing is clicked and nothing navigates.
+const expandCourseSectionScript = `(section) => {
+	if (!section.matches('li.section, [data-for="section"]')) {
+		return false;
+	}
+	// Only the section's own panel: nested subsections stay collapsed so the
+	// evidence shows the organization (their titles) instead of a page tens
+	// of thousands of pixels tall. Items that need a subsection target it.
+	const panels = [...section.querySelectorAll(':scope > .content.collapse, :scope > .course-content-item-content.collapse')];
+	// A subsection stays invisible (and its screenshot times out) while any
+	// ancestor section is collapsed: open the whole chain up to the course.
+	for (let node = section.parentElement; node; node = node.parentElement) {
+		if (node.classList && node.classList.contains('collapse')) {
+			panels.push(node);
+		}
+	}
+	for (const panel of panels) {
+		panel.classList.add('show');
+		panel.style.display = 'block';
+		panel.style.height = 'auto';
+	}
+	for (const toggle of section.querySelectorAll(':scope > .course-section-header [data-toggle="collapse"][aria-expanded="false"]')) {
+		toggle.classList.remove('collapsed');
+		toggle.setAttribute('aria-expanded', 'true');
+	}
+	return panels.length > 0;
+}`
+
+func expandCourseSection(section playwright.Locator, timeout float64) {
+	_, _ = section.Evaluate(expandCourseSectionScript, nil, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
 }
 
 // moodleNotificationSelectors are flash/alert regions Moodle injects after a

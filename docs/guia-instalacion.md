@@ -204,9 +204,32 @@ La próxima vez que uses el acceso directo, volverá a arrancar limpio.
 3. Confirma el desinstalador.
 4. Vuelve al paso 3 con el mismo `.exe` oficial (o uno nuevo que te pasen).
 
-La desinstalación puede dejar datos locales (cuenta, evidencias, backups) en
-`%APPDATA%\zajuna-app`. Si quieres un equipo limpio, borra esa carpeta
-**después** de desinstalar y solo si no necesitas esos datos.
+Desde la versión **0.1.3**, desinstalar borra también los datos locales de
+Zajuna App: el avance del checklist, las evidencias, las actividades
+seleccionadas, los reportes, los trabajos y las copias de seguridad, que viven
+en `%LOCALAPPDATA%\ZajunaApp`. También se borran los registros de
+`%APPDATA%\zajuna-app`. La contraseña de Zajuna guardada en el Administrador
+de credenciales de Windows se reemplaza la próxima vez que configures la cuenta.
+
+### Cada versión nueva empieza desde cero
+
+Instalar una versión nueva de Zajuna App **siempre** empieza con los datos
+vacíos, sin preguntar, y lo mismo pasa con las actualizaciones automáticas. Así
+el checklist arranca en 0 % y no aparecen evidencias, actividades ni trabajos
+de una versión anterior. Antes de instalar una versión nueva:
+
+- genera y guarda el **reporte PDF** de las fichas que necesites conservar;
+- si quieres una copia de tus datos, descárgala desde
+  **Configuración › Copias de seguridad** (la instalación nueva también borra
+  las copias guardadas dentro de la app).
+
+Para empezar de cero sin reinstalar, usa
+**Configuración › Almacenamiento › Restablecer la aplicación**. En
+**Configuración › Acerca de** ves la versión instalada y la carpeta de datos.
+
+Las versiones 0.1.2 y anteriores no borraban nada al desinstalarse. Si vienes de
+una de ellas, la 0.1.3 detecta esos datos antiguos en su primer arranque y los
+borra.
 
 ---
 
@@ -274,8 +297,10 @@ Después se inicia con `zajunaapp` desde cualquier carpeta.
 
 ### Actualizar
 
-Reemplaza el archivo conservando el mismo nombre y repite el permiso de
-ejecución:
+Al abrir una versión nueva, el AppImage borra los datos de la versión anterior
+(`$XDG_DATA_HOME/zajuna-app`, por defecto `~/.local/share/zajuna-app`). Genera
+antes los reportes PDF que necesites. Reemplaza el archivo conservando el mismo
+nombre y repite el permiso de ejecución:
 
 ```bash
 sudo cp Zajuna.App-0.1.1.AppImage /opt/ZajunaApp/Zajuna.App.AppImage
@@ -325,6 +350,10 @@ En builds empaquetados, Electron comprueba GitHub Releases
 (`medialabctm-hub/Zajuna-App`) después de arrancar el core. La descarga ocurre
 en segundo plano y la instalación se aplica **al cerrar** la app (no se fuerza
 un reinicio a mitad de una captura).
+
+Una actualización instala una versión nueva, así que también empieza con los
+datos vacíos (ver «Cada versión nueva empieza desde cero»). Genera tus reportes
+PDF antes de cerrar la app cuando haya una actualización descargada.
 
 **Windows sin firma Authenticode:** SmartScreen o la política del equipo pueden
 bloquear la descarga o la aplicación del parche. CSC/Authenticode sigue siendo
