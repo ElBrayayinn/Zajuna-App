@@ -71,6 +71,7 @@ func TestBuildCaptureTargetsBindsDatesToSelectedActivity(t *testing.T) {
 		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080",
 		Routes: []coursemaps.Route{
 			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=3010294", ActivityID: "3010294", Title: "Informe técnico", PhaseSection: 19, Technical: true},
+			{Kind: "grading", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=3010294&action=grading", ActivityID: "3010294", Title: "Calificación: Informe técnico", PhaseSection: 19, Technical: true},
 			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=3010361", ActivityID: "3010361", Title: "Storyboard", PhaseSection: 29, Technical: true},
 		},
 	}
@@ -78,14 +79,30 @@ func TestBuildCaptureTargetsBindsDatesToSelectedActivity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var bound []CaptureTarget
+	var bound, grading []CaptureTarget
 	for _, target := range targets {
-		if target.ItemCode == "6.1" || target.ItemCode == "10.1.1" || target.ItemCode == "10.1.2" {
+		if target.ItemCode == "6.1" {
 			bound = append(bound, target)
 		}
+		if target.ItemCode == "10.1.1" || target.ItemCode == "10.1.2" {
+			grading = append(grading, target)
+		}
 	}
-	if len(bound) != 3 {
-		t.Fatalf("expected one selected activity per bound item, got %#v", bound)
+	if len(bound) != 1 {
+		t.Fatalf("expected one selected activity for 6.1, got %#v", bound)
+	}
+	// 10.1.x use the activity's grading table (not the 6.1 date card), in
+	// 2-row batches, shared by both items: 5 slots, each covering both.
+	if len(grading) != 5 {
+		t.Fatalf("expected 5 row batches of the grading table, got %#v", grading)
+	}
+	for index, target := range grading {
+		if target.URL != "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=3010294&action=grading" || target.RowBatch != index || target.RowsPerShot != 2 || target.SlotNumber != index+1 {
+			t.Fatalf("grading batch %d is wrong: %#v", index, target)
+		}
+		if len(target.CoveredItemCodes) != 2 || target.CoveredItemCodes[0] != "10.1.1" || target.CoveredItemCodes[1] != "10.1.2" {
+			t.Fatalf("grading table must be one shared unit for 10.1.1 and 10.1.2: %#v", target.CoveredItemCodes)
+		}
 	}
 	for _, target := range bound {
 		if target.ActivityID != "3010294" || target.URL != record.CourseURL || target.PhaseSection != 19 {
@@ -118,11 +135,49 @@ func TestBuildCaptureTargetsScopesForumsToTechnicalOwnerContent(t *testing.T) {
 			forums = append(forums, target)
 		}
 	}
-	if len(forums) != 1 {
-		t.Fatalf("expected only one real forum route, got %#v", forums)
+	// Only the real forum route is used; its discussion list is captured in
+	// contiguous 2-row batches (rows 1–2, 3–4, …) up to the item limit.
+	if len(forums) != 5 {
+		t.Fatalf("expected 5 row batches of the only real forum route, got %#v", forums)
 	}
-	if !forums[0].OwnerOnly || !forums[0].RequireSelector {
-		t.Fatalf("forum target must require authenticated owner filtering: %#v", forums[0])
+	for index, target := range forums {
+		if !strings.Contains(target.URL, "forum/view.php?id=77") || target.SlotNumber != index+1 || target.RowBatch != index || target.RowsPerShot != RowsPerShot || target.RowSelector == "" {
+			t.Fatalf("forum batch %d is wrong: %#v", index, target)
+		}
+		if !target.OwnerOnly || !target.RequireSelector {
+			t.Fatalf("forum target must require authenticated owner filtering: %#v", target)
+		}
+	}
+}
+
+func TestGradingItemsNeverReuseTheDateCardWithoutGradingRoute(t *testing.T) {
+	record := coursemaps.Record{
+		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080",
+		Routes: []coursemaps.Route{
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=3010294", ActivityID: "3010294", Title: "Informe técnico", PhaseSection: 19, Technical: true},
+		},
+	}
+	targets, summary, err := BuildCaptureTargetsForActivities(record, map[string]bool{"3010294": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		for _, code := range target.CoveredItemCodes {
+			if code == "10.1.1" || code == "10.1.2" {
+				t.Fatalf("10.1.x must not duplicate the 6.1 date card: %#v", target)
+			}
+		}
+	}
+	if summary.UnresolvedItems == 0 {
+		t.Fatal("10.1.x without a grading route must be reported as unresolved")
+	}
+}
+
+func TestCourseSectionGroupsNeverTargetTheFirstSection(t *testing.T) {
+	for _, group := range []string{"seguimiento_evaluacion", "seguimiento_documentos", "documentos_retencion", "sesiones_linea"} {
+		if selector := captureGroupPlan(group).selector; !strings.Contains(selector, ":has-text(") {
+			t.Fatalf("%s must scope .section to its named section, got %q", group, selector)
+		}
 	}
 }
 

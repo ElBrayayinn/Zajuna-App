@@ -5,6 +5,7 @@ const path = require('node:path');
 const projectRoot = path.resolve(__dirname, '..');
 const coreRoot = path.join(projectRoot, 'core');
 const outputRoot = path.join(projectRoot, 'dist', 'core-targets');
+const { version } = require(path.join(projectRoot, 'package.json'));
 
 const targets = [
   { id: 'windows-x64', goos: 'windows', goarch: 'amd64', binary: 'zajuna-core.exe' },
@@ -23,7 +24,7 @@ for (const target of targets) {
   console.log(`Compilando core para ${target.id}...`);
   const result = spawnSync(
     'go',
-    ['build', '-trimpath', '-buildvcs=false', '-ldflags=-buildid=', '-o', outputPath, './cmd/zajuna-core'],
+    ['build', '-trimpath', '-buildvcs=false', `-ldflags=-buildid= -X main.appVersion=${version}`, '-o', outputPath, './cmd/zajuna-core'],
     {
     cwd: coreRoot,
     env: { ...process.env, GOOS: target.goos, GOARCH: target.goarch, CGO_ENABLED: '0' },

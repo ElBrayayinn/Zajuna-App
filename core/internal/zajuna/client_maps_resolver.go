@@ -89,9 +89,21 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 	put([]string{"10.1.1", "10.1.2"}, assigns)
 
 	grabaciones := buildOrderedRoutePool(routes, []string{"page", "resource", "url", "route"}, pagePoolTerms["grabacion_slot"], 6, func(route coursemaps.Route) bool {
-		return strings.Contains(strings.ToLower(route.URL), "/mod/plugnmeet/") || route.Kind != "route"
+		if strings.Contains(strings.ToLower(route.URL), "/mod/plugnmeet/") {
+			return true
+		}
+		// The recording/summary term must be in the activity's own title.
+		// Matching only the surrounding section text picked unrelated
+		// Inducción pages ("Actualización de los datos personales").
+		return route.Kind != "route" && titleHasAnyTerm(route, pagePoolTerms["grabacion_slot"])
 	})
 	put([]string{"12.1.1", "12.1.2"}, grabaciones)
+	if len(grabaciones) == 0 {
+		// Authoritative "no recordings found": without this the generic
+		// kind-based mapping (any page/resource/url) wins and the first
+		// pages of the course become wrong evidence.
+		groups["12.1.1"], groups["12.1.2"] = []string{}, []string{}
+	}
 
 	if numericCourseID(courseID) {
 		groups["5.1"] = []string{origin + "/zajuna/grade/report/grader/index.php?id=" + url.QueryEscape(courseID)}
@@ -209,6 +221,16 @@ func normalizeResolverText(value string) string {
 		"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n",
 	).Replace(value)
 	return strings.Join(strings.Fields(value), " ")
+}
+
+func titleHasAnyTerm(route coursemaps.Route, terms []string) bool {
+	title := normalizeResolverText(route.Title)
+	for _, term := range terms {
+		if term = normalizeResolverText(term); term != "" && strings.Contains(title, term) {
+			return true
+		}
+	}
+	return false
 }
 
 func singleValue(match *routeMatch) []string {

@@ -158,6 +158,9 @@ async function startCoreOnce() {
 
   const child = spawn(binary, ['--port=0', '--no-browser', '--endpoint-file=' + endpointFile], {
     cwd: path.dirname(binary),
+    // Tells the core a supervisor will restart it: after a staged data reset
+    // it exits cleanly and recoverCore() starts it again and reopens the UI.
+    env: { ...process.env, ZAJUNA_SUPERVISED: '1' },
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
     // On POSIX, detached makes the core the leader of its own process group

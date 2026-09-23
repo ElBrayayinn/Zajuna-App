@@ -17,8 +17,11 @@ import {
   useSetupStatus,
   useSyncFichas,
   useTargets,
+  useDismissJobs,
   isNotFound,
 } from '../hooks/api'
+import { explainJobFailure, unresolvedFailedJobs } from '../lib/jobFailure'
+import { FailureGuide } from '../components/FailureGuide'
 import {
   confidenceFor,
   formatDate,
@@ -59,7 +62,9 @@ function JobEntry({ job }: { job: Job }) {
         </span>
       </div>
       <small>
-        {friendlyJobMessage(job.message || job.stage)} · {progress}%
+        {job.status === 'failed' || job.status === 'cancelled'
+          ? explainJobFailure(job).title
+          : `${friendlyJobMessage(job.message || job.stage)} · ${progress}%`}
       </small>
       <div className={`progress${isRunning ? ' running' : ''}`}>
         <i style={{ width: `${progress}%` }} />
@@ -148,6 +153,7 @@ export function Overview() {
   const capture = useCapture()
   const createSchedule = useCreateSchedule()
   const setScheduleEnabled = useSetScheduleEnabled()
+  const dismissJobs = useDismissJobs()
 
   const dashboard = dashboardQuery.data
   const fichas = fichasQuery.data || []
@@ -240,10 +246,20 @@ export function Overview() {
 
   const jobProgress = currentJob ? clamp(Number(currentJob.progress) || 0, 0, 100) : 0
 
-  const attentionItems = items.filter((entry) => entry.status === 'NO').slice(0, 3)
-  const attentionJobs = jobs.filter((job) => job.status === 'failed').slice(0, 2)
-  const attentionTotal =
-    items.filter((entry) => entry.status === 'NO').length + jobs.filter((job) => job.status === 'failed').length
+  const noItems = items.filter((entry) => entry.status === 'NO')
+  const attentionItems = noItems.slice(0, 3)
+  // Solo fallos vigentes: los resueltos por una ejecución posterior del mismo
+  // proceso o descartados por el usuario ya no piden atención.
+  const openFailures = unresolvedFailedJobs(jobs)
+  const attentionJobs = openFailures.slice(0, 3)
+  const attentionTotal = noItems.length + openFailures.length
+
+  function handleDismissAll() {
+    dismissJobs.mutate(openFailures.map((job) => job.id).slice(0, 100), {
+      onSuccess: () => toast('Avisos descartados. Los procesos siguen disponibles en Trabajos.'),
+      onError: (error) => toast(friendlyError(error.message), true),
+    })
+  }
 
   const categories: DashboardCategory[] = dashboard.categories || []
   const bars = categories.map((category) => ({
@@ -543,7 +559,12 @@ export function Overview() {
             <section className="card attention-card">
               <div className="card-pad">
                 <div className="side-title">
-                  <h3>Requiere tu atención</h3>
+                  <div>
+                    <h3>Requiere tu atención</h3>
+                    <p className="helper" style={{ marginTop: 5 }}>
+                      Ítems que marcaste como no cumplidos y procesos que fallaron y aún no se han resuelto. Cada aviso te dice qué hacer.
+                    </p>
+                  </div>
                   <span className="badge alert">
                     {attentionTotal} asunto{attentionTotal === 1 ? '' : 's'}
                   </span>
@@ -560,25 +581,37 @@ export function Overview() {
                         </strong>
                         <span>{entry.categoryLabel || ''}</span>
                       </div>
-                      <button className="button ghost small" onClick={() => navigate('/checklist')}>
+                      <button className="button ghost small" onClick={() => navigate(`/checklist/${encodeURIComponent(entry.itemCode)}`)}>
                         Revisar
                       </button>
                     </div>
                   ))}
+                  {noItems.length > attentionItems.length ? (
+                    <Link className="helper" to="/checklist?category=no">
+                      Ver los {noItems.length} ítems no cumplidos →
+                    </Link>
+                  ) : null}
                   {attentionJobs.map((job) => (
                     <div className="attention-row" key={job.id}>
                       <span className="attention-icon warn">
                         <Icon name="warning" size={14} />
                       </span>
                       <div className="attention-copy">
-                        <strong>{friendlyJobType(job.type)}</strong>
-                        <span>{friendlyJobMessage(job.message || job.stage)}</span>
+                        <strong>
+                          {friendlyJobType(job.type)} · {formatDate(job.updatedAt || job.createdAt)}
+                        </strong>
+                        <FailureGuide job={job} compact showDismiss />
                       </div>
-                      <button className="button ghost small" onClick={() => navigate('/trabajos')}>
-                        Ver
+                      <button className="button ghost small" onClick={() => navigate(`/trabajos/${encodeURIComponent(job.id)}`)}>
+                        Ver detalle
                       </button>
                     </div>
                   ))}
+                  {openFailures.length > 1 ? (
+                    <button type="button" className="button ghost small" onClick={handleDismissAll} disabled={dismissJobs.isPending}>
+                      Descartar los {openFailures.length} avisos de procesos
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </section>

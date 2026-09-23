@@ -14,10 +14,27 @@ import {
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import { confidenceFor, formatDate, routeStatusClass, routeStatusLabel } from '../lib/format'
-import type { ItemStatus, RouteTarget } from '../types'
+import type { DashboardItem, Evidence, ItemStatus, RouteTarget } from '../types'
 
 function targetLocation(target: RouteTarget) {
   return target.url || target.cssSelector || 'Ruta pendiente de definir'
+}
+
+function contentKey(evidence: Evidence) {
+  const hash = String(evidence.sha256 || '').trim().toLowerCase()
+  if (hash) return `hash:${hash}`
+  const path = String(evidence.filePath || '').trim().replace(/\\/g, '/').toLowerCase()
+  return path ? `path:${path}` : ''
+}
+
+/** Other checklist items whose evidence is the same image (same SHA-256 or file). */
+function sharedWithItems(evidence: Evidence, currentCode: string, items: DashboardItem[]) {
+  const key = contentKey(evidence)
+  if (!key) return []
+  return items
+    .filter((item) => item.itemCode !== currentCode && (item.evidences || []).some((entry) => contentKey(entry) === key))
+    .map((item) => item.itemCode)
+    .sort((left, right) => left.localeCompare(right, 'es', { numeric: true }))
 }
 
 export function ChecklistItemDetail() {
@@ -152,6 +169,7 @@ export function ChecklistItemDetail() {
               {Array.from({ length: Math.max(targets.length, maxEvidences) }).map((_, index) => {
                 const target = targets[index]
                 const evidence = task.evidences?.find((entry) => (entry.slotNumber || 1) === index + 1)
+                const sharedCodes = evidence ? sharedWithItems(evidence, task.itemCode, dashboard.items) : []
                 const review = target
                   ? reviews.find((entry) => entry.routeKey === (target.routeKey || `${target.groupName}|${target.url || target.cssSelector || target.itemCode}`))
                   : undefined
@@ -162,6 +180,11 @@ export function ChecklistItemDetail() {
                       <strong>Slot {index + 1}</strong>
                       <span>{target ? target.name || target.groupName : 'Objetivo aún no asignado'}</span>
                       {target ? <small>{targetLocation(target)}</small> : null}
+                      {sharedCodes.length ? (
+                        <small title={`Ítems: ${sharedCodes.join(', ')}`}>
+                          Misma imagen usada también en {sharedCodes.length === 1 ? 'el ítem' : 'los ítems'} {sharedCodes.join(', ')}
+                        </small>
+                      ) : null}
                     </div>
                     {evidence ? (
                       <a className="button ghost small" href={evidenceDownloadUrl(evidence.id)} target="_blank" rel="noreferrer">

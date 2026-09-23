@@ -36,6 +36,9 @@ type targetOutcome struct {
 	captured        bool
 	evidenceRecords int
 	failure         string
+	// skipped marks a row-batch slot that starts after the last row: nothing
+	// to capture, not a failure. Its previous evidence (if any) is stale.
+	skipped bool
 }
 
 func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context, baseURL *url.URL, input CaptureChecklistInput, password string) (*capture.BrowserSession, error) {
@@ -63,6 +66,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		ViewportWidth: target.ViewportWidth, ViewportHeight: target.ViewportHeight,
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
+		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
 	}
 
 	var captureResult capture.CaptureResult
@@ -95,6 +99,12 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		captureResult, captureErr = w.runtime.CaptureURLWithMetadataAndCookiesAndOptions(ctx, target.URL, outputPath, cookies, options)
 	}
 	if captureErr != nil {
+		if errors.Is(captureErr, capture.ErrNoRowsInBatch) {
+			// The list is fully covered by earlier slots. Stale evidence for
+			// this slot is removed by the reference-counted prune/delete, never
+			// here: another kept row may still point to the same file.
+			return targetOutcome{skipped: true}
+		}
 		if errors.Is(captureErr, capture.ErrLoginPage) {
 			return targetOutcome{failure: target.ItemCode + ": sesión de Zajuna expirada o página de login"}
 		}
@@ -123,6 +133,8 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		"phaseSection": target.PhaseSection, "jobId": params.JobID,
 		"activityId": target.ActivityID, "activityTitle": target.ActivityTitle, "technical": target.Technical, "ownerOnly": target.OwnerOnly,
 		"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
+		"rowSelector": target.RowSelector, "rowsPerShot": target.RowsPerShot, "rowBatch": target.RowBatch,
+		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart,
 	})
 	capturedAt := time.Now().UTC()
 	evidenceRecords := 0
@@ -204,6 +216,21 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 		Target: input.Target, BaseURL: baseURL, Session: session, Password: password,
 		OwnerName: input.OwnerName, UseBrowser: useBrowser,
 	})
+	if outcome.skipped {
+		// Empty row batch: the slot is not needed. Drop any evidence a previous
+		// (longer) list left in it so the checklist does not show a stale shot.
+		if deleteStore, ok := w.parent.evidence.(evidence.DeleteStore); ok {
+			for _, itemCode := range coveredItemCodes(input.Target) {
+				evidenceID := artifactID("evidence", input.FichaID, itemCode+"#"+strconv.Itoa(input.Target.SlotNumber), "")
+				_, _ = deleteStore.DeleteEvidence(ctx, evidenceID)
+			}
+		}
+		_ = reporter.Progress(ctx, "completed", 100, "Objetivo omitido: el lote de filas está vacío")
+		return jobs.Result{Output: map[string]any{
+			"fichaId": input.FichaID, "itemCode": input.Target.ItemCode, "slotNumber": input.Target.SlotNumber,
+			"index": input.Index, "parentJobId": input.ParentJobID, "evidenceRecords": 0, "skipped": true,
+		}}
+	}
 	if !outcome.captured {
 		return jobs.Result{ErrorCode: "capture_target_failed", ErrorMessage: outcome.failure}
 	}

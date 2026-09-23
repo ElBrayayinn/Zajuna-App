@@ -1,6 +1,10 @@
 package secrets
 
-import "github.com/zalando/go-keyring"
+import (
+	"errors"
+
+	"github.com/zalando/go-keyring"
+)
 
 const ServiceName = "zajuna-app"
 
@@ -17,4 +21,13 @@ func (SystemStore) Set(user, password string) error {
 
 func (SystemStore) Get(user string) (string, error) {
 	return keyring.Get(ServiceName, user)
+}
+
+// Delete removes the stored password. A missing entry is not an error, so a
+// data reset can call it unconditionally.
+func (SystemStore) Delete(user string) error {
+	if err := keyring.Delete(ServiceName, user); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return nil
 }

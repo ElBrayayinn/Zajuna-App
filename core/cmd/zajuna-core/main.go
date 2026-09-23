@@ -36,7 +36,25 @@ import (
 //go:embed web
 var webFiles embed.FS
 
-const appVersion = "0.1.1"
+// appVersion is injected at build time from package.json by
+// scripts/build-core*.cjs (-ldflags "-X main.appVersion=..."), so the core
+// never reports a stale hardcoded release.
+var appVersion = "dev"
+
+// shutdownRequests lets a handler (for example, the data reset) stop the
+// core cleanly so deferred Close calls release SQLite. When the Electron
+// supervisor is present (ZAJUNA_SUPERVISED=1) it restarts the core and
+// reopens the browser automatically.
+var shutdownRequests = make(chan struct{}, 1)
+
+func requestShutdown() {
+	select {
+	case shutdownRequests <- struct{}{}:
+	default:
+	}
+}
+
+func supervised() bool { return os.Getenv("ZAJUNA_SUPERVISED") == "1" }
 
 type appConfig struct {
 	SetupComplete      bool   `json:"setupComplete"`
@@ -72,6 +90,16 @@ func main() {
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("no se pudo crear la carpeta local de datos: %v", err)
+	}
+	if reset, resetErr := backup.ApplyPendingReset(dataDir); resetErr != nil {
+		log.Printf("restablecimiento de datos locales: %v", resetErr)
+	} else if reset {
+		log.Printf("datos locales restablecidos antes de abrir SQLite")
+	}
+	if wiped, versionErr := backup.EnforceVersion(dataDir, appVersion); versionErr != nil {
+		log.Printf("limpieza por cambio de versión: %v", versionErr)
+	} else if wiped {
+		log.Printf("versión %s instalada: datos de la versión anterior borrados", appVersion)
 	}
 	restored, err := backup.ApplyPending(dataDir)
 	if err != nil {
@@ -222,7 +250,11 @@ func main() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	select {
+	case <-stop:
+	case <-shutdownRequests:
+		log.Printf("cierre solicitado por la API local para aplicar cambios al reiniciar")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -366,6 +398,7 @@ func newRouterWithServices(dataDir string, credentials secrets.Store, jobRuntime
 	}
 	registerNotificationRoutes(mux, notificationsStore)
 	registerBackupRoutes(mux, backupManager)
+	registerAppRoutes(mux, dataDir, credentials, backupManager)
 	var evidenceStore evidence.Store
 	if candidate, ok := scheduleStore.(evidence.Store); ok {
 		evidenceStore = candidate

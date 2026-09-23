@@ -108,7 +108,7 @@ func (s *Store) enforceMaxEvidences(ctx context.Context, fichaID, itemCode strin
 			return fmt.Errorf("delete excess evidence: %w", err)
 		}
 		if item.path != "" {
-			_ = os.Remove(item.path)
+			s.removeEvidenceFileIfUnreferenced(ctx, item.path)
 		}
 	}
 	return nil
@@ -217,8 +217,11 @@ func (s *Store) ClearEvidences(ctx context.Context, fichaID string) (deletedRows
 		}
 		deletedRows++
 		if item.path != "" {
-			if removeErr := os.Remove(item.path); removeErr == nil {
-				deletedFiles++
+			var remaining int
+			if countErr := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM evidences WHERE file_path = ?`, item.path).Scan(&remaining); countErr == nil && remaining == 0 {
+				if removeErr := os.Remove(item.path); removeErr == nil {
+					deletedFiles++
+				}
 			}
 		}
 	}
@@ -226,6 +229,72 @@ func (s *Store) ClearEvidences(ctx context.Context, fichaID string) (deletedRows
 		_ = s.GarbageCollectEvidenceFiles(ctx)
 	}
 	return deletedRows, deletedFiles, nil
+}
+
+// PruneCaptureChecklistEvidence deletes "capture-checklist" evidence of a
+// ficha whose item is in itemCodes but whose (item, slot) is not in keep:
+// slots dropped from the capture plan or skipped as empty row batches. Files
+// are removed only once no remaining evidence row references them (covered
+// items share one screenshot). Other sources and other items are untouched.
+func (s *Store) PruneCaptureChecklistEvidence(ctx context.Context, fichaID string, itemCodes []string, keep map[string]map[int]bool) (int, error) {
+	fichaID = strings.TrimSpace(fichaID)
+	if fichaID == "" || len(itemCodes) == 0 {
+		return 0, nil
+	}
+	covered := make(map[string]bool, len(itemCodes))
+	for _, itemCode := range itemCodes {
+		if itemCode = strings.TrimSpace(itemCode); itemCode != "" {
+			covered[itemCode] = true
+		}
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, item_code, slot_number, file_path FROM evidences
+		WHERE ficha_id = ? AND source = 'capture-checklist'
+	`, fichaID)
+	if err != nil {
+		return 0, fmt.Errorf("list checklist evidences to prune: %w", err)
+	}
+	type row struct {
+		id, itemCode, path string
+		slot               int
+	}
+	var stale []row
+	for rows.Next() {
+		var item row
+		if err := rows.Scan(&item.id, &item.itemCode, &item.slot, &item.path); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan checklist evidence to prune: %w", err)
+		}
+		if covered[item.itemCode] && !keep[item.itemCode][item.slot] {
+			stale = append(stale, item)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, err
+	}
+	rows.Close()
+
+	deleted := 0
+	for _, item := range stale {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM evidences WHERE id = ?`, item.id); err != nil {
+			return deleted, fmt.Errorf("delete stale checklist evidence: %w", err)
+		}
+		deleted++
+	}
+	for _, item := range stale {
+		if item.path == "" {
+			continue
+		}
+		var references int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM evidences WHERE file_path = ?`, item.path).Scan(&references); err != nil {
+			return deleted, fmt.Errorf("count evidence file references: %w", err)
+		}
+		if references == 0 {
+			_ = os.Remove(item.path)
+		}
+	}
+	return deleted, nil
 }
 
 // ReconcileEvidenceFilesAfterRestore removes leftover files that were not part

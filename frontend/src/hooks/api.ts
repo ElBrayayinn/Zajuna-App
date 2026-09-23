@@ -148,6 +148,25 @@ export function useJobs() {
   return query
 }
 
+export function useDismissJobs() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: api.dismissJobs,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['job'] })
+    },
+  })
+}
+
+export function useAppInfo() {
+  return useQuery({ queryKey: ['appInfo'], queryFn: api.getAppInfo, staleTime: 60_000 })
+}
+
+export function useResetApp() {
+  return useMutation({ mutationFn: api.resetApp })
+}
+
 export function useJob(jobId?: string) {
   return useQuery({
     queryKey: ['job', jobId],

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { backupDownloadUrl } from '../api/client'
 import { PageError, PageSkeleton } from '../components/AsyncState'
-import { useBackups, useCleanupBackups, useCreateBackup, useDashboard, useDeleteBackup, useFichas, useRestoreBackup, useClearEvidences, useSaveSettings, useSaveSetup, useSettings, useSetupStatus } from '../hooks/api'
+import { useAppInfo, useResetApp, useBackups, useCleanupBackups, useCreateBackup, useDashboard, useDeleteBackup, useFichas, useRestoreBackup, useClearEvidences, useSaveSettings, useSaveSetup, useSettings, useSetupStatus } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import type { AppSettings } from '../types'
@@ -52,7 +52,12 @@ export function Settings() {
   const deleteBackup = useDeleteBackup()
   const cleanupBackups = useCleanupBackups()
   const restoreBackup = useRestoreBackup()
+  const appInfoQuery = useAppInfo()
+  const resetApp = useResetApp()
   const toast = useToast()
+  const [resetBackupFirst, setResetBackupFirst] = useState(true)
+  const [resetForgetCredentials, setResetForgetCredentials] = useState(false)
+  const [resetDone, setResetDone] = useState<{ restarting: boolean; backupName?: string } | null>(null)
 
   const [documentType, setDocumentType] = useState<DocumentType>(setup?.zajunaDocumentType || 'CC')
   const [username, setUsername] = useState(setup?.zajunaUsername || '')
@@ -69,6 +74,27 @@ export function Settings() {
   useEffect(() => {
     if (settings) setPreferences(settings)
   }, [settings])
+
+  if (resetDone) {
+    return (
+      <section className="card onboarding-card" role="status" aria-live="polite">
+        <div className="card-pad">
+          <div className="eyebrow">Restablecimiento en curso</div>
+          <h2 style={{ marginTop: 7 }}>Estamos dejando Zajuna App como recién instalada</h2>
+          <p className="helper" style={{ marginTop: 8 }}>
+            {resetDone.restarting
+              ? 'La aplicación se reinicia sola y abrirá una pestaña nueva en unos segundos, con el checklist en 0 y sin evidencias, actividades ni trabajos anteriores. Ya puedes cerrar esta pestaña.'
+              : 'Cierra Zajuna App y vuelve a abrirla: al iniciar se borrarán los datos anteriores y verás la aplicación como recién instalada.'}
+          </p>
+          {resetDone.backupName ? (
+            <p className="helper" style={{ marginTop: 8 }}>
+              Guardamos una copia de seguridad previa ({resetDone.backupName}). Puedes restaurarla desde Configuración › Copias de seguridad.
+            </p>
+          ) : null}
+        </div>
+      </section>
+    )
+  }
 
   if (setupQuery.isLoading || settingsQuery.isLoading) return <PageSkeleton label="Cargando configuración local" />
   if (setupQuery.isError || settingsQuery.isError) return <PageError message="No pudimos cargar las preferencias locales." action={<button className="button" onClick={() => { setupQuery.refetch(); settingsQuery.refetch() }}>Reintentar</button>} />
@@ -138,6 +164,23 @@ export function Settings() {
       const message = err instanceof Error ? err.message : 'No se pudieron limpiar las copias antiguas.'
       toast(friendlyError(message), true)
     }
+  }
+
+  function handleResetApp() {
+    const summary = [
+      'Se borrarán de este equipo: el avance del checklist, las evidencias, las actividades seleccionadas, las rutas revisadas, los reportes, los trabajos y los avisos.',
+      resetBackupFirst ? 'Antes se creará una copia de seguridad para poder volver atrás.' : 'No se creará copia de seguridad: no podrás recuperar estos datos.',
+      resetForgetCredentials ? 'También se olvidará tu contraseña de Zajuna.' : 'Tu cuenta de Zajuna tendrá que configurarse de nuevo al abrir.',
+      'La aplicación se reiniciará. ¿Continuar?',
+    ].join('\n\n')
+    if (!window.confirm(summary)) return
+    resetApp.mutate(
+      { backupFirst: resetBackupFirst, forgetCredentials: resetForgetCredentials },
+      {
+        onSuccess: (result) => setResetDone({ restarting: result.restarting, backupName: result.backupName }),
+        onError: (error) => toast(friendlyError(error.message), true),
+      },
+    )
   }
 
   async function updatePreferences(next: AppSettings) {
@@ -418,6 +461,46 @@ export function Settings() {
               </div>
             </div>
           </section>
+          {appInfoQuery.data?.resetPending ? (
+            <div className="activity-status warn" role="alert">
+              Hay un restablecimiento pendiente que no se pudo aplicar porque otro proceso tenía abiertos los datos. Cierra
+              Zajuna App por completo (también desde la bandeja del sistema) y vuelve a abrirla.
+            </div>
+          ) : null}
+          <section className="card settings-section">
+            <div className="settings-section-head">
+              <h3>Restablecer la aplicación</h3>
+              <p className="helper">
+                Deja Zajuna App como recién instalada: checklist en 0 %, sin evidencias, actividades, trabajos ni avisos
+                anteriores. Instalar una versión nueva ya lo hace automáticamente; usa esta opción para empezar de cero sin reinstalar.
+              </p>
+            </div>
+            <div className="card-pad">
+              <label className="settings-row" style={{ cursor: 'pointer' }}>
+                <div>
+                  <strong>Crear una copia de seguridad antes</strong>
+                  <span>Recomendado. Podrás restaurarla desde Copias de seguridad si cambias de opinión.</span>
+                </div>
+                <input type="checkbox" checked={resetBackupFirst} onChange={(event) => setResetBackupFirst(event.target.checked)} />
+              </label>
+              <label className="settings-row" style={{ cursor: 'pointer' }}>
+                <div>
+                  <strong>Olvidar también mi contraseña de Zajuna</strong>
+                  <span>Útil si otra persona va a usar este equipo.</span>
+                </div>
+                <input type="checkbox" checked={resetForgetCredentials} onChange={(event) => setResetForgetCredentials(event.target.checked)} />
+              </label>
+              <div className="settings-row" style={{ marginTop: 8 }}>
+                <div>
+                  <strong>Borrar datos y reiniciar</strong>
+                  <span>Las copias de seguridad existentes se conservan.</span>
+                </div>
+                <button className="button danger" type="button" onClick={handleResetApp} disabled={resetApp.isPending}>
+                  {resetApp.isPending ? (resetBackupFirst ? 'Creando copia…' : 'Restableciendo…') : 'Restablecer datos'}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       )}
 
@@ -511,6 +594,19 @@ export function Settings() {
             </div>
             <div className="settings-row">
               <div>
+                <strong>Versión instalada</strong>
+                <span>Compárala con la última publicada si algo no se ve como esperas.</span>
+              </div>
+              <span className="status-chip ok">{appInfoQuery.data?.version || '—'}</span>
+            </div>
+            <div className="settings-row">
+              <div>
+                <strong>Carpeta de datos</strong>
+                <span className="mono" style={{ wordBreak: 'break-all' }}>{appInfoQuery.data?.dataDir || '—'}</span>
+              </div>
+            </div>
+            <div className="settings-row">
+              <div>
                 <strong>Procesamiento</strong>
                 <span>Trabajos ejecutados en este equipo.</span>
               </div>
@@ -519,7 +615,7 @@ export function Settings() {
             <div className="settings-row">
               <div>
                 <strong>Interfaz</strong>
-                <span>localhost y componentes visuales alineados con la maqueta.</span>
+                <span>Se abre en tu navegador desde este mismo equipo.</span>
               </div>
               <span className="status-chip ok">Activa</span>
             </div>

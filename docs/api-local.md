@@ -224,9 +224,23 @@ Debe ejecutarse antes de capturar las evidencias ligadas a fechas y entregas.
 Resuelve las rutas del mapa local de la ficha en objetivos dirigidos por
 `itemCode`. La respuesta incluye el resumen de ítems/slots resueltos, la
 selección configurada y los selectores o etiquetas que aplicará Chromium. Para
-`6.1`, `10.1.1` y `10.1.2`, una selección activa hace que el objetivo use el
-menú principal del curso, abra la sección correspondiente y capture el bloque
-`#module-<activityId>` con sus fechas.
+`6.1`, una selección activa hace que el objetivo use el menú principal del
+curso, abra la sección correspondiente y capture el bloque
+`#module-<activityId>` con sus fechas. `10.1.1` y `10.1.2` usan en cambio la
+tabla de calificación de cada actividad seleccionada (`action=grading`: nota,
+retroalimentación y fecha de modificación) como una única captura compartida
+por ambos ítems; si una actividad no tiene esa ruta, el ítem queda sin resolver
+en lugar de repetir la tarjeta de fechas de `6.1`.
+
+Las evidencias con forma de lista o tabla se capturan por lotes de filas
+(`rowSelector`, `rowsPerShot` = 2, `rowBatch`): el slot 1 muestra las filas
+1–2, el slot 2 las filas 3–4 y así hasta el límite de evidencias del ítem, con
+el encabezado de la tabla visible. Aplica al reporte de calificaciones (`5.1`)
+y a las discusiones y anuncios publicados por el instructor (`9.1.5`–`9.1.7`,
+`11.x`, `14.x`, `15.1`), donde además solo se muestran filas del instructor.
+Un lote que empieza después de la última fila no genera evidencia (queda
+"omitido", no como fallo) y la captura retira las evidencias de slots que ya no
+corresponden.
 
 ### `GET /api/checklist/reviews?fichaId=<id>`
 
@@ -507,9 +521,11 @@ evidencias.
 
 ### `GET /api/evidences/groups?fichaId=<id>`
 
-Lista las representaciones agrupadas por URL, selector y grupo funcional. Cada
-grupo conserva los `itemCode` y slots que cubre, mientras el reporte utiliza la
-captura más reciente como representación visual.
+Lista las representaciones agrupadas por contenido: evidencias con el mismo
+`sha256` forman un solo grupo aunque pertenezcan a ítems, páginas o grupos
+funcionales distintos (sin hash se agrupan por URL, selector y grupo). Cada
+grupo conserva los `itemCode` y slots que cubre, y el reporte PDF inserta cada
+imagen una sola vez con la lista de ítems que respalda.
 
 La galería local permite buscar por título, código de actividad o descripción,
 y filtrar por nivel de confianza (`sugerida`, `confirmada` o `manual`) antes de

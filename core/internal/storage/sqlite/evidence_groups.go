@@ -78,6 +78,9 @@ func (s *Store) RebuildEvidenceGroups(ctx context.Context, fichaID string) ([]ev
 		group.ID = evidenceGroupID(fichaID, group.GroupKey)
 		sort.Strings(group.EvidenceIDs)
 		sort.Strings(group.ItemCodes)
+		if strings.HasPrefix(group.GroupKey, "hash:") {
+			group.Reason = sharedContentReason(group.ItemCodes)
+		}
 		groups = append(groups, *group)
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].GroupKey < groups[j].GroupKey })
@@ -175,7 +178,15 @@ func scanEvidence(scanner interface{ Scan(dest ...any) error }) (evidence.Record
 	return item, nil
 }
 
+// evidenceGroupSignature returns the grouping key, confidence and reason for a
+// record. Byte-identical content (same SHA-256) always collapses into a single
+// group, regardless of the page, selector or checklist item that produced it,
+// so the same image is never presented twice. The page/selector signature is
+// only a fallback for records without a content hash.
 func evidenceGroupSignature(record evidence.Record) (string, string, string) {
+	if hash := strings.ToLower(strings.TrimSpace(record.SHA256)); hash != "" {
+		return "hash:" + hash, "exact", "mismo contenido (SHA-256)"
+	}
 	var metadata struct {
 		URL             string `json:"url"`
 		FinalURL        string `json:"finalUrl"`
@@ -197,10 +208,19 @@ func evidenceGroupSignature(record evidence.Record) (string, string, string) {
 		}
 		return "page:" + pageURL + "|selector:" + selector + "|group:" + groupName, "suggested", "misma URL, selector y grupo funcional"
 	}
-	if hash := strings.TrimSpace(record.SHA256); hash != "" {
-		return "hash:" + hash, "exact", "mismo SHA-256"
-	}
 	return "record:" + record.ID, "unique", "sin firma compartida"
+}
+
+// sharedContentReason explains a content-hash group in operator terms.
+func sharedContentReason(itemCodes []string) string {
+	switch len(itemCodes) {
+	case 0:
+		return "imagen única"
+	case 1:
+		return "imagen única del ítem " + itemCodes[0]
+	default:
+		return "Misma imagen usada como evidencia en los ítems " + strings.Join(itemCodes, ", ")
+	}
 }
 
 func checklistGroupName(itemCode string) string {

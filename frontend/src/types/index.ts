@@ -25,6 +25,19 @@ export interface AppSettings {
   storage: { retentionKeep: number; retentionDays: number }
 }
 
+export interface AppInfo {
+  version: string
+  dataDir: string
+  supervised: boolean
+  resetPending: boolean
+}
+
+export interface AppResetResult {
+  staged: boolean
+  restarting: boolean
+  backupName?: string
+}
+
 export type DiagnosticStatus = 'ok' | 'warn' | 'error'
 
 export interface DiagnosticCheck {
@@ -162,6 +175,8 @@ export interface ActivitiesResponse {
   }
   activities: Activity[]
   selectedCount: number
+  /** Máximo de evidencias por ítem ligado a actividades (6.1, 10.1.1, 10.1.2). */
+  slotsPerItem?: number
 }
 
 export type JobStatus = 'queued' | 'running' | 'waiting_user' | 'retrying' | 'completed' | 'failed' | 'cancelled'
@@ -191,6 +206,11 @@ export interface Job {
   finishedAt?: string
   updatedAt?: string
   result?: unknown
+  /** El usuario lo quitó de “Requiere tu atención”; sigue visible en Trabajos. */
+  dismissed?: boolean
+  /** Ficha e ítems del input original (sin datos sensibles). */
+  fichaId?: string
+  itemCodes?: string[]
 }
 
 export interface JobEvent {

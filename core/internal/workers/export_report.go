@@ -11,6 +11,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -136,9 +137,69 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 	return jobs.Result{Output: map[string]any{"reportId": reportID, "path": outputPath, "format": format, "sha256": hash, "evidenceCount": len(evidences), "groupCount": len(groups)}}
 }
 
+// reportImageKey identifies the visual content of a record so the report never
+// embeds the same image twice: SHA-256 first, the cleaned file path otherwise.
+func reportImageKey(item evidence.Record) string {
+	if hash := strings.ToLower(strings.TrimSpace(item.SHA256)); hash != "" {
+		return "hash:" + hash
+	}
+	if path := strings.TrimSpace(item.FilePath); path != "" {
+		return "path:" + strings.ToLower(filepath.Clean(path))
+	}
+	return ""
+}
+
+// mergeReportGroupsByImage folds groups whose representative image is the same
+// content (same SHA-256 or same file) into the first one, accumulating the
+// covered item codes. Group order is preserved.
+func mergeReportGroupsByImage(groups []evidence.Group) []evidence.Group {
+	merged := make([]evidence.Group, 0, len(groups))
+	indexByKey := make(map[string]int)
+	for _, group := range groups {
+		key := ""
+		if len(group.Evidences) > 0 {
+			key = reportImageKey(latestEvidence(group.Evidences))
+		}
+		if key == "" {
+			merged = append(merged, group)
+			continue
+		}
+		if index, ok := indexByKey[key]; ok {
+			target := &merged[index]
+			for _, code := range group.ItemCodes {
+				target.ItemCodes = appendUniqueString(target.ItemCodes, code)
+			}
+			target.EvidenceIDs = append(target.EvidenceIDs, group.EvidenceIDs...)
+			target.Evidences = append(target.Evidences, group.Evidences...)
+			continue
+		}
+		group.ItemCodes = append([]string(nil), group.ItemCodes...)
+		indexByKey[key] = len(merged)
+		merged = append(merged, group)
+	}
+	for index := range merged {
+		sort.Strings(merged[index].ItemCodes)
+	}
+	return merged
+}
+
+func appendUniqueString(values []string, value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return values
+	}
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
 func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Group) string {
 	var summaryRows strings.Builder
 	var sections strings.Builder
+	groups = mergeReportGroupsByImage(groups)
+	embedded := make(map[string]int)
 	for index, group := range groups {
 		items := html.EscapeString(strings.Join(group.ItemCodes, ", "))
 		summaryRows.WriteString("<tr><td>")
@@ -164,12 +225,27 @@ func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Gr
 			sections.WriteString(`<p>No hay archivo asociado a este grupo.</p>`)
 		} else {
 			representative := latestEvidence(group.Evidences)
-			if image := embeddedEvidenceImage(dataDir, representative); image != "" {
-				sections.WriteString(`<img class="evidence-image" src="`)
+			imageKey := reportImageKey(representative)
+			if previous, seen := embedded[imageKey]; imageKey != "" && seen {
+				sections.WriteString(`<p class="file-note">Misma imagen que el grupo `)
+				sections.WriteString(fmt.Sprintf("%d", previous))
+				sections.WriteString(`; no se repite en el reporte.</p>`)
+			} else if image := embeddedEvidenceImage(dataDir, representative); image != "" {
+				if imageKey != "" {
+					embedded[imageKey] = index + 1
+				}
+				sections.WriteString(`<figure class="evidence-figure"><img class="evidence-image" src="`)
 				sections.WriteString(image)
 				sections.WriteString(`" alt="`)
 				sections.WriteString(html.EscapeString(representative.Name))
-				sections.WriteString(`">`)
+				sections.WriteString(`"><figcaption class="meta">`)
+				if len(group.ItemCodes) > 1 {
+					sections.WriteString(`Imagen usada como evidencia en los ítems: `)
+				} else {
+					sections.WriteString(`Evidencia del ítem: `)
+				}
+				sections.WriteString(items)
+				sections.WriteString(`</figcaption></figure>`)
 			} else {
 				sections.WriteString(`<p class="file-note">Archivo disponible localmente: `)
 				sections.WriteString(html.EscapeString(representative.Name))
@@ -189,7 +265,7 @@ func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Gr
 		summaryRows.WriteString(`<tr><td colspan="4">No hay grupos de evidencia locales.</td></tr>`)
 	}
 	return fmt.Sprintf(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>%s</title><style>
-body{font-family:Arial,sans-serif;color:#172033;margin:36px}h1{color:#145d5a;margin-bottom:6px}h2{color:#145d5a;font-size:18px;margin:0 0 8px}p{color:#526173}.meta{font-size:11px;line-height:1.5}table{width:100%%;border-collapse:collapse;margin-top:20px}th,td{text-align:left;border-bottom:1px solid #d9e1ea;padding:9px;font-size:11px;vertical-align:top}th{background:#edf5f4}.evidence-group{break-inside:avoid;border-top:2px solid #d9e1ea;margin-top:28px;padding-top:16px}.evidence-image{display:block;max-width:100%%;max-height:720px;object-fit:contain;border:1px solid #d9e1ea;margin-top:12px}.file-note{background:#f5f7fa;padding:10px}
+body{font-family:Arial,sans-serif;color:#172033;margin:36px}h1{color:#145d5a;margin-bottom:6px}h2{color:#145d5a;font-size:18px;margin:0 0 8px}p{color:#526173}.meta{font-size:11px;line-height:1.5}table{width:100%%;border-collapse:collapse;margin-top:20px}th,td{text-align:left;border-bottom:1px solid #d9e1ea;padding:9px;font-size:11px;vertical-align:top}th{background:#edf5f4}.evidence-group{break-inside:avoid;border-top:2px solid #d9e1ea;margin-top:28px;padding-top:16px}.evidence-image{display:block;max-width:100%%;max-height:720px;object-fit:contain;border:1px solid #d9e1ea;margin-top:12px}.evidence-figure{margin:0}.file-note{background:#f5f7fa;padding:10px}
 </style></head><body><h1>%s</h1><p>Reporte agrupado local · Ficha: %s · Generado: %s</p><h2>Resumen de evidencias</h2><table><thead><tr><th>#</th><th>Grupo</th><th>Tareas cubiertas</th><th>Confianza</th></tr></thead><tbody>%s</tbody></table>%s</body></html>`, html.EscapeString(title), html.EscapeString(title), html.EscapeString(fichaID), time.Now().UTC().Format(time.RFC3339), summaryRows.String(), sections.String())
 }
 

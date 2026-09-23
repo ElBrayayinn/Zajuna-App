@@ -9,6 +9,8 @@ import type {
   Job,
   JobEvent,
   Notification,
+  AppInfo,
+  AppResetResult,
   AppSettings,
   Backup,
   Schedule,
@@ -127,6 +129,13 @@ export const api = {
 
   cancelJob: (id: string) =>
     request<{ cancelled: boolean }>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+
+  dismissJobs: (ids: string[]) => request<{ dismissed: number }>('/api/jobs/dismiss', json({ ids })),
+
+  getAppInfo: () => request<AppInfo>('/api/app/info'),
+
+  resetApp: (input: { backupFirst: boolean; forgetCredentials: boolean }) =>
+    request<AppResetResult>('/api/app/reset', json(input)),
 
   listSchedules: () => request<Schedule[]>('/api/schedules'),
 

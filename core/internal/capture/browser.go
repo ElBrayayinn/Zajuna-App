@@ -24,12 +24,22 @@ type CaptureResult struct {
 	FinalURL        string
 	Selector        string
 	SelectorMatched bool
+	// RowsTotal/RowStart describe a row-batched capture: RowsTotal is the
+	// number of counted rows in the container and RowStart the 1-based index
+	// of the first row in the shot. Both are 0 when the capture was not batched.
+	RowsTotal int
+	RowStart  int
 }
 
 var ErrBlockedPage = errors.New("la página destino fue bloqueada por el sitio remoto")
 var ErrLoginPage = errors.New("la página destino es la pantalla de autenticación de Zajuna")
 var ErrChallengePage = errors.New("la página destino pide CAPTCHA o MFA")
 var ErrSelectorNotFound = errors.New("el selector requerido no apareció en la página destino")
+
+// ErrNoRowsInBatch means the requested row batch starts after the last row:
+// the list is already fully covered by earlier slots, so there is nothing to
+// capture. Callers must treat it as "slot not needed", not as a failure.
+var ErrNoRowsInBatch = errors.New("no quedan filas para este lote")
 
 const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -46,6 +56,11 @@ type CaptureOptions struct {
 	Timeout         time.Duration
 	RequireSelector bool
 	OwnerOnly       bool
+	// RowSelector/RowsPerShot/RowBatch crop list and table evidence to one
+	// batch of rows (see checklist.CaptureTarget). RowBatch is zero-based.
+	RowSelector string
+	RowsPerShot int
+	RowBatch    int
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -235,7 +250,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	}
 	prepareCourseMenu(page, options)
 	prepareHiddenEvidenceRegions(page, options.HideSelectors)
+	// Moodle flash notifications (e.g. "No dispone de permiso para ver los
+	// debates de este foro") must never leak into evidence.
+	prepareHiddenEvidenceRegions(page, moodleNotificationSelectors)
 	result := CaptureResult{Title: title, FinalURL: finalURL}
+	batching := strings.TrimSpace(options.RowSelector) != "" && options.RowsPerShot > 0
 	selectors := make([]string, 0, len(options.Selectors)+1)
 	addSelector := func(value string) {
 		value = strings.TrimSpace(value)
@@ -254,6 +273,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 		addSelector(selector)
 	}
 	matchedCandidates := 0
+	emptyPrimaryContainer := false
 	lastScreenshotError := ""
 	selectorDiagnostics := make([]string, 0, len(selectors))
 	for _, selector := range selectors {
@@ -275,15 +295,19 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			if ownerName == "" {
 				continue
 			}
-			filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: ownerName})
-			count, countErr := filtered.Count()
-			if countErr != nil || count == 0 {
-				selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d owner=0", selector, rawCount))
-				continue
+			// When batching rows, the owner filter applies to rows inside the
+			// container (see captureRowBatch), not to the container itself.
+			if !batching {
+				filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: ownerName})
+				count, countErr := filtered.Count()
+				if countErr != nil || count == 0 {
+					selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d owner=0", selector, rawCount))
+					continue
+				}
+				locator = filtered
 			}
-			locator = filtered
 		}
-		if options.OwnerOnly {
+		if options.OwnerOnly && !batching {
 			selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d owner=%d", selector, rawCount, func() int { value, _ := locator.Count(); return value }()))
 		}
 		if count, countErr := locator.Count(); countErr == nil && count > 0 {
@@ -291,6 +315,49 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			timeout := 5000.0
 			if options.Timeout > 0 {
 				timeout = float64(options.Timeout.Milliseconds())
+			}
+			if batching {
+				batch, batchErr := captureRowBatch(page, locator.First(), absoluteOutput, timeout, options)
+				if errors.Is(batchErr, ErrNoRowsInBatch) && batch.total == 0 {
+					// This candidate has no rows (e.g. a per-row fallback such as
+					// `.discussion`). Only a container that actually counted rows
+					// may declare the batch empty; keep looking.
+					selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d rows=0", selector, rawCount))
+					if selector == strings.TrimSpace(options.Selector) {
+						emptyPrimaryContainer = true
+					}
+					continue
+				}
+				if batch.handled {
+					selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d rows=%d", selector, rawCount, batch.total))
+					if batchErr == nil {
+						result.Selector = selector
+						result.SelectorMatched = true
+						result.RowsTotal = batch.total
+						result.RowStart = batch.start + 1
+						return result, nil
+					}
+					// Rows were counted here, so this container is the list:
+					// "no more rows" is definitive, and a screenshot error must
+					// surface as a failure instead of becoming an empty batch on
+					// a fallback selector (which would prune good evidence).
+					return CaptureResult{}, batchErr
+				}
+				if batchErr != nil {
+					lastScreenshotError = batchErr.Error()
+					continue
+				}
+				// No rows at all on the first batch: fall back to the legacy
+				// container capture, including the container-level owner filter.
+				selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d rows=0", selector, rawCount))
+				if options.OwnerOnly {
+					filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: strings.TrimSpace(options.OwnerName)})
+					if ownerCount, ownerErr := filtered.Count(); ownerErr != nil || ownerCount == 0 {
+						selectorDiagnostics = append(selectorDiagnostics, fmt.Sprintf("%s raw=%d owner=0", selector, rawCount))
+						continue
+					}
+					locator = filtered
+				}
 			}
 			var captureErr error
 			if options.FullPage {
@@ -306,6 +373,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				lastScreenshotError = captureErr.Error()
 			}
 		}
+	}
+	if batching && options.RowBatch > 0 && emptyPrimaryContainer {
+		// The real list container rendered but holds no (owner) rows: later
+		// batches are simply not needed. A missing container stays a failure.
+		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene filas", ErrNoRowsInBatch)
 	}
 	if options.RequireSelector {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)
@@ -348,6 +420,151 @@ func prepareHiddenEvidenceRegions(page playwright.Page, selectors []string) {
 			return true;
 		}`, selector)
 	}
+}
+
+// moodleNotificationSelectors are flash/alert regions Moodle injects after a
+// redirect (permission errors, session notices). They are never evidence.
+var moodleNotificationSelectors = []string{
+	"#user-notifications",
+	"#region-main > .alert-dismissible",
+	"#page-content .alert-block.alert-dismissible",
+}
+
+// rowBatchWindow returns the half-open row range [start, end) covered by the
+// zero-based batch when total rows are split into shots of perShot rows. ok
+// is false when the batch starts at or after the last row.
+func rowBatchWindow(total, perShot, batch int) (start, end int, ok bool) {
+	if total <= 0 || perShot <= 0 || batch < 0 {
+		return 0, 0, false
+	}
+	start = batch * perShot
+	if start >= total {
+		return 0, 0, false
+	}
+	end = start + perShot
+	if end > total {
+		end = total
+	}
+	return start, end, true
+}
+
+// rowBatchHideScript counts rows inside the container and, when the batch
+// window is not empty, hides every row outside it (and every non-owner row
+// when ownerOnly). Counting and hiding happen in one evaluation so both use
+// the same DOM snapshot. Returns {total}.
+const rowBatchHideScript = `(container, args) => {
+	const normalize = (value) => (value || '')
+		.normalize('NFD')
+		.replace(/[̀-ͯ]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.toLowerCase();
+	const owner = normalize(args.owner);
+	const all = Array.from(container.querySelectorAll(args.rowSelector));
+	const counted = [];
+	const hide = [];
+	for (const row of all) {
+		// Prefer the author cell: a discussion started by someone else may
+		// still show the instructor as its last poster.
+		const author = row.querySelector('td.author, .author, [data-region="author-name"]');
+		const ownerText = author ? author.textContent : row.textContent;
+		if (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner))) {
+			hide.push(row);
+		} else {
+			counted.push(row);
+		}
+	}
+	const total = counted.length;
+	const start = args.batch * args.perShot;
+	if (total === 0 || start >= total) {
+		return { total };
+	}
+	const end = Math.min(start + args.perShot, total);
+	counted.forEach((row, index) => {
+		if (index < start || index >= end) {
+			hide.push(row);
+		}
+	});
+	for (const row of hide) {
+		if (row.hasAttribute('data-zajuna-row-batch-hidden')) {
+			continue;
+		}
+		row.setAttribute('data-zajuna-row-batch-hidden', 'true');
+		row.setAttribute('data-zajuna-row-batch-display', row.style.display || '');
+		row.style.display = 'none';
+	}
+	return { total };
+}`
+
+// rowBatchRestoreScript undoes rowBatchHideScript so later work on the same
+// page sees the original rows.
+const rowBatchRestoreScript = `() => {
+	for (const row of document.querySelectorAll('[data-zajuna-row-batch-hidden]')) {
+		row.style.display = row.getAttribute('data-zajuna-row-batch-display') || '';
+		row.removeAttribute('data-zajuna-row-batch-hidden');
+		row.removeAttribute('data-zajuna-row-batch-display');
+	}
+	return true;
+}`
+
+type rowBatchOutcome struct {
+	// handled is true when rows were counted and the batch window was
+	// captured (or its screenshot attempted). false with a nil error means
+	// there were no rows on batch 0 and the caller must fall back.
+	handled bool
+	total   int
+	start   int
+}
+
+// captureRowBatch screenshots only the requested batch of rows inside the
+// container. It returns ErrNoRowsInBatch (without writing a file) when the
+// batch starts after the last counted row.
+func captureRowBatch(page playwright.Page, container playwright.Locator, absoluteOutput string, timeout float64, options CaptureOptions) (rowBatchOutcome, error) {
+	raw, err := container.Evaluate(rowBatchHideScript, map[string]any{
+		"rowSelector": strings.TrimSpace(options.RowSelector),
+		"owner":       strings.TrimSpace(options.OwnerName),
+		"ownerOnly":   options.OwnerOnly,
+		"perShot":     options.RowsPerShot,
+		"batch":       options.RowBatch,
+	}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
+	restore := func() { _, _ = page.Evaluate(rowBatchRestoreScript) }
+	if err != nil {
+		restore()
+		return rowBatchOutcome{}, fmt.Errorf("contar filas del lote: %w", err)
+	}
+	total := evaluatedInt(raw, "total")
+	start, _, ok := rowBatchWindow(total, options.RowsPerShot, options.RowBatch)
+	if total == 0 && options.RowBatch == 0 {
+		restore()
+		return rowBatchOutcome{}, nil
+	}
+	if total == 0 {
+		restore()
+		return rowBatchOutcome{}, fmt.Errorf("%w: el contenedor no tiene filas", ErrNoRowsInBatch)
+	}
+	if !ok {
+		restore()
+		return rowBatchOutcome{handled: true, total: total}, fmt.Errorf("%w: lote %d con %d filas por captura, %d filas en total", ErrNoRowsInBatch, options.RowBatch+1, options.RowsPerShot, total)
+	}
+	_, captureErr := container.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
+	restore()
+	return rowBatchOutcome{handled: true, total: total, start: start}, captureErr
+}
+
+func evaluatedInt(raw any, key string) int {
+	values, ok := raw.(map[string]any)
+	if !ok {
+		return 0
+	}
+	switch value := values[key].(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	}
+	return 0
 }
 
 // prepareCourseMenu gives Moodle's accordion sections a chance to render

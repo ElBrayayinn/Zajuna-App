@@ -96,7 +96,7 @@ func TestExportReportWorkerUsesEvidenceGroupsForFicha(t *testing.T) {
 	metadata := []byte(`{"finalUrl":"https://zajuna.sena.edu.co/zajuna/user/profile.php?id=7","selector":"#page-user-profile","selectorMatched":true}`)
 	for _, record := range []evidence.Record{
 		{ID: "group-report-1", FichaID: fichas[0].ID, ItemCode: "2.1.1", SlotNumber: 1, Name: "Perfil académico", FilePath: "profile-1.png", Format: "png", Source: "capture-checklist", SHA256: "group-hash-one", Metadata: metadata},
-		{ID: "group-report-2", FichaID: fichas[0].ID, ItemCode: "2.1.2", SlotNumber: 1, Name: "Correo institucional", FilePath: "profile-2.png", Format: "png", Source: "capture-checklist", SHA256: "group-hash-two", Metadata: metadata},
+		{ID: "group-report-2", FichaID: fichas[0].ID, ItemCode: "2.1.2", SlotNumber: 1, Name: "Correo institucional", FilePath: "profile-2.png", Format: "png", Source: "capture-checklist", SHA256: "group-hash-one", Metadata: metadata},
 	} {
 		if err := store.CreateEvidence(context.Background(), record); err != nil {
 			t.Fatal(err)

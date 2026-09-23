@@ -48,7 +48,7 @@ offline de la interfaz.
 
 ### Persistencia
 
-SQLite vive en la carpeta de datos del usuario. El schema actual es v12 e
+SQLite vive en la carpeta de datos del usuario. El schema actual es v13 e
 incluye fichas, cursos, mapas, targets, jobs, eventos, schedules, evidencias,
 reportes, settings, backups, historial del checklist y notificaciones.
 

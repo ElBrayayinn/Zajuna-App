@@ -69,7 +69,8 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "artifactName": "Zajuna.App.Setup-${version}.${ext}"
+      "artifactName": "Zajuna.App.Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     },
     "linux": {
       "target": "AppImage",

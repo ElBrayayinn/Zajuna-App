@@ -90,7 +90,9 @@ func TestChecklistActivitySelectionFiltersCaptureTargets(t *testing.T) {
 		ByItemCode: map[string]json.RawMessage{},
 		Routes: []coursemaps.Route{
 			{Kind: "assign", ActivityID: "301", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301", Title: "Técnica", PhaseSection: 19, Technical: true},
+			{Kind: "grading", ActivityID: "301", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301&action=grading", Title: "Calificación: Técnica", PhaseSection: 19, Technical: true},
 			{Kind: "assign", ActivityID: "302", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=302", Title: "Otra", PhaseSection: 29, Technical: false},
+			{Kind: "grading", ActivityID: "302", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=302&action=grading", Title: "Calificación: Otra", PhaseSection: 29, Technical: false},
 		},
 		Source: "test", DiscoveredAt: now, UpdatedAt: now,
 	}); err != nil {
@@ -133,17 +135,25 @@ func TestChecklistActivitySelectionFiltersCaptureTargets(t *testing.T) {
 	if err := json.NewDecoder(targetsResponse.Body).Decode(&payload); err != nil {
 		t.Fatal(err)
 	}
-	seen := 0
+	dates, grading := 0, 0
 	for _, target := range payload.Targets {
-		if target.ItemCode == "6.1" || target.ItemCode == "10.1.1" || target.ItemCode == "10.1.2" {
-			seen++
+		switch target.ItemCode {
+		case "6.1":
+			dates++
 			if target.ActivityID != "301" || target.URL != "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080" || !target.Require {
 				t.Fatalf("unselected activity leaked into target plan: %#v", target)
 			}
+		case "10.1.1", "10.1.2":
+			// Grading/feedback evidence comes from the selected activity's
+			// grading table (row batches), never from the 6.1 date card.
+			grading++
+			if target.ActivityID != "301" || target.URL != "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301&action=grading" || !target.Require {
+				t.Fatalf("unselected activity leaked into grading plan: %#v", target)
+			}
 		}
 	}
-	if !payload.SelectionConfigured || seen != 3 {
-		t.Fatalf("selection did not produce three bound targets: %#v", payload)
+	if !payload.SelectionConfigured || dates != 1 || grading == 0 {
+		t.Fatalf("selection did not produce the bound date and grading targets: %#v", payload)
 	}
 }
 

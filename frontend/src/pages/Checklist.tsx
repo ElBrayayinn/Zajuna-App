@@ -8,7 +8,6 @@ import {
   useDiscoverCourseMaps,
   useGenerateReport,
   useReviews,
-  useSaveActivities,
   useSaveReview,
   useSetItemStatus,
   useSetupStatus,
@@ -30,8 +29,8 @@ import { evidenceDownloadUrl } from '../api/client'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import { RouteDiscoveryAction } from '../components/RouteDiscoveryAction'
+import { ActivitySelector } from '../components/ActivitySelector'
 import type {
-  ActivitiesResponse,
   DashboardCategory,
   DashboardItem,
   Evidence,
@@ -132,116 +131,6 @@ function TaskRow({
         ))}
       </div>
     </article>
-  )
-}
-
-function ActivitySelectorSection({
-  data,
-  selectedIds,
-  onToggleActivity,
-  onSave,
-  isSaving,
-}: {
-  data: ActivitiesResponse | undefined
-  selectedIds: Set<string>
-  onToggleActivity: (id: string) => void
-  onSave: () => void
-  isSaving: boolean
-}) {
-  const [activityQuery, setActivityQuery] = useState('')
-  const [activityFilter, setActivityFilter] = useState<'all' | 'technical' | 'review'>('all')
-  if (!data) return null
-  if (data.mapReady === false) {
-    return (
-      <section className="card">
-        <div className="card-pad">
-          <div className="eyebrow">Paso 2 · Buscar rutas</div>
-          <h3 style={{ marginTop: 7 }}>Todavía no hay actividades del curso</h3>
-          <p className="helper" style={{ marginTop: 6 }}>
-            {data.discovery?.message || 'Busca las rutas del curso para cargar las actividades y elegir cuáles estarán a tu cargo.'}
-          </p>
-          <div className="inline" style={{ marginTop: 14 }}>
-            <RouteDiscoveryAction compact variant="primary" />
-            <span className="helper">Después vuelve aquí para seleccionar actividades.</span>
-          </div>
-        </div>
-      </section>
-    )
-  }
-  const activities = data.activities || []
-  const selected = selectedIds.size
-  const normalizedActivityQuery = activityQuery.trim().toLowerCase()
-  const visibleActivities = activities.filter((activity) => {
-    const matchesQuery = !normalizedActivityQuery || [activity.id, activity.title, activity.phaseName].some((value) => String(value || '').toLowerCase().includes(normalizedActivityQuery))
-    const matchesFilter = activityFilter === 'all' || (activityFilter === 'technical' ? activity.technical : !activity.technical)
-    return matchesQuery && matchesFilter
-  })
-  return (
-    <section className="card">
-      <div className="card-pad">
-        <div className="side-title">
-          <div>
-            <h3>Actividades a mi cargo</h3>
-            <p className="helper" style={{ marginTop: 5 }}>
-              Selecciona las actividades que corresponden a tu trabajo. Las fechas y evidencias se limitarán a esta
-              selección.
-            </p>
-          </div>
-          <span className="badge">{selected} seleccionadas</span>
-        </div>
-        {selected ? (
-          <p className="helper">Solo se prepararán evidencias relacionadas con estas actividades.</p>
-        ) : (
-          <div className="activity-warning">Selecciona al menos una actividad antes de preparar las evidencias.</div>
-        )}
-        <div className="activity-toolbar">
-          <input
-            type="search"
-            value={activityQuery}
-            onChange={(event) => setActivityQuery(event.target.value)}
-            placeholder="Buscar por codigo, nombre o fase"
-            aria-label="Buscar actividades por codigo, nombre o fase"
-          />
-          <select aria-label="Filtrar tipo de actividad" value={activityFilter} onChange={(event) => setActivityFilter(event.target.value as typeof activityFilter)}>
-            <option value="all">Todas</option>
-            <option value="technical">Técnicas</option>
-            <option value="review">Por revisar</option>
-          </select>
-        </div>
-        <div className="activity-list">
-          {visibleActivities.length ? (
-            visibleActivities.map((activity) => (
-              <label className="activity-row" key={activity.id}>
-                <input
-                  type="checkbox"
-                  name="activity-id"
-                  value={activity.id}
-                  checked={selectedIds.has(activity.id)}
-                  onChange={() => onToggleActivity(activity.id)}
-                />
-                <span>
-                  <span className="activity-title">{activity.title || 'Actividad sin título'}</span>
-                  <span className="activity-meta">
-                    <span>{activity.technical ? 'Área técnica' : 'Por revisar'}</span>
-                    {activity.phaseName ? <span>{activity.phaseName}</span> : null}
-                    <span>Referencia {activity.id}</span>
-                  </span>
-                </span>
-                <span className="badge">{activity.technical ? 'Técnica' : 'Revisar'}</span>
-              </label>
-            ))
-          ) : (
-            <div className="empty">Todavía no hay actividades disponibles. Actualiza el contenido del curso para buscarlas.</div>
-          )}
-        </div>
-        <div className="activity-actions">
-          <span className="helper">Mostrando {visibleActivities.length} de {activities.length} actividades</span>
-          <button className="button small" onClick={onSave} disabled={isSaving}>
-            Guardar selección
-          </button>
-        </div>
-      </div>
-    </section>
   )
 }
 
@@ -650,7 +539,6 @@ export function Checklist() {
   const setupQuery = useSetupStatus()
 
   const setItemStatus = useSetItemStatus()
-  const saveActivities = useSaveActivities()
   const saveReview = useSaveReview()
   const capture = useCapture()
   const generateReport = useGenerateReport()
@@ -663,16 +551,7 @@ export function Checklist() {
   const [routeQuery, setRouteQuery] = useState('')
   const [preview, setPreview] = useState<Evidence | null>(null)
   const [manualEdits, setManualEdits] = useState<Record<string, { manualUrl?: string; manualSelector?: string }>>({})
-  const [selectedActivityIds, setSelectedActivityIds] = useState<Set<string>>(new Set())
-  const [syncedActivitiesFicha, setSyncedActivitiesFicha] = useState<string | undefined>(undefined)
   const itemsSectionRef = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    if (activitiesQuery.data && dashboard?.activeFichaId && dashboard.activeFichaId !== syncedActivitiesFicha) {
-      setSelectedActivityIds(new Set(activitiesQuery.data.activities.filter((activity) => activity.selected).map((activity) => activity.id)))
-      setSyncedActivitiesFicha(dashboard.activeFichaId)
-    }
-  }, [activitiesQuery.data, dashboard?.activeFichaId, syncedActivitiesFicha])
 
   useEffect(() => {
     const fromUrl = searchParams.get('category') || 'all'
@@ -747,26 +626,6 @@ export function Checklist() {
       const top = section.getBoundingClientRect().top + window.scrollY - 24
       window.scrollTo({ top, behavior: 'smooth' })
     })
-  }
-
-  function handleToggleActivity(id: string) {
-    setSelectedActivityIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function handleSaveActivities() {
-    if (!dashboard) return
-    saveActivities.mutate(
-      { fichaId: dashboard.activeFichaId, selectedActivityIds: Array.from(selectedActivityIds) },
-      {
-        onSuccess: () => toast('Guardamos tu selección de actividades.'),
-        onError: (error) => toast(friendlyError(error.message), true),
-      },
-    )
   }
 
   function handleCapture() {
@@ -962,13 +821,23 @@ export function Checklist() {
           ) : activitiesQuery.isError ? (
             <section className="card"><div className="card-pad"><p className="helper" role="alert">No pudimos cargar las actividades de esta ficha.</p><button className="button ghost small" type="button" onClick={() => activitiesQuery.refetch()} style={{ marginTop: 12 }}>Reintentar</button></div></section>
           ) : (
-            <ActivitySelectorSection
-              data={activitiesQuery.data}
-              selectedIds={selectedActivityIds}
-              onToggleActivity={handleToggleActivity}
-              onSave={handleSaveActivities}
-              isSaving={saveActivities.isPending}
-            />
+            activitiesQuery.data?.mapReady === false ? (
+              <section className="card">
+                <div className="card-pad">
+                  <div className="eyebrow">Paso 2 · Buscar rutas</div>
+                  <h3 style={{ marginTop: 7 }}>Todavía no hay actividades del curso</h3>
+                  <p className="helper" style={{ marginTop: 6 }}>
+                    {activitiesQuery.data.discovery?.message || 'Busca las rutas del curso para cargar las actividades y elegir cuáles estarán a tu cargo.'}
+                  </p>
+                  <div className="inline" style={{ marginTop: 14 }}>
+                    <RouteDiscoveryAction compact variant="primary" />
+                    <span className="helper">Después vuelve aquí para seleccionar actividades.</span>
+                  </div>
+                </div>
+              </section>
+            ) : activitiesQuery.data ? (
+              <ActivitySelector key={dashboard.activeFichaId} data={activitiesQuery.data} fichaId={dashboard.activeFichaId} />
+            ) : null
           )}
 
           <ConfidenceSummarySection items={filtered} routeReviewOpen={routeReviewOpen} onToggleRoutes={toggleRouteReview} />
