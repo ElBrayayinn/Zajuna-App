@@ -44,6 +44,14 @@ function partialCounts(message: string) {
 }
 
 function connectionProblem(message: string): FailureExplanation | undefined {
+  if (/no tiene publicaciones del instructor/i.test(message)) {
+    return {
+      title: 'No encontramos publicaciones tuyas en ese foro',
+      cause: 'El foro existe, pero ninguna discusión o anuncio aparece con tu nombre como autor.',
+      next: 'Si ya publicaste, confirma en Zajuna que lo hiciste con esta cuenta. Si aún no, publica y vuelve a preparar evidencias.',
+      actions: [RETRY],
+    }
+  }
   if (CHALLENGE.test(message)) {
     return {
       title: 'Zajuna pidió una verificación adicional',

@@ -30,6 +30,9 @@ type checklistTargetParams struct {
 	OwnerName  string
 	UseBrowser bool
 	CookieMu   *sync.Mutex
+	// Sessions reuses authenticated Chromium sessions across targets of one
+	// run. Nil (single-target jobs) opens and closes a session per target.
+	Sessions *browserSessionPool
 }
 
 type targetOutcome struct {
@@ -53,6 +56,17 @@ func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context
 	})
 }
 
+// reusableBrowserSession tells whether a session is still authenticated and
+// usable after a capture. "Selector not found" and empty row batches are
+// page-level outcomes; login redirects, challenges and navigation errors may
+// leave the session in an unknown state, so it is replaced.
+func reusableBrowserSession(captureErr error, finalURL string) bool {
+	if captureErr == nil {
+		return !isZajunaLoginURL(finalURL)
+	}
+	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch)
+}
+
 func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, params checklistTargetParams) targetOutcome {
 	target := params.Target
 	parsedTarget, parseErr := security.ValidateHTTPURL(target.URL, []string{params.BaseURL.String()}, false)
@@ -67,17 +81,32 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
+		OptionalSlot: target.OptionalSlot,
 	}
 
 	var captureResult capture.CaptureResult
 	var captureErr error
 	if params.UseBrowser {
-		browserSession, err := w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
-		if err != nil {
-			return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
+		var browserSession checklistBrowserSession
+		if params.Sessions != nil {
+			pooled, err := params.Sessions.acquire(ctx)
+			if err != nil {
+				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
+			}
+			browserSession = pooled
+		} else {
+			opened, err := w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
+			if err != nil {
+				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
+			}
+			browserSession = opened
 		}
-		defer browserSession.Close()
 		captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
+		if params.Sessions != nil {
+			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL))
+		} else {
+			browserSession.Close()
+		}
 	} else {
 		if params.CookieMu != nil {
 			params.CookieMu.Lock()

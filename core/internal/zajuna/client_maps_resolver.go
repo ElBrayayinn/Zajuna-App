@@ -99,10 +99,16 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 	})
 	put([]string{"12.1.1", "12.1.2"}, grabaciones)
 	if len(grabaciones) == 0 {
-		// Authoritative "no recordings found": without this the generic
-		// kind-based mapping (any page/resource/url) wins and the first
-		// pages of the course become wrong evidence.
+		// No recording pages: SENA courses publish recordings inside the
+		// per-phase "Grabaciones sesiones en línea" sections of the course
+		// page, captured section by section. Without an explicit value the
+		// generic kind-based mapping (any page/resource/url) would win and the
+		// first Inducción pages became wrong evidence.
 		groups["12.1.1"], groups["12.1.2"] = []string{}, []string{}
+		if numericCourseID(courseID) {
+			coursePage := origin + "/zajuna/course/view.php?id=" + url.QueryEscape(courseID)
+			groups["12.1.1"], groups["12.1.2"] = []string{coursePage}, []string{coursePage}
+		}
 	}
 
 	if numericCourseID(courseID) {
