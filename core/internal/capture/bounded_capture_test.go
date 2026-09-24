@@ -304,3 +304,22 @@ func TestGradingTableKeepsOnlyGradedRowsSmoke(t *testing.T) {
 		t.Fatalf("a table without graded rows must be an absence, got %v", err)
 	}
 }
+
+// The gradebook setup's sticky "Guardar cambios" bar lives inside
+// #region-main; it must not cover rows of the captured list.
+func TestStickyFooterIsHiddenBeforeTheShotSmoke(t *testing.T) {
+	_, page := browserSmokePage(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><div id="region-main"><table class="setup-grades"><tbody>` +
+			strings.Repeat(`<tr style="height:60px"><td>Bitácora</td></tr>`, 40) +
+			`</tbody></table><div id="sticky-footer" class="stickyfooter" style="position:fixed;bottom:0;left:0;right:0;height:80px;background:#fff">Guardar cambios</div></div></body></html>`))
+	}))
+	defer server.Close()
+	if _, err := capturePage(context.Background(), page, server.URL, filepath.Join(t.TempDir(), "setup.png"), CaptureOptions{Selector: "#region-main table.setup-grades", RequireSelector: true}); err != nil {
+		t.Fatal(err)
+	}
+	display, err := page.Locator("#sticky-footer").Evaluate(`(node) => getComputedStyle(node).display`, nil)
+	if err != nil || display != "none" {
+		t.Fatalf("the sticky footer must be hidden during the capture, display=%v err=%v", display, err)
+	}
+}

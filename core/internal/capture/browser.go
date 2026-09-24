@@ -1405,6 +1405,11 @@ func evaluatedNumber(raw any) int {
 // become static; small floating widgets are hidden.
 func neutralizeFloatingElements(page playwright.Page) {
 	_, _ = page.Evaluate(`() => {
+		// Moodle's sticky action bars ("Guardar cambios" in the gradebook
+		// setup) live inside #region-main and cover rows of the evidence.
+		for (const node of document.querySelectorAll('#sticky-footer, .stickyfooter, [data-region="sticky-footer"]')) {
+			node.style.setProperty('display', 'none', 'important');
+		}
 		for (const node of document.body.querySelectorAll('*')) {
 			const style = getComputedStyle(node);
 			if (style.position !== 'fixed' && style.position !== 'sticky') continue;
