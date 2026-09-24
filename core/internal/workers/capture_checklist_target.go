@@ -42,6 +42,9 @@ type targetOutcome struct {
 	// skipped marks a row-batch slot that starts after the last row: nothing
 	// to capture, not a failure. Its previous evidence (if any) is stale.
 	skipped bool
+	// absent: the page loaded but has nothing that proves the item
+	// (capture.ErrContentAbsent). Its previous evidence is stale.
+	absent bool
 }
 
 func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context, baseURL *url.URL, input CaptureChecklistInput, password string) (*capture.BrowserSession, error) {
@@ -82,7 +85,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
 		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch, RowRequireReply: target.RowRequireReply,
-		CourseLayout: target.CourseLayout,
+		CourseLayout: target.CourseLayout, AbsenceSelector: target.AbsenceSelector,
 	}
 
 	var captureResult capture.CaptureResult
@@ -141,8 +144,8 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		if errors.Is(captureErr, capture.ErrChallengePage) {
 			return targetOutcome{failure: target.ItemCode + ": Zajuna pidió CAPTCHA o MFA"}
 		}
-		if message := semanticAbsence(target, captureErr); message != "" {
-			return targetOutcome{failure: target.ItemCode + ": " + message}
+		if errors.Is(captureErr, capture.ErrContentAbsent) {
+			return targetOutcome{absent: true, failure: target.ItemCode + ": " + absenceMessage(target, captureErr)}
 		}
 		return targetOutcome{failure: target.ItemCode + ": " + captureErr.Error()}
 	}
@@ -186,21 +189,16 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 	return targetOutcome{captured: true, evidenceRecords: evidenceRecords}
 }
 
-// semanticAbsenceMarker prefixes failures that mean Zajuna has no content
-// that satisfies the item's semantic rule (see absentContent).
+// semanticAbsenceMarker prefixes the message of an absence found by a
+// semantic rule, in the job result shown to the person.
 const semanticAbsenceMarker = "sin contenido válido en Zajuna"
 
-// semanticAbsence turns "no candidate at all" for a target with a semantic
-// rule into a plain absence: the page loaded but shows nothing that proves
-// the item (e.g. a forum without dates for 9.1.3). Other errors stay failures.
-func semanticAbsence(target checklist.CaptureTarget, captureErr error) string {
-	if target.SemanticCheck != checklist.SemanticForumDates || !errors.Is(captureErr, capture.ErrSelectorNotFound) {
-		return ""
+// absenceMessage explains an ErrContentAbsent in plain words.
+func absenceMessage(target checklist.CaptureTarget, captureErr error) string {
+	if target.SemanticCheck == checklist.SemanticForumDates {
+		return semanticAbsenceMarker + ": el foro no muestra fechas de apertura y cierre"
 	}
-	if !strings.Contains(captureErr.Error(), "candidatos=0") {
-		return ""
-	}
-	return semanticAbsenceMarker + ": el foro no muestra fechas de apertura y cierre"
+	return captureErr.Error()
 }
 
 // CaptureChecklistTargetInput is the payload for a single-target checklist job.

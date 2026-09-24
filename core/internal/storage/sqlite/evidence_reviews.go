@@ -114,6 +114,9 @@ func (s *Store) UpsertEvidenceReviews(ctx context.Context, reviews []evidence.Re
 				ficha_id = excluded.ficha_id, status = excluded.status, source = excluded.source,
 				reasons_json = excluded.reasons_json, note = excluded.note, sha256 = excluded.sha256,
 				width = excluded.width, height = excluded.height, updated_at = excluded.updated_at
+			-- An automatic verification read the reviews before analysing the
+			-- images; a manual decision saved meanwhile for the same file wins.
+			WHERE NOT (evidence_reviews.source = 'manual' AND excluded.source = 'auto' AND evidence_reviews.sha256 = excluded.sha256)
 		`, review.EvidenceID, review.FichaID, review.Status, review.Source, string(encoded), review.Note, review.SHA256, review.Width, review.Height, updatedAt.UTC().Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("upsert evidence review: %w", err)
 		}
@@ -169,6 +172,10 @@ func (s *Store) SetEvidenceReview(ctx context.Context, evidenceID, status, note 
 		review.Status = status
 		review.Source = evidence.ReviewSourceManual
 		review.Note = strings.TrimSpace(note)
+	} else if _, err := s.db.ExecContext(ctx, `DELETE FROM evidence_reviews WHERE evidence_id = ? AND source = 'manual'`, evidenceID); err != nil {
+		// "pending" is the person withdrawing their decision; the upsert
+		// never lets an automatic review replace a manual one by itself.
+		return evidence.ReviewEntry{}, fmt.Errorf("clear manual evidence review: %w", err)
 	}
 	if err := s.UpsertEvidenceReviews(ctx, []evidence.Review{review}); err != nil {
 		return evidence.ReviewEntry{}, err

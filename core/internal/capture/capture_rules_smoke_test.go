@@ -69,7 +69,7 @@ func TestForumReplyFilterSmoke(t *testing.T) {
 
 	unanswered := forumListHTML(forumRow("Apertura del FORO", "ALEX FERNANDO ZAPATA", "ALEX FERNANDO ZAPATA", "0"))
 	_, err = runtime.CaptureURLWithMetadataAndCookiesAndOptions(context.Background(), serveHTML(t, unanswered).URL, filepath.Join(t.TempDir(), "none.png"), nil, replyOptions())
-	if !errors.Is(err, ErrSelectorNotFound) || !strings.Contains(err.Error(), "no tiene respuestas del instructor") {
+	if !errors.Is(err, ErrContentAbsent) || !strings.Contains(err.Error(), "no tiene respuestas del instructor") {
 		t.Fatalf("a forum without instructor replies must be an absence, got %v", err)
 	}
 }
@@ -90,6 +90,21 @@ func TestForumDatesSelectorSmoke(t *testing.T) {
 	_, err := runtime.CaptureURLWithMetadataAndCookiesAndOptions(context.Background(), serveHTML(t, withoutDates).URL, filepath.Join(t.TempDir(), "nodates.png"), nil, options)
 	if !errors.Is(err, ErrSelectorNotFound) || !strings.Contains(err.Error(), "candidatos=0") {
 		t.Fatalf("a forum without dates must not match, got %v", err)
+	}
+
+	// With the page check, a rendered forum without dates is an absence
+	// and a Moodle error page is not (its previous evidence must stay).
+	options.AbsenceSelector = `#page-mod-forum-view #region-main form[action*="/mod/forum/search.php"]`
+	renderedForum := `<html><body id="page-mod-forum-view"><div id="region-main"><h2>Foro Temático</h2>
+<form action="/zajuna/mod/forum/search.php"><input name="search"></form></div></body></html>`
+	_, err = runtime.CaptureURLWithMetadataAndCookiesAndOptions(context.Background(), serveHTML(t, renderedForum).URL, filepath.Join(t.TempDir(), "absent.png"), nil, options)
+	if !errors.Is(err, ErrContentAbsent) {
+		t.Fatalf("a rendered forum without dates must be ErrContentAbsent, got %v", err)
+	}
+	errorPage := `<html><body id="page-mod-forum-view"><div id="region-main"><div class="alert alert-danger">Lo sentimos, pero usted no tiene permiso</div></div></body></html>`
+	_, err = runtime.CaptureURLWithMetadataAndCookiesAndOptions(context.Background(), serveHTML(t, errorPage).URL, filepath.Join(t.TempDir(), "error.png"), nil, options)
+	if !errors.Is(err, ErrSelectorNotFound) || errors.Is(err, ErrContentAbsent) {
+		t.Fatalf("a Moodle error page is a failure, not an absence, got %v", err)
 	}
 }
 

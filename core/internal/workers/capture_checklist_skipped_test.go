@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/zajuna-app/core/internal/capture"
@@ -70,38 +71,41 @@ func TestAbsentZajunaContentIsNotACaptureFailure(t *testing.T) {
 	}
 }
 
-func TestCaptureChecklistPrunePlanDropsEvidenceOfAbsentSlots(t *testing.T) {
+func TestCaptureChecklistPrunePlanDropsEvidenceOnlyForTypedAbsences(t *testing.T) {
 	// 9.1.6 slot 3 was captured by an older rule (an instructor discussion
-	// without replies). The new rule finds no answered discussion: that
-	// absence must retire the old evidence instead of keeping it approved.
+	// without replies). The new rule loads the list and finds no answered
+	// discussion (a typed absence): the old evidence is retired.
 	planned := []checklist.CaptureTarget{
 		{ItemCode: "9.1.6", SlotNumber: 1},
 		{ItemCode: "9.1.6", SlotNumber: 3},
+		{ItemCode: "10.1.1", SlotNumber: 1},
 	}
 	outcomes := []targetOutcome{
 		{captured: true},
-		{failure: "9.1.6: el selector requerido no apareció en la página destino: la lista no tiene respuestas del instructor autenticado"},
+		{absent: true, failure: "9.1.6: la lista no tiene respuestas del instructor autenticado"},
+		// Recognised as an absence only by its message, which an error or
+		// permission page also produces: reported, but the evidence stays.
+		{failure: "10.1.1: el selector requerido no apareció en la página destino: #region-main table.generaltable (candidatos=0)"},
 	}
 	_, keep := captureChecklistPrunePlan(planned, planned, outcomes)
-	if !reflect.DeepEqual(keep, map[string]map[int]bool{"9.1.6": {1: true}}) {
+	if !reflect.DeepEqual(keep, map[string]map[int]bool{"9.1.6": {1: true}, "10.1.1": {1: true}}) {
 		t.Fatalf("keep = %v", keep)
+	}
+	if tally := tallyTargetOutcomes(outcomes); tally.absent != 2 || tally.failed != 0 {
+		t.Fatalf("both absences are reported, got %+v", tally)
 	}
 }
 
-func TestSemanticAbsenceOnlyForForumsWithoutDates(t *testing.T) {
-	notFound := fmt.Errorf("%w: selector (candidatos=0)", capture.ErrSelectorNotFound)
+func TestAbsenceMessage(t *testing.T) {
+	absent := fmt.Errorf("%w (%w): la página cargó pero no muestra el foro", capture.ErrSelectorNotFound, capture.ErrContentAbsent)
 	dates := checklist.CaptureTarget{ItemCode: "9.1.3", SemanticCheck: checklist.SemanticForumDates}
-	message := semanticAbsence(dates, notFound)
-	if message == "" || !absentContent("9.1.3: "+message) {
-		t.Fatalf("a forum without dates is an absence, got %q", message)
+	if message := absenceMessage(dates, absent); !strings.Contains(message, "no muestra fechas") {
+		t.Fatalf("a forum without dates is explained in plain words, got %q", message)
 	}
-	if semanticAbsence(checklist.CaptureTarget{ItemCode: "7.2"}, notFound) != "" {
-		t.Fatal("items without a semantic rule keep their failure")
+	if message := absenceMessage(checklist.CaptureTarget{ItemCode: "9.1.6"}, absent); message != absent.Error() {
+		t.Fatalf("other absences keep the capture message, got %q", message)
 	}
-	if semanticAbsence(dates, errors.New("navegar para captura: timeout")) != "" {
-		t.Fatal("a navigation error is a failure, not an absence")
-	}
-	if !absentContent("9.1.5: la lista no tiene respuestas del instructor autenticado") {
-		t.Fatal("no instructor replies is an absence")
+	if !errors.Is(absent, capture.ErrSelectorNotFound) || !errors.Is(absent, capture.ErrContentAbsent) {
+		t.Fatal("an absence is still a selector miss for callers that only know that error")
 	}
 }

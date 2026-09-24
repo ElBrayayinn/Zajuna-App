@@ -122,3 +122,47 @@ func TestEvidenceReviewsPersistManualDecisionAndResetOnRecapture(t *testing.T) {
 		t.Fatalf("expected cascade delete, got %#v (%v)", reviews, err)
 	}
 }
+
+func TestAutomaticVerificationNeverOverwritesAConcurrentManualDecision(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertFichas(ctx, []zajuna.Ficha{{ExternalID: "100", Name: "Ficha", CourseID: "c1"}}); err != nil {
+		t.Fatal(err)
+	}
+	fichas, _ := store.ListFichas(ctx, 10)
+	fichaID := fichas[0].ID
+	path := filepath.Join(dataDir, "evidences", "blank.png")
+	writeReviewPNG(t, path, 800, 600, false)
+	if err := store.CreateEvidence(ctx, evidence.Record{ID: "ev-1", FichaID: fichaID, ItemCode: "1.1.1", SlotNumber: 1, Name: "Cronograma", FilePath: path, Format: "png", Source: "capture-checklist", SHA256: "sha-1"}); err != nil {
+		t.Fatal(err)
+	}
+	// A verification computed its automatic result before the person's
+	// decision was saved, and writes it afterwards.
+	stale := evidence.Review{EvidenceID: "ev-1", FichaID: fichaID, Status: evidence.ReviewPending, Source: evidence.ReviewSourceAuto, SHA256: "sha-1", Reasons: []evidence.ReviewReason{{Code: evidence.ReasonMostlyBlank}}}
+	if _, err := store.SetEvidenceReview(ctx, "ev-1", evidence.ReviewApproved, "Revisada"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertEvidenceReviews(ctx, []evidence.Review{stale}); err != nil {
+		t.Fatal(err)
+	}
+	review, err := store.GetEvidenceReview(ctx, "ev-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.Source != evidence.ReviewSourceManual || review.Status != evidence.ReviewApproved {
+		t.Fatalf("the manual decision must survive a late automatic write, got %#v", review)
+	}
+	// A recapture (new sha256) is verified again automatically.
+	stale.SHA256 = "sha-2"
+	if err := store.UpsertEvidenceReviews(ctx, []evidence.Review{stale}); err != nil {
+		t.Fatal(err)
+	}
+	if review, _ := store.GetEvidenceReview(ctx, "ev-1"); review.Source != evidence.ReviewSourceAuto {
+		t.Fatalf("a new file must be reviewed automatically, got %#v", review)
+	}
+}

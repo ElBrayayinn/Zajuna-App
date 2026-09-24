@@ -541,3 +541,41 @@ func TestRouteIndexKeepsFirstCanonicalMatch(t *testing.T) {
 		t.Fatalf("expected no route, got %#v", route)
 	}
 }
+
+func TestTransversalOnlySelectionDoesNotEnableEveryActivityForum(t *testing.T) {
+	coded := "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=50"
+	named := "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=51"
+	record := coursemaps.Record{
+		CourseURL: "https://zajuna.sena.edu.co/zajuna/course/view.php?id=9",
+		ByItemCode: map[string]json.RawMessage{
+			"9.1.6": json.RawMessage(`["` + coded + `","` + named + `"]`),
+		},
+		Routes: []coursemaps.Route{
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=2", ActivityID: "2", Title: "Ética", Technical: false},
+			{Kind: "forum", URL: coded, Title: "Foro temático. GA1-220501046-AA2-EV01"},
+			{Kind: "forum", URL: named, Title: "Foro Temático"},
+		},
+	}
+	// The saved selection only holds a transversal activity: after dropping
+	// it nothing is selected, so an activity-bound forum must not qualify.
+	targets, summary, err := BuildCaptureTargetsForActivities(record, map[string]bool{"2": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range targets {
+		if target.URL == coded {
+			t.Fatalf("a forum bound to an activity leaked without a technical selection: %#v", target)
+		}
+	}
+	found := false
+	for _, target := range targets {
+		found = found || target.URL == named
+	}
+	if !found {
+		t.Fatal("a generic named forum stays eligible")
+	}
+	// 6.1 has no technical activity to show: it counts as unresolved.
+	if summary.ResolvedItems+summary.UnresolvedItems != summary.ItemCount {
+		t.Fatalf("every item must be counted once: %+v", summary)
+	}
+}
