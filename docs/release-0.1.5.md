@@ -106,3 +106,22 @@ el reporte PDF antes de actualizar si lo necesitas. Las miniaturas nuevas
   descargas.
 - HardeningCore proponía conservar datos entre versiones; no se integró por
   la regla de producto de arriba.
+
+## Prueba real en la ficha 3135429
+
+La corrida completa (sincronizar, rutas, actividades, capturas y revisión) en
+un curso real destapó y se corrigió:
+
+- **Cronogramas en blanco (1.1.x, 1.2.x):** `expandEmbeddedSheets` dejaba la
+  cuadrícula de Google Sheets sin pintar. Se desactiva; la hoja se captura
+  completa con `prepareEmbeddedSheets`.
+- **Revisor:** marca «casi en blanco» una captura alta con una franja vacía
+  que ocupa más de la mitad (el cronograma sin pintar se aprobaba).
+- **5.1:** cubría 2 de 146 filas del calificador; ahora 5 lotes de 30 filas.
+- **10.1.x:** solo entregas «Calificado» (antes, aprendices sin entrega).
+- **Secciones vacías:** una subsección con solo su título es «sin contenido en
+  Zajuna» y no una evidencia (7.3.2, 7.3.3, 13.1.x, 12.1.x slot 4).
+- **Revisión:** los ítems sin evidencia dicen qué falta en Zajuna.
+- **15.1:** usa el foro de anuncios si no hay foro de netiqueta.
+- **Pie fijo «Guardar cambios»** de Moodle ya no tapa filas.
+
