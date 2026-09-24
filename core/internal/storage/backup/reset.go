@@ -20,7 +20,7 @@ const PendingResetFile = ".reset-pending"
 // one first); a new-version install removes it too (see FullResetMarker).
 var resetTargets = []string{
 	"zajuna.db", "zajuna.db-wal", "zajuna.db-shm",
-	"config.json", "evidences", "reports", "exports",
+	"config.json", "evidences", "reports", "exports", "thumbnails",
 	pendingRestoreDir, appliedRestoreFile,
 	// Copies left by a restore that was applied but never committed.
 	"zajuna.db.restore-old", "config.json.restore-old", "evidences.restore-old",

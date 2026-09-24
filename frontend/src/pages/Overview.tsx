@@ -582,6 +582,49 @@ export function Overview() {
               </div>
             </section>
           )}
+        <div className="grid two-col">
+          <section className="card evidence-gallery">
+            <div className="card-pad">
+              <div className="side-title">
+                <h3>Evidencias</h3>
+                <span className="badge">{evidenceGroupsQuery.data?.length ?? 0} grupos</span>
+              </div>
+              {evidenceGroupsQuery.isError ? (
+                <div className="empty" role="alert">No pudimos cargar los grupos de evidencias. La información principal sigue disponible.</div>
+              ) : evidenceGroupsQuery.data && evidenceGroupsQuery.data.length ? (
+                <div className="evidence-gallery-grid">
+                  {evidenceGroupsQuery.data.slice(0, 6).map((group, index) => (
+                    <EvidenceGroupCard key={group.id ?? index} group={group} />
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">Todavía no hay evidencias agrupadas.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="card reports-card">
+            <div className="card-pad">
+              <div className="side-title">
+                <h3>Reportes recientes</h3>
+                <button className="button ghost small" onClick={() => navigate('/reportes')}>
+                  Ver todos
+                </button>
+              </div>
+              {reportsQuery.isError ? (
+                <div className="empty" role="alert">No pudimos cargar los reportes recientes.</div>
+              ) : reportsQuery.data && reportsQuery.data.length ? (
+                <div className="report-list">
+                  {reportsQuery.data.slice(0, 5).map((report) => (
+                    <ReportRow key={report.id} report={report} />
+                  ))}
+                </div>
+              ) : (
+                <div className="empty">Todavía no hay reportes generados.</div>
+              )}
+            </div>
+          </section>
+        </div>
         </div>
 
         <aside className="overview-side">
@@ -688,50 +731,6 @@ export function Overview() {
             </div>
           </section>
         </aside>
-      </div>
-
-      <div className="grid two-col">
-        <section className="card evidence-gallery">
-          <div className="card-pad">
-            <div className="side-title">
-              <h3>Evidencias</h3>
-              <span className="badge">{evidenceGroupsQuery.data?.length ?? 0} grupos</span>
-            </div>
-            {evidenceGroupsQuery.isError ? (
-              <div className="empty" role="alert">No pudimos cargar los grupos de evidencias. La información principal sigue disponible.</div>
-            ) : evidenceGroupsQuery.data && evidenceGroupsQuery.data.length ? (
-              <div className="evidence-gallery-grid">
-                {evidenceGroupsQuery.data.slice(0, 6).map((group, index) => (
-                  <EvidenceGroupCard key={group.id ?? index} group={group} />
-                ))}
-              </div>
-            ) : (
-              <div className="empty">Todavía no hay evidencias agrupadas.</div>
-            )}
-          </div>
-        </section>
-
-        <section className="card reports-card">
-          <div className="card-pad">
-            <div className="side-title">
-              <h3>Reportes recientes</h3>
-              <button className="button ghost small" onClick={() => navigate('/reportes')}>
-                Ver todos
-              </button>
-            </div>
-            {reportsQuery.isError ? (
-              <div className="empty" role="alert">No pudimos cargar los reportes recientes.</div>
-            ) : reportsQuery.data && reportsQuery.data.length ? (
-              <div className="report-list">
-                {reportsQuery.data.slice(0, 5).map((report) => (
-                  <ReportRow key={report.id} report={report} />
-                ))}
-              </div>
-            ) : (
-              <div className="empty">Todavía no hay reportes generados.</div>
-            )}
-          </div>
-        </section>
       </div>
     </div>
   )

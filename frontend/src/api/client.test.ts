@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { ApiError, backupDownloadUrl, evidenceDownloadUrl, reportDownloadUrl } from './client'
+import { ApiError, backupDownloadUrl, evidenceDownloadUrl, evidenceThumbnailUrl, reportDownloadUrl } from './client'
 
 describe('URL helpers de descarga', () => {
   it('codifica ids de evidencia para la galería', () => {
     expect(evidenceDownloadUrl('abc 123')).toBe('/api/evidences/abc%20123/download')
     expect(evidenceDownloadUrl('ev/with/slash')).toBe('/api/evidences/ev%2Fwith%2Fslash/download')
+    expect(evidenceThumbnailUrl('ev/with/slash')).toBe('/api/evidences/ev%2Fwith%2Fslash/thumbnail')
   })
 
   it('codifica ids de reporte y nombres de copia', () => {

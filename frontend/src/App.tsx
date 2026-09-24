@@ -2,20 +2,22 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useSetupStatus } from './hooks/api'
 import { Setup } from './pages/Setup'
 import { AppShell } from './components/AppShell'
-import { Overview } from './pages/Overview'
-import { Fichas } from './pages/Fichas'
-import { Checklist } from './pages/Checklist'
-import { Activities } from './pages/Activities'
-import { Evidences } from './pages/Evidences'
-import { Processes } from './pages/Processes'
-import { Reports } from './pages/Reports'
-import { Settings } from './pages/Settings'
-import { Diagnostics } from './pages/Diagnostics'
 import { PageSkeleton, PageError } from './components/AsyncState'
-import { JobDetail } from './pages/JobDetail'
-import { ChecklistItemDetail } from './pages/ChecklistItemDetail'
-import { Notifications } from './pages/Notifications'
-import { Review } from './pages/Review'
+import {
+  Activities,
+  Checklist,
+  ChecklistItemDetail,
+  Diagnostics,
+  Evidences,
+  Fichas,
+  JobDetail,
+  Notifications,
+  Overview,
+  Processes,
+  Reports,
+  Review,
+  Settings,
+} from './pages/lazy'
 
 function App() {
   const { data: setup, isLoading, isError, refetch } = useSetupStatus()

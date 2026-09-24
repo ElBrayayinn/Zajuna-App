@@ -69,7 +69,7 @@ func reusableBrowserSession(captureErr error, finalURL string) bool {
 
 func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, params checklistTargetParams) targetOutcome {
 	target := params.Target
-	parsedTarget, parseErr := security.ValidateHTTPURL(target.URL, []string{params.BaseURL.String()}, false)
+	parsedTarget, parseErr := security.ValidateHTTPURL(target.URL, []string{params.BaseURL.String()}, w.allowPrivateTargets)
 	if parseErr != nil || parsedTarget.Host == "" || parsedTarget.Scheme != params.BaseURL.Scheme || parsedTarget.Host != params.BaseURL.Host {
 		return targetOutcome{failure: target.ItemCode + ": origen de URL no permitido"}
 	}
@@ -149,7 +149,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 	if isZajunaLoginURL(captureResult.FinalURL) {
 		return targetOutcome{failure: target.ItemCode + ": Zajuna redirigió a login"}
 	}
-	if _, finalErr := security.ValidateHTTPURL(captureResult.FinalURL, []string{params.BaseURL.String()}, false); finalErr != nil {
+	if _, finalErr := security.ValidateHTTPURL(captureResult.FinalURL, []string{params.BaseURL.String()}, w.allowPrivateTargets); finalErr != nil {
 		return targetOutcome{failure: target.ItemCode + ": redirección fuera del origen permitido"}
 	}
 	hash, hashErr := fileSHA256(outputPath)

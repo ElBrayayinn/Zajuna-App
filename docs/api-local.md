@@ -494,6 +494,17 @@ El dashboard incluye los enlaces de descarga de las evidencias asociadas a
 cada ítem del checklist. La galería visual también permite abrir una vista
 previa de cada grupo sin salir de la aplicación.
 
+### `GET /api/evidences/{id}/thumbnail`
+
+Devuelve una miniatura JPEG de 480 px de ancho para las evidencias PNG/JPG,
+con la misma validación de ruta que la descarga. Se genera una sola vez y se
+guarda en `thumbnails/` dentro de la carpeta de datos (fuera de los respaldos;
+el restablecimiento la borra). La clave incluye tamaño y fecha del archivo
+original, así que un reemplazo genera una miniatura nueva. Los formatos sin
+decodificador estándar (WebP) y cualquier fallo al generarla responden con el
+archivo original. La galería de miniaturas usa este endpoint en lugar de la
+descarga completa (~2000×2600 px por captura).
+
 ### `POST /api/evidences/upload`
 
 Recibe un formulario `multipart/form-data` con `file`, `fichaId` y, de forma

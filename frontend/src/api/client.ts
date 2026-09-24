@@ -86,6 +86,8 @@ const json = (body: unknown): RequestInit => ({
 })
 
 export const evidenceDownloadUrl = (id: string) => `/api/evidences/${encodeURIComponent(id)}/download`
+// Small cached JPEG for galleries; the original capture is ~2000×2600 px.
+export const evidenceThumbnailUrl = (id: string) => `/api/evidences/${encodeURIComponent(id)}/thumbnail`
 export const reportDownloadUrl = (id: string) => `/api/reports/${encodeURIComponent(id)}/download`
 export const backupDownloadUrl = (name: string) => `/api/backups/${encodeURIComponent(name)}/download`
 
