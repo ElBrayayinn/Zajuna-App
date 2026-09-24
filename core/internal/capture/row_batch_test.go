@@ -65,8 +65,8 @@ func TestSheetTabForTitle(t *testing.T) {
 	cases := map[string]string{
 		"P_524703_V_3135429_R_5_C_9205: Cronograma Fase - Planear | Zajuna": "planear",
 		"P_524703_V_3135429_R_5_C_9205: Cronograma Fase - Hacer | Zajuna":   "hacer",
-		"Cronograma General | Zajuna":                                        "general",
-		"Foro temático | Zajuna":                                             "",
+		"Cronograma General | Zajuna":                                       "general",
+		"Foro temático | Zajuna":                                            "",
 	}
 	for title, want := range cases {
 		if got := sheetTabForTitle(title); got != want {

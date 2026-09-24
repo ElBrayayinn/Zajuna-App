@@ -188,12 +188,12 @@ func registerChecklistCaptureRoutes(mux *http.ServeMux, store checklistCaptureSt
 				// render the explicit "Buscar rutas" action instead of turning
 				// the route panel into a generic query error.
 				writeJSON(w, http.StatusOK, map[string]any{
-					"fichaId": ficha.ID,
+					"fichaId":  ficha.ID,
 					"courseId": ficha.CourseID,
 					"mapReady": false,
 					"discovery": map[string]string{
-						"status": "required",
-						"action": "discover-course-maps",
+						"status":  "required",
+						"action":  "discover-course-maps",
 						"message": "Busca las rutas del curso antes de preparar evidencias.",
 					},
 					"summary": checklist.CapturePlanSummary{},
@@ -362,10 +362,10 @@ func registerChecklistCaptureRoutes(mux *http.ServeMux, store checklistCaptureSt
 			if _, mapErr := store.GetCourseMap(r.Context(), ficha.CourseID); mapErr != nil {
 				if errors.Is(mapErr, sql.ErrNoRows) {
 					writeJSON(w, http.StatusConflict, map[string]any{
-						"code": "course_map_required",
-						"error": "la ficha todavía no tiene un mapa de rutas; busca las rutas antes de preparar evidencias",
-						"action": "discover-course-maps",
-						"fichaId": ficha.ID,
+						"code":     "course_map_required",
+						"error":    "la ficha todavía no tiene un mapa de rutas; busca las rutas antes de preparar evidencias",
+						"action":   "discover-course-maps",
+						"fichaId":  ficha.ID,
 						"courseId": ficha.CourseID,
 					})
 					return
@@ -456,8 +456,8 @@ func readChecklistActivities(ctx context.Context, store checklistCaptureStore, a
 func writeChecklistActivitiesError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errChecklistCourseMapMissing) {
 		writeJSON(w, http.StatusConflict, map[string]string{
-			"code": "course_map_required",
-			"error": "la ficha todavía no tiene un mapa de rutas; busca las rutas antes de seleccionar actividades",
+			"code":   "course_map_required",
+			"error":  "la ficha todavía no tiene un mapa de rutas; busca las rutas antes de seleccionar actividades",
 			"action": "discover-course-maps",
 		})
 		return
@@ -517,8 +517,8 @@ func checklistActivitiesEmptyView(fichaID, courseID string) map[string]any {
 		"activities": []checklistActivityView{}, "selectedCount": 0,
 		"selectionConfigured": false,
 		"discovery": map[string]string{
-			"status": "required",
-			"action": "discover-course-maps",
+			"status":  "required",
+			"action":  "discover-course-maps",
 			"message": "Busca las rutas del curso antes de seleccionar actividades.",
 		},
 	}

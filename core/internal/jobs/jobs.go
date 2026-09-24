@@ -97,7 +97,6 @@ type Runtime struct {
 	inFlight    map[string]struct{}
 }
 
-
 func queueBufferSize(concurrency int) int {
 	size := concurrency * 4
 	if size < 256 {

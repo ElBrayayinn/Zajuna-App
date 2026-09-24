@@ -40,6 +40,7 @@ type crawlNode struct {
 
 var anchorHrefPattern = regexp.MustCompile(`(?is)<a\b[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a\s*>`)
 var optionValuePattern = regexp.MustCompile(`(?is)<option\b[^>]*\bvalue\s*=\s*["']([^"']+)["'][^>]*>(.*?)</option\s*>`)
+
 // DiscoverCourseMap crawls same-origin course pages using the authenticated
 // HTTP session and stores only normalized route metadata in its result. It
 // does not execute JavaScript and deliberately does not follow external URLs.

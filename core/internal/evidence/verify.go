@@ -45,10 +45,10 @@ const (
 )
 
 const (
-	reviewMaxWidth        = 4000
-	reviewMaxHeight       = 9000
-	reviewMinWidth        = 200
-	reviewMinHeight       = 120
+	reviewMaxWidth  = 4000
+	reviewMaxHeight = 9000
+	reviewMinWidth  = 200
+	reviewMinHeight = 120
 	// Moodle pages are white by design: 96 % flagged real text sections. Only
 	// a practically empty capture (≥ 99,5 % near-white) is reported.
 	reviewBlankRatio      = 0.995
@@ -59,10 +59,10 @@ const (
 )
 
 var genericReviewSelectors = map[string]bool{
-	"#region-main":                true,
-	"#page-content":               true,
+	"#region-main":                 true,
+	"#page-content":                true,
 	"#region-main .course-content": true,
-	".course-content":             true,
+	".course-content":              true,
 }
 
 // ReviewReason is one verifiable problem found in an evidence.

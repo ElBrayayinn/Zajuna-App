@@ -94,7 +94,6 @@ func (w *CaptureChecklistWorker) fanoutConcurrency() int {
 	return w.concurrency
 }
 
-
 func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, reporter jobs.Reporter) jobs.Result {
 	var input CaptureChecklistInput
 	if err := json.Unmarshal(job.Input, &input); err != nil {

@@ -304,11 +304,11 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 		}
 		thumbs.prune(r.Context(), store)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"cleared": true,
-			"deletedRows": deletedRows,
+			"cleared":      true,
+			"deletedRows":  deletedRows,
 			"deletedFiles": deletedFiles,
-			"fichaId": strings.TrimSpace(body.FichaID),
-			"note": "Actualizar la aplicación no borra evidencias; use este endpoint o Ajustes para reiniciarlas.",
+			"fichaId":      strings.TrimSpace(body.FichaID),
+			"note":         "Actualizar la aplicación no borra evidencias; use este endpoint o Ajustes para reiniciarlas.",
 		})
 	})
 

@@ -331,8 +331,8 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 	}
 	prefs := w.parent.preferences(ctx)
 	outcome := w.parent.captureChecklistTarget(ctx, checklistTargetParams{
-		JobID: job.ID,
-		Input: CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
+		JobID:  job.ID,
+		Input:  CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
 		Target: applyCapturePreferences([]checklist.CaptureTarget{input.Target}, prefs)[0], BaseURL: baseURL, Session: session, Password: password,
 		OwnerName: input.OwnerName, UseBrowser: useBrowser, AutoRenew: prefs.AutoRenew,
 		// Empty row batch: the slot is not needed. Drop any evidence a previous

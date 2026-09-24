@@ -726,12 +726,12 @@ type rowBatchOutcome struct {
 // batch starts after the last counted row.
 func captureRowBatch(page playwright.Page, container playwright.Locator, absoluteOutput string, timeout float64, options CaptureOptions) (rowBatchOutcome, error) {
 	raw, err := container.Evaluate(rowBatchHideScript, map[string]any{
-		"rowSelector": strings.TrimSpace(options.RowSelector),
-		"owner":       strings.TrimSpace(options.OwnerName),
-		"ownerOnly":   options.OwnerOnly,
-		"perShot":     options.RowsPerShot,
-		"batch":       options.RowBatch,
-		"rowMatch":    options.RowMatch,
+		"rowSelector":  strings.TrimSpace(options.RowSelector),
+		"owner":        strings.TrimSpace(options.OwnerName),
+		"ownerOnly":    options.OwnerOnly,
+		"perShot":      options.RowsPerShot,
+		"batch":        options.RowBatch,
+		"rowMatch":     options.RowMatch,
 		"requireReply": options.RowRequireReply,
 	}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
 	restore := func() { _, _ = page.Evaluate(rowBatchRestoreScript) }
@@ -1010,7 +1010,6 @@ func boundedSheetSize(width, height int) (int, int) {
 	}
 	return min(width, maxEmbeddedSheetWidth), min(height, maxEmbeddedSheetHeight)
 }
-
 
 func evaluatedInt(raw any, key string) int {
 	values, ok := raw.(map[string]any)

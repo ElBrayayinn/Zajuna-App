@@ -56,7 +56,7 @@ func TestChecklistTargetsAPIProjectsMapToCaptureTargets(t *testing.T) {
 	}
 	var payload struct {
 		MapReady bool `json:"mapReady"`
-		Summary struct {
+		Summary  struct {
 			ResolvedItems int `json:"resolvedItems"`
 			SlotCount     int `json:"slotCount"`
 		} `json:"summary"`
@@ -228,9 +228,9 @@ func TestChecklistActivitiesWithoutMapExposeDiscoveryAction(t *testing.T) {
 		t.Fatalf("unexpected activities status: %d", response.StatusCode)
 	}
 	var payload struct {
-		FichaID   string `json:"fichaId"`
-		CourseID  string `json:"courseId"`
-		MapReady  bool   `json:"mapReady"`
+		FichaID    string `json:"fichaId"`
+		CourseID   string `json:"courseId"`
+		MapReady   bool   `json:"mapReady"`
 		Activities []struct {
 			ID string `json:"id"`
 		} `json:"activities"`

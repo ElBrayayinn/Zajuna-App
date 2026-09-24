@@ -408,4 +408,3 @@ func TestSubmitCancelsQueuedJobWhenContextCancels(t *testing.T) {
 		t.Fatalf("expected cancelled job after cancelled enqueue, got %#v", store.jobs)
 	}
 }
-

@@ -22,11 +22,11 @@ var forumResolveModes = map[string]string{
 }
 
 var forumPoolTerms = map[string][]string{
-	"dudas_singleton":     {"foro de dudas", "dudas o inquietudes", "dudas e inquietudes"},
-	"tematico_slot":       {"foro temático", "foro tematico", "temático", "tematico"},
-	"anuncios_singleton":  {"anuncios"},
-	"anuncio_slot":        {"anuncios", "anuncio", "comunicativa", "aprendices aprobados"},
-	"sesion_slot":         {"sesión en línea", "sesion en linea", "sesión sincrónica", "grabación sesión"},
+	"dudas_singleton":    {"foro de dudas", "dudas o inquietudes", "dudas e inquietudes"},
+	"tematico_slot":      {"foro temático", "foro tematico", "temático", "tematico"},
+	"anuncios_singleton": {"anuncios"},
+	"anuncio_slot":       {"anuncios", "anuncio", "comunicativa", "aprendices aprobados"},
+	"sesion_slot":        {"sesión en línea", "sesion en linea", "sesión sincrónica", "grabación sesión"},
 	// MDL-153: this mode used to be "induccion_singleton" searching for
 	// induction/onboarding terms — unrelated to item 15.1 ("Lenguaje cortés y
 	// respetuoso con uso de netiqueta"). It resolved to the general student
@@ -38,9 +38,9 @@ var forumPoolTerms = map[string][]string{
 
 var pagePoolTerms = map[string][]string{
 	"cronograma_general_singleton": {"cronograma general", "cronograma  general"},
-	"fase_page_slot":              {"cronograma fase", "cronograma  fase", "fase análisis", "fase analisis", "fase hacer", "fase verificar"},
-	"grabacion_slot":              {"grabación", "grabacion", "resumen sesión", "resumen sesion", "sesión en línea", "sesion en linea"},
-	"assign_slot":                 {"evidencia", "ga1-", "ga2-", "ga3-"},
+	"fase_page_slot":               {"cronograma fase", "cronograma  fase", "fase análisis", "fase analisis", "fase hacer", "fase verificar"},
+	"grabacion_slot":               {"grabación", "grabacion", "resumen sesión", "resumen sesion", "sesión en línea", "sesion en linea"},
+	"assign_slot":                  {"evidencia", "ga1-", "ga2-", "ga3-"},
 }
 
 func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profileURL string) map[string][]string {
