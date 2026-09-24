@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useSetupStatus } from './hooks/api'
+import { ApiError, LOCAL_SESSION_REQUIRED } from './api/client'
 import { Setup } from './pages/Setup'
 import { AppShell } from './components/AppShell'
 import { Overview } from './pages/Overview'
@@ -17,10 +18,14 @@ import { ChecklistItemDetail } from './pages/ChecklistItemDetail'
 import { Notifications } from './pages/Notifications'
 
 function App() {
-  const { data: setup, isLoading, isError, refetch } = useSetupStatus()
+  const { data: setup, isLoading, isError, error, refetch } = useSetupStatus()
 
   if (isLoading) {
     return <PageSkeleton label="Comprobando configuración local" />
+  }
+
+  if (error instanceof ApiError && error.status === LOCAL_SESSION_REQUIRED) {
+    return <PageError message="Esta pestaña no tiene una sesión local válida. Vuelve a abrir Zajuna App desde su acceso directo para continuar." />
   }
 
   if (isError) {

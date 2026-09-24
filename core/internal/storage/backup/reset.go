@@ -10,14 +10,12 @@ import (
 )
 
 // PendingResetFile is the marker that requests a clean local workspace on
-// the next start. The local API writes it ("Restablecer datos") and the
-// Windows installer writes it (content FullResetMarker) on every install,
-// because the core is not running at install time.
+// the next start. Only the explicit in-app reset ("Restablecer datos")
+// writes it; installs and updates never do.
 const PendingResetFile = ".reset-pending"
 
-// resetTargets are the user-data entries removed by a reset. backups/ is kept
-// by the in-app reset (it is the only way back and the endpoint can create
-// one first); a new-version install removes it too (see FullResetMarker).
+// resetTargets are the user-data entries removed by a reset. backups/ is
+// never removed: it is the only way back after a reset.
 var resetTargets = []string{
 	"zajuna.db", "zajuna.db-wal", "zajuna.db-shm",
 	"config.json", "evidences", "reports", "exports",
@@ -48,63 +46,43 @@ func ResetPending(dataDir string) bool {
 	return err == nil
 }
 
-// FullResetMarker is the marker content written by the Windows installer:
-// a new version must start completely clean, backups included.
-const FullResetMarker = "full"
+// LegacyInstallerResetMarker is the marker content that installers up to
+// 0.1.3 wrote on every install. It was not requested by the user, so it is
+// discarded instead of wiping the workspace.
+const LegacyInstallerResetMarker = "full"
 
-// AppVersionFile records which app version created the local data.
+// AppVersionFile records which app version last opened the local data.
 const AppVersionFile = ".app-version"
 
-// EnforceVersion makes every new version start from a clean workspace, as an
-// installed desktop app should: when the data on disk was created by a
-// different version (or by a release older than this marker, which never
-// wrote it), everything is wiped, backups included, before SQLite opens.
-// Development builds ("dev" or empty) never wipe.
-func EnforceVersion(dataDir, version string) (bool, error) {
+// RecordVersion stores the running version next to the data and returns the
+// previous one when it changed. Data from other versions is kept: schema
+// changes are handled by the SQLite migrations. Development builds ("dev" or
+// empty) never touch the marker.
+func RecordVersion(dataDir, version string) (string, error) {
 	version = strings.TrimSpace(version)
 	if version == "" || version == "dev" {
-		return false, nil
+		return "", nil
 	}
 	markerPath := filepath.Join(dataDir, AppVersionFile)
-	previous, err := os.ReadFile(markerPath)
+	contents, err := os.ReadFile(markerPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("read app version marker: %w", err)
+		return "", fmt.Errorf("read app version marker: %w", err)
 	}
-	stale := strings.TrimSpace(string(previous)) != version
-	wiped := false
-	if stale && (len(previous) > 0 || hasUserData(dataDir)) {
-		var partial *partialWipeError
-		if err := wipe(dataDir, true); err != nil && !errors.As(err, &partial) {
-			return false, err
-		}
-		wiped = true
+	previous := strings.TrimSpace(string(contents))
+	if previous == version {
+		return "", nil
 	}
-	if stale {
-		if err := os.WriteFile(markerPath, []byte(version+"\n"), 0o600); err != nil {
-			return wiped, fmt.Errorf("write app version marker: %w", err)
-		}
+	if err := os.WriteFile(markerPath, []byte(version+"\n"), 0o600); err != nil {
+		return previous, fmt.Errorf("write app version marker: %w", err)
 	}
-	return wiped, nil
-}
-
-func hasUserData(dataDir string) bool {
-	for _, name := range []string{"zajuna.db", "config.json", "evidences", "reports"} {
-		if _, err := os.Stat(filepath.Join(dataDir, name)); err == nil {
-			return true
-		}
-	}
-	return false
+	return previous, nil
 }
 
 // wipe removes the user data. The database is mandatory: if it cannot be
 // removed the error is returned so the caller keeps the marker and retries.
-func wipe(dataDir string, includeBackups bool) error {
-	targets := append([]string{}, resetTargets...)
-	if includeBackups {
-		targets = append(targets, "backups")
-	}
+func wipe(dataDir string) error {
 	var failures []string
-	for _, name := range targets {
+	for _, name := range resetTargets {
 		if err := removeWithRetry(filepath.Join(dataDir, name)); err != nil {
 			if strings.HasPrefix(name, "zajuna.db") {
 				return fmt.Errorf("no se pudo borrar la base local para restablecer los datos: %w", err)
@@ -126,6 +104,10 @@ func (e *partialWipeError) Error() string {
 	return "datos restablecidos, pero quedaron archivos en uso: " + strings.Join(e.names, ", ")
 }
 
+// ErrLegacyResetDiscarded reports that an installer-written marker was
+// removed without touching the data.
+var ErrLegacyResetDiscarded = errors.New("se descartó la orden de borrado automático de un instalador anterior; los datos se conservan")
+
 // ApplyPendingReset wipes the staged user data before SQLite is opened. It
 // returns false when no reset is pending. If the database cannot be removed
 // (for example, a leftover process still holds it on Windows) the marker is
@@ -134,14 +116,20 @@ func ApplyPendingReset(dataDir string) (bool, error) {
 	if !ResetPending(dataDir) {
 		return false, nil
 	}
-	contents, _ := os.ReadFile(filepath.Join(dataDir, PendingResetFile))
-	includeBackups := strings.TrimSpace(string(contents)) == FullResetMarker
-	wipeErr := wipe(dataDir, includeBackups)
+	markerPath := filepath.Join(dataDir, PendingResetFile)
+	contents, _ := os.ReadFile(markerPath)
+	if strings.TrimSpace(string(contents)) == LegacyInstallerResetMarker {
+		if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("remove legacy reset marker: %w", err)
+		}
+		return false, ErrLegacyResetDiscarded
+	}
+	wipeErr := wipe(dataDir)
 	var partial *partialWipeError
 	if wipeErr != nil && !errors.As(wipeErr, &partial) {
 		return false, wipeErr
 	}
-	if err := os.Remove(filepath.Join(dataDir, PendingResetFile)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return true, fmt.Errorf("remove reset marker: %w", err)
 	}
 	return true, wipeErr

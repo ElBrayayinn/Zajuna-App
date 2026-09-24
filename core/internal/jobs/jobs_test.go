@@ -113,6 +113,16 @@ func (s *memoryStore) MarkCancelled(_ context.Context, id string) error {
 	})
 	return err
 }
+func (s *memoryStore) SavePartialResult(_ context.Context, id string, output json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[id]
+	if ok && (job.Status == StatusFailed || job.Status == StatusCancelled) {
+		job.Result = output
+		s.jobs[id] = job
+	}
+	return nil
+}
 func (s *memoryStore) ReconcileInterrupted(_ context.Context) ([]Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -55,7 +55,8 @@ npm run desktop:start
 ```
 
 El launcher espera `/api/health` antes de abrir el navegador. El core continúa
-escuchando únicamente en loopback y conserva su capability cookie por proceso.
+escuchando únicamente en loopback; la sesión local por proceso solo se obtiene
+con el enlace de un solo uso que pide el launcher (ver `docs/api-local.md`).
 Cerrar la pestaña no detiene el core; volver a ejecutar el acceso directo solo
 abre de nuevo la URL de la instancia existente.
 

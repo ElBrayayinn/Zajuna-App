@@ -10,11 +10,12 @@ límites entre procesos, datos y seguridad.
 
 `desktop/main.cjs` es un launcher silencioso sin `BrowserWindow`. Solicita una
 instancia única, inicia el core con `--port=0` y un archivo temporal de
-endpoint, espera `/api/health`, abre la URL loopback con el navegador del
+endpoint y un secreto de lanzador en su entorno, espera `/api/health`, pide al
+core un enlace de sesión de un solo uso, lo abre con el navegador del
 sistema y termina el proceso durante `before-quit`. Un supervisor detecta la
 muerte del core, guarda stderr redacted en logs rotativos de 1 MiB e intenta
 recuperarlo hasta tres veces. Un segundo lanzamiento reutiliza el endpoint y
-abre otra pestaña, sin crear otro backend.
+abre otra pestaña con un enlace nuevo, sin crear otro backend.
 
 El launcher no confía ciegamente en el archivo temporal: cada endpoint usa un
 nonce criptográfico por ejecución y se acepta únicamente `http://127.0.0.1` con
@@ -32,8 +33,10 @@ React. No contiene login propio, usuarios locales ni JWT.
 El middleware local aplica:
 
 1. `Host` loopback y coincidencia de `Origin`/`Sec-Fetch-Site`.
-2. Capability cookie aleatoria por proceso (`HttpOnly`, `SameSite=Strict`) para
-   mutaciones.
+2. Sesión local por proceso en todo `/api/*` salvo `/api/health`: cookie
+   `HttpOnly`/`SameSite=Strict` más la cabecera `X-Zajuna-Capability`, ambas
+   emitidas solo al canjear un enlace de un solo uso que únicamente el
+   lanzador puede pedir (ver `docs/api-local.md`).
 3. `Content-Type` esperado y límite de cuerpo.
 4. Timeouts de lectura/escritura/idle y `MaxHeaderBytes`.
 5. Headers de seguridad y respuestas de error sin secretos.
@@ -81,8 +84,8 @@ locales controlados.
 ```text
 Electron
   → inicia core Go y espera endpoint
-  → abre navegador predeterminado en loopback
-  → React llama API same-origin con capability cookie
+  → pide un enlace de sesión y abre el navegador predeterminado en loopback
+  → React llama API same-origin con cookie + cabecera de sesión
   → API crea job persistente
   → worker usa SQLite, keyring y Chromium
   → eventos/polling actualizan React

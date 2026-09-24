@@ -96,10 +96,10 @@ func main() {
 	} else if reset {
 		log.Printf("datos locales restablecidos antes de abrir SQLite")
 	}
-	if wiped, versionErr := backup.EnforceVersion(dataDir, appVersion); versionErr != nil {
-		log.Printf("limpieza por cambio de versión: %v", versionErr)
-	} else if wiped {
-		log.Printf("versión %s instalada: datos de la versión anterior borrados", appVersion)
+	if previous, versionErr := backup.RecordVersion(dataDir, appVersion); versionErr != nil {
+		log.Printf("registro de versión local: %v", versionErr)
+	} else if previous != "" {
+		log.Printf("versión %s instalada sobre datos de %s: se conservan y se migran", appVersion, previous)
 	}
 	restored, err := backup.ApplyPending(dataDir)
 	if err != nil {
@@ -212,12 +212,15 @@ func main() {
 		log.Fatalf("no se pudo abrir el puerto local: %v", err)
 	}
 
-	capability, err := newCapabilityToken()
+	// Children (Chromium, Playwright) must not inherit the launcher secret.
+	launcherSecret := os.Getenv(launcherSecretEnv)
+	_ = os.Unsetenv(launcherSecretEnv)
+	session, err := newLocalSession(launcherSecret)
 	if err != nil {
 		log.Fatalf("no se pudo crear la capacidad local del proceso: %v", err)
 	}
 	server := &http.Server{
-		Handler:           protectLocalAPI(newRouterWithServices(dataDir, secrets.SystemStore{}, jobRuntime, localStore, backupManager), capability),
+		Handler:           securityHeaders(protectLocalAPI(newRouterWithServices(dataDir, secrets.SystemStore{}, jobRuntime, localStore, backupManager), session)),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		WriteTimeout:      90 * time.Second,
@@ -241,10 +244,19 @@ func main() {
 
 	if err := waitUntilReady(url, 5*time.Second); err != nil {
 		log.Printf("el núcleo local no respondió a tiempo: %v", err)
-	} else if !*noBrowser {
-		if err := openBrowser(url); err != nil {
+	} else if !*noBrowser || !supervised() {
+		// Under the Electron supervisor the launcher mints its own bootstrap
+		// URLs; a standalone core hands one out itself.
+		token, mintErr := session.MintBootstrap()
+		if mintErr != nil {
+			log.Fatalf("no se pudo preparar el inicio de sesión local: %v", mintErr)
+		}
+		startURL := url + session.StartPath(token)
+		if *noBrowser {
+			log.Printf("abre %s (enlace de un solo uso, vence en %s)", startURL, bootstrapTokenTTL)
+		} else if err := openBrowser(startURL); err != nil {
 			log.Printf("no se pudo abrir el navegador automáticamente: %v", err)
-			log.Printf("abre manualmente %s", url)
+			log.Printf("abre manualmente %s (enlace de un solo uso, vence en %s)", startURL, bootstrapTokenTTL)
 		}
 	}
 
@@ -282,10 +294,11 @@ func newRouterWithServices(dataDir string, credentials secrets.Store, jobRuntime
 		profileStore = candidate
 	}
 
+	// Unauthenticated liveness probe for the launcher: it must not reveal
+	// anything beyond "the core is up" (version and data live behind the
+	// local session in /api/app/info).
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status": "ok", "app": "zajuna-app", "version": appVersion, "runtime": runtime.GOOS,
-		})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("GET /api/setup/status", func(w http.ResponseWriter, _ *http.Request) {

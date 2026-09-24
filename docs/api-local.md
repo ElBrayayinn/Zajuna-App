@@ -6,20 +6,51 @@ interfaz integrada.
 
 ## Protección del origen local
 
-Al iniciar el core se genera una capability aleatoria por proceso. Las
-respuestas emiten la cookie `zajuna_capability` con `HttpOnly` y
-`SameSite=Strict`; el navegador integrado la reenvía automáticamente en las
-mutaciones. `POST`, `PUT`, `PATCH` y `DELETE` requieren además:
+Al iniciar, el core genera por proceso tres secretos: el de la cookie de
+sesión, el de la cabecera de sesión y el del lanzador. Ninguna respuesta
+normal emite cookies: la sesión solo se obtiene con un enlace de un solo uso.
+
+1. El lanzador Electron crea `ZAJUNA_LAUNCHER_SECRET` y se lo pasa al core en
+   su entorno (el core lo borra de su entorno al arrancar para que Chromium no
+   lo herede).
+2. En cada lanzamiento (primero, segunda instancia, recuperación del core) el
+   lanzador llama `POST /api/session/bootstrap` con
+   `Authorization: Bearer <secreto>` y recibe `{"path":"/api/session/start?token=..."}`.
+   El token vence a los 2 minutos, se usa una sola vez y hay como máximo 32
+   pendientes.
+3. El navegador abre esa URL. `GET /api/session/start` canjea el token, emite
+   la cookie `zajuna_capability_<puerto>` (`HttpOnly`, `SameSite=Strict`) y
+   redirige con `303` a `/#zc=<secreto de cabecera>`. El fragmento nunca viaja
+   a un servidor; React lo guarda en `localStorage` (aislado por origen, es
+   decir, por puerto) y lo borra de la URL.
+4. Cada llamada de React envía la cookie y la cabecera `X-Zajuna-Capability`.
+
+Todo `/api/*` exige cookie y cabecera, lecturas incluidas, excepto:
+
+- `GET /api/health`, sin sesión y con la respuesta mínima `{"status":"ok"}`.
+- `GET /api/{evidences,reports,backups}/{id}/download`, que solo exigen la
+  cookie porque se cargan con `<img>`/`<a href>`.
+
+Las cookies no se aíslan por puerto: otro proceso escuchando en
+`127.0.0.1:<otro puerto>` podría recibirlas si el navegador lo visita. Por eso
+la cookie sola no permite leer JSON ni mutar; como mucho permitiría descargas.
+Sin sesión la API responde `401` con `"code":"local_session_required"`, y la
+interfaz pide volver a abrir la app desde su acceso directo. Un core
+standalone (sin supervisor) abre el navegador con su propio enlace; con
+`--no-browser` lo escribe en el log.
+
+`POST`, `PUT`, `PATCH` y `DELETE` requieren además:
 
 - `Host` loopback y `Origin` coincidente cuando el navegador lo envía.
-- `Sec-Fetch-Site` que no sea `cross-site`.
+- `Sec-Fetch-Site` que no sea `cross-site` ni `same-site` (todos los puertos
+  de `127.0.0.1` son el mismo sitio); esto se aplica a todo `/api/*`.
 - `Content-Type` JSON para cuerpos JSON o `multipart/form-data` para uploads.
 - Límites de tamaño, headers y timeouts del servidor.
 
-Un cliente externo no debe copiar la cookie ni asumir que el endpoint es un
-servidor público. Los helpers de tests que crean `newRouterWithServices`
-prueban handlers sin middleware para aislar cada caso; el runtime real de
-`main` siempre registra `protectLocalAPI`.
+Los helpers de tests que crean `newRouterWithServices` prueban handlers sin
+middleware para aislar cada caso; el runtime real de `main` siempre registra
+`protectLocalAPI`, cubierto por las pruebas de caja negra de
+`api_security_test.go`.
 
 Las rutas de captura solo aceptan el origen Zajuna configurado en producción,
 rechazan loopback/IP privadas y validan redirects y URL final. Los errores,
@@ -30,7 +61,8 @@ sensibles antes de responder o persistir.
 
 ### `GET /api/health`
 
-Devuelve el estado del core, versión y plataforma.
+Sonda de vida sin sesión: devuelve solo `{"status":"ok"}`. La versión y la
+carpeta de datos están en `GET /api/app/info`, que exige sesión.
 
 ### `GET /api/setup/status`
 

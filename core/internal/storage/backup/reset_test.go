@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,56 +49,55 @@ func TestApplyPendingResetKeepsBackupsForInAppReset(t *testing.T) {
 	}
 }
 
-func TestApplyPendingResetFullMarkerRemovesBackups(t *testing.T) {
+func TestApplyPendingResetDiscardsLegacyInstallerMarker(t *testing.T) {
 	dataDir := t.TempDir()
 	seedUserData(t, dataDir)
-	if err := os.WriteFile(filepath.Join(dataDir, PendingResetFile), []byte(FullResetMarker), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dataDir, PendingResetFile), []byte(LegacyInstallerResetMarker), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ApplyPendingReset(dataDir); err != nil {
-		t.Fatal(err)
+	applied, err := ApplyPendingReset(dataDir)
+	if applied || !errors.Is(err, ErrLegacyResetDiscarded) {
+		t.Fatalf("ApplyPendingReset = %v, %v; want discarded legacy marker", applied, err)
 	}
-	if exists(dataDir, "backups") || exists(dataDir, "zajuna.db") {
-		t.Fatal("installer reset must remove everything, backups included")
+	for _, name := range []string{"zajuna.db", "config.json", "evidences/checklist/slot-1.png", "backups/old.zip"} {
+		if !exists(dataDir, name) {
+			t.Fatalf("%s must survive an installer-written marker", name)
+		}
+	}
+	if exists(dataDir, PendingResetFile) {
+		t.Fatal("the legacy marker must be removed so it is not retried")
 	}
 }
 
-func TestEnforceVersionWipesDataFromPreviousVersion(t *testing.T) {
+func TestRecordVersionKeepsDataAcrossVersions(t *testing.T) {
 	dataDir := t.TempDir()
 	// Data from a release that never wrote the version marker (<= 0.1.2).
 	seedUserData(t, dataDir)
-	wiped, err := EnforceVersion(dataDir, "0.1.3")
-	if err != nil || !wiped {
-		t.Fatalf("EnforceVersion = %v, %v", wiped, err)
+	previous, err := RecordVersion(dataDir, "0.1.3")
+	if err != nil || previous != "" {
+		t.Fatalf("RecordVersion = %q, %v", previous, err)
 	}
-	if exists(dataDir, "zajuna.db") || exists(dataDir, "evidences") || exists(dataDir, "backups") {
-		t.Fatal("stale data must be removed")
+	if previous, err = RecordVersion(dataDir, "0.1.3"); err != nil || previous != "" {
+		t.Fatalf("same version must not report a change: %q, %v", previous, err)
 	}
-	// Same version again: data created now must survive restarts.
-	seedUserData(t, dataDir)
-	if wiped, err := EnforceVersion(dataDir, "0.1.3"); err != nil || wiped {
-		t.Fatalf("same version must not wipe: %v, %v", wiped, err)
+	if previous, err = RecordVersion(dataDir, "0.1.4"); err != nil || previous != "0.1.3" {
+		t.Fatalf("upgrade must report the previous version: %q, %v", previous, err)
 	}
-	if !exists(dataDir, "zajuna.db") {
-		t.Fatal("data of the current version must be kept")
+	for _, name := range []string{"zajuna.db", "zajuna.db-wal", "config.json", "evidences/checklist/slot-1.png", "backups/old.zip"} {
+		if !exists(dataDir, name) {
+			t.Fatalf("%s must survive a version change", name)
+		}
 	}
-	// A new version wipes again.
-	if wiped, err := EnforceVersion(dataDir, "0.1.4"); err != nil || !wiped {
-		t.Fatalf("new version must wipe: %v, %v", wiped, err)
+	contents, _ := os.ReadFile(filepath.Join(dataDir, AppVersionFile))
+	if string(contents) != "0.1.4\n" {
+		t.Fatalf("version marker = %q", contents)
 	}
 }
 
-func TestEnforceVersionFreshInstallAndDevBuilds(t *testing.T) {
-	dataDir := t.TempDir()
-	if wiped, err := EnforceVersion(dataDir, "0.1.3"); err != nil || wiped {
-		t.Fatalf("empty dir must not report a wipe: %v, %v", wiped, err)
-	}
-	if !exists(dataDir, AppVersionFile) {
-		t.Fatal("version marker must be written on first start")
-	}
+func TestRecordVersionIgnoresDevBuilds(t *testing.T) {
 	devDir := t.TempDir()
 	seedUserData(t, devDir)
-	if wiped, _ := EnforceVersion(devDir, "dev"); wiped || !exists(devDir, "zajuna.db") {
-		t.Fatal("development builds must never wipe")
+	if previous, err := RecordVersion(devDir, "dev"); err != nil || previous != "" || exists(devDir, AppVersionFile) {
+		t.Fatalf("development builds must not touch the marker: %q, %v", previous, err)
 	}
 }

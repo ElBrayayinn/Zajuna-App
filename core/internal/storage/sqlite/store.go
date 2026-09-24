@@ -1604,6 +1604,20 @@ func (s *Store) MarkCancelled(ctx context.Context, id string) error {
 	)
 }
 
+// SavePartialResult keeps the structured output of a job that ended failed
+// or cancelled. Running/completed jobs are never overwritten.
+func (s *Store) SavePartialResult(ctx context.Context, id string, output json.RawMessage) error {
+	if len(output) == 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET result_json = ?, updated_at = ? WHERE id = ? AND status IN (?, ?)`,
+		string(output), time.Now().UTC().Format(time.RFC3339Nano), id, jobs.StatusFailed, jobs.StatusCancelled)
+	if err != nil {
+		return fmt.Errorf("save partial job result: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) ReconcileInterrupted(ctx context.Context) ([]jobs.Job, error) {
 	interrupted, err := s.listJobsByStatus(ctx, jobs.StatusRunning, jobs.StatusRetrying, jobs.StatusQueued)
 	if err != nil {

@@ -254,15 +254,22 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		}
 		return nil
 	})
-	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
-		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error()}
-	}
-	if err := ctx.Err(); err != nil {
-		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error()}
-	}
-
 	tally := tallyTargetOutcomes(outcomes)
 	captured, skipped, failed, evidenceRecords, failures := tally.captured, tally.skipped, tally.failed, tally.evidenceRecords, tally.failures
+	partialOutput := func(stage string) map[string]any {
+		return map[string]any{
+			"partial": true, "stage": stage, "fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets),
+			"captured": captured, "failed": failed, "skipped": skipped, "coverageCount": evidenceRecords,
+			"failedItemCodes": failedItemCodes(failures), "failures": failures,
+		}
+	}
+	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
+		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error(), Output: partialOutput("capture")}
+	}
+	// A cancelled run never prunes: its outcomes do not cover the plan.
+	if err := ctx.Err(); err != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error(), Output: partialOutput("capture")}
+	}
 
 	prunedEvidences := 0
 	if pruneStore, ok := w.evidence.(captureChecklistPruneStore); ok {
@@ -291,15 +298,17 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 	if failed > 0 {
 		message := fmt.Sprintf("captura incompleta: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)
-		// Sin Output en un fallo, el mensaje es lo único que llega a la UI:
-		// listamos todos los ítems afectados, no solo el primero.
+		// La UI muestra el mensaje del fallo (el Output parcial es para
+		// detalle): listamos todos los ítems afectados, no solo el primero.
 		if codes := failedItemCodes(failures); len(codes) > 0 {
 			message += " (ítems " + strings.Join(codes, ", ") + ")"
 		}
 		if len(failures) > 0 {
 			message += ". Primer error: " + failures[0]
 		}
-		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message}
+		output := partialOutput("completed")
+		output["prunedEvidences"], output["groupCount"] = prunedEvidences, groupCount
+		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message, Output: output}
 	}
 	return jobs.Result{Output: map[string]any{
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
