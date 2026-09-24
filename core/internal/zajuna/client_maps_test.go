@@ -24,7 +24,6 @@ func TestGroupRoutesProjectsGenericKindsIntoChecklistItemCodes(t *testing.T) {
 		"1.1.1": routes[0].URL,
 		"1.2.1": routes[1].URL,
 		"2.1.1": routes[2].URL,
-		"9.1.1": routes[3].URL,
 		"5.1":   routes[4].URL,
 	} {
 		var values []string
@@ -37,6 +36,11 @@ func TestGroupRoutesProjectsGenericKindsIntoChecklistItemCodes(t *testing.T) {
 	}
 	if _, ok := groups["route.page"]; !ok {
 		t.Fatal("generic route.page group should remain available")
+	}
+	// Forum items are title-resolved: an untitled forum is not assigned.
+	var forum []string
+	if err := json.Unmarshal(groups["9.1.1"], &forum); err != nil || len(forum) != 0 {
+		t.Fatalf("an untitled forum must not be projected into 9.1.1: %#v (%v)", forum, err)
 	}
 }
 

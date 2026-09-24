@@ -44,6 +44,10 @@ var pagePoolTerms = map[string][]string{
 }
 
 func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profileURL string) map[string][]string {
+	return buildExactChecklistRouteGroupsForMap(routes, courseID, profileURL, false)
+}
+
+func buildExactChecklistRouteGroupsForMap(routes []coursemaps.Route, courseID, profileURL string, truncated bool) map[string][]string {
 	groups := make(map[string][]string)
 	origin := "https://zajuna.sena.edu.co"
 	if parsed, err := url.Parse(profileURL); err == nil && parsed.Scheme != "" && parsed.Host != "" {
@@ -60,6 +64,13 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 
 	cronograma := pickSingletonRoute(routes, []string{"page", "resource"}, pagePoolTerms["cronograma_general_singleton"], 6, nil)
 	put([]string{"1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5"}, singleValue(cronograma))
+	if cronograma == nil && truncated {
+		// The general schedule page may be past the crawl limit; any other
+		// page of the course would be a false cronograma.
+		for _, code := range []string{"1.1.1", "1.1.2", "1.1.3", "1.1.4", "1.1.5"} {
+			groups[code] = []string{}
+		}
+	}
 
 	fases := buildOrderedRoutePool(routes, []string{"page", "resource"}, pagePoolTerms["fase_page_slot"], 6, func(route coursemaps.Route) bool {
 		text := resolverText(route)
@@ -67,7 +78,11 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 	})
 	put([]string{"1.2.1", "1.2.2", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7"}, fases)
 
-	forumFilter := func(route coursemaps.Route) bool { return !route.Technical }
+	// No Technical filter here: discovery marks every forum without a
+	// transversal competency code as Technical (Anuncios, Dudas, Foro
+	// Temático included), so filtering on it emptied every forum item. Only
+	// forums whose title matches the item's terms enter a pool anyway.
+	var forumFilter func(coursemaps.Route) bool
 	forumPools := make(map[string][]string, len(forumPoolTerms))
 	for mode, terms := range forumPoolTerms {
 		if strings.HasSuffix(mode, "_singleton") {
@@ -77,11 +92,11 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 		}
 	}
 	for itemCode, mode := range forumResolveModes {
-		if strings.HasSuffix(mode, "_singleton") {
-			put([]string{itemCode}, forumPools[mode])
-		} else {
-			put([]string{itemCode}, forumPools[mode])
-		}
+		// Forum items are identified only by their forum's title. Without a
+		// title match the item stays explicitly empty: the generic projection
+		// (every forum of the course) assigned e.g. the thematic forum or the
+		// general "Anuncios" forum to unrelated announcement items.
+		groups[itemCode] = append([]string{}, forumPools[mode]...)
 	}
 
 	assigns := buildOrderedRoutePool(routes, []string{"assign"}, pagePoolTerms["assign_slot"], 4, nil)
@@ -254,12 +269,30 @@ func resolverText(route coursemaps.Route) string {
 	return normalizeResolverText(strings.Join([]string{route.Title, route.PhaseName, route.Subsection, route.URL}, " "))
 }
 
+// normalizeResolverText folds case and accents and turns punctuation into
+// word separators, so terms are compared as whole words.
 func normalizeResolverText(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.NewReplacer(
 		"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n",
 	).Replace(value)
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, value)
 	return strings.Join(strings.Fields(value), " ")
+}
+
+// containsWords reports whether term appears in text on word boundaries:
+// "anuncio" matches "Anuncio de inicio" but not the general "Anuncios"
+// forum, and "fase" does not match "fases".
+func containsWords(text, term string) bool {
+	if term == "" {
+		return false
+	}
+	return strings.Contains(" "+text+" ", " "+term+" ")
 }
 
 func titleHasAnyTerm(route coursemaps.Route, terms []string) bool {

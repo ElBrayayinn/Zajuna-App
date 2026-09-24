@@ -368,7 +368,6 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				activityTitle = activity.Title
 				technical = activity.Technical
 			}
-			plan := captureGroupPlan(spec.GroupName)
 			ownerOnly := ownerOnlyForItem(spec.ItemCode)
 			selector := captureSelectorForItem(spec.ItemCode, spec.GroupName, spec.CSSSelector)
 			fallbacks := captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector)
@@ -377,7 +376,8 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				// A cronograma published as a page/resource has no course
 				// sections: its main region is the evidence (not a fallback).
 				selector = `#region-main:has(iframe[src*="docs.google.com/spreadsheets"]), #region-main`
-				fallbacks = []string{selector, "#page-content"}
+				// No #page-content fallback: it is the whole layout wrapper.
+				fallbacks = []string{selector}
 				// Capture the content region only (no Zajuna header, side
 				// menu or footer): the enlarged sheet is inside it.
 				elementOnly = true
@@ -405,7 +405,10 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 					ViewportWidth: viewportWidthForGroup(spec.GroupName), ViewportHeight: viewportHeightForGroup(spec.GroupName),
 					FullPage:  fullPageForGroup(spec.GroupName) && !batched && !elementOnly,
 					LabelHint: hint, RouteKind: routeKindForURL(record, spec.ItemCode, entry.url),
-					RequireSelector: plan.ownerOnly || spec.GroupName == "perfil_instructor" || hint != "" || ownerFilteredGroup(spec.GroupName) || spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente",
+					// Checklist evidence must come from its semantic container:
+					// a generic full-page shot of an unrelated layout is never a
+					// valid substitute when the selector chain does not match.
+					RequireSelector: true,
 					OwnerOnly:       ownerOnly,
 				}
 				if batched {
@@ -925,7 +928,10 @@ func captureSelectorChain(groupName, primary string) []string {
 		)
 		return selectors
 	}
-	for _, selector := range []string{"#region-main .course-content", "#region-main", "#page-user-profile", ".course-content", "#page-content"} {
+	// `#page-content` wraps the whole Moodle layout (navigation, blocks and
+	// footer): matching it is a full-page shot in disguise, so it is never a
+	// fallback. The profile container only belongs to the profile chain.
+	for _, selector := range []string{"#region-main .course-content", "#region-main", ".course-content"} {
 		add(selector)
 	}
 	return selectors
@@ -952,19 +958,45 @@ func captureSelectorChainForItem(itemCode, groupName, primary string) []string {
 		// No fallback: a forum page without dates must not become evidence.
 		return []string{ForumDatesSelector}
 	}
-	chain := captureSelectorChain(groupName, primary)
-	if title := courseSectionTitleForItem(itemCode); title != "" && title != seguimientoSectionTitle && title != sesionesSectionTitle {
-		// A missing subsection falls back to its parent section, never to
-		// the whole course page or its first (banner) section.
+	title := courseSectionTitleForItem(itemCode)
+	if title == "" {
+		return captureSelectorChain(groupName, primary)
+	}
+	// Section-bound items are identified only by their named section. A
+	// missing subsection falls back to its parent section, never to the
+	// whole course page or its first (banner) section.
+	chain := []string{primary}
+	if title != seguimientoSectionTitle && title != sesionesSectionTitle {
 		parent := seguimientoSectionTitle
 		if strings.HasPrefix(itemCode, "8.") {
 			parent = sesionesSectionTitle
 		} else if strings.HasPrefix(itemCode, "7.4.") && title != comitesSectionTitle {
 			parent = comitesSectionTitle
 		}
-		chain = append([]string{primary, courseSectionByTitle(parent)}, chain...)
+		chain = append(chain, courseSectionByTitle(parent))
 	}
 	return chain
+}
+
+// splitSlots spreads an item's evidence limit over its sources so the
+// remainder of an uneven split is not lost: 5 slots over 2 sources become
+// 3+2, not 2+2. Every source keeps at least one slot.
+func splitSlots(maxSlots, sources int) []int {
+	if sources <= 0 {
+		return nil
+	}
+	result := make([]int, sources)
+	base, remainder := maxSlots/sources, maxSlots%sources
+	for index := range result {
+		result[index] = base
+		if index < remainder {
+			result[index]++
+		}
+		if result[index] < 1 {
+			result[index] = 1
+		}
+	}
+	return result
 }
 
 const (

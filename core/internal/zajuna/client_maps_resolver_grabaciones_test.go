@@ -1,6 +1,7 @@
 package zajuna
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zajuna-app/core/internal/coursemaps"
@@ -53,5 +54,22 @@ func TestAnuncioSlotSkipsTechnicalForumsAndSubstringMatches(t *testing.T) {
 	}
 	if !containsNormalizedTerm("foro de anuncios del curso", "anuncios") {
 		t.Fatal("whole-word anuncios must match")
+	}
+}
+
+// Discovery marks every forum without a transversal competency code as
+// Technical. General forums must still resolve their checklist items.
+func TestDiscoveredGeneralForumsResolveTheirItems(t *testing.T) {
+	routes := []coursemaps.Route{
+		{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=1", Title: "Anuncios", Technical: true},
+		{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=2", Title: "Dudas e Inquietudes", Technical: true},
+		{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=3", Title: "Foro Temático", Technical: true},
+	}
+	groups := buildExactChecklistRouteGroups(routes, "41080", "")
+	for code, id := range map[string]string{"11.1.1": "id=1", "11.4": "id=1", "9.1.1": "id=2", "9.1.3": "id=3"} {
+		got := groups[code]
+		if len(got) == 0 || !strings.Contains(got[0], id) {
+			t.Fatalf("%s must resolve to the forum with %s, got %v", code, id, got)
+		}
 	}
 }

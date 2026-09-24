@@ -36,7 +36,9 @@ type CaptureChecklistInput struct {
 	AutoRenew    *bool    `json:"autoRenew,omitempty"`
 }
 
-var fichaCaptureLocks sync.Map
+// fichaCaptureLocks serializes captures of one ficha; entries are dropped
+// once nobody holds or waits for them (see keyedLocks).
+var fichaCaptureLocks = &keyedLocks{slots: make(map[string]*keyedLock)}
 
 type checklistCaptureFichaStore interface {
 	GetFicha(context.Context, string) (sqlite.FichaRecord, error)
@@ -369,14 +371,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 // slots). Waiting honours ctx, so a cancelled job does not hold a worker until
 // the running capture ends.
 func lockFichaCapture(ctx context.Context, fichaID string) (func(), error) {
-	value, _ := fichaCaptureLocks.LoadOrStore(fichaID, make(chan struct{}, 1))
-	slot := value.(chan struct{})
-	select {
-	case slot <- struct{}{}:
-		return func() { <-slot }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	return fichaCaptureLocks.lock(ctx, fichaID)
 }
 
 // captureChecklistPruneStore is optional (like evidence.GroupStore) so test

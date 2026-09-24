@@ -16,8 +16,6 @@ import (
 	"github.com/zajuna-app/core/internal/security"
 )
 
-var playwrightEnvMu sync.Mutex
-
 type Runtime struct {
 	Root        string
 	DriverDir   string
@@ -175,24 +173,44 @@ func (r Runtime) Start() (*playwright.Playwright, error) {
 	if !r.Installed() {
 		return nil, fmt.Errorf("runtime Chromium no instalado en %s; ejecuta npm run browser:install", r.Root)
 	}
-	playwrightEnvMu.Lock()
-	defer playwrightEnvMu.Unlock()
-	if err := os.Setenv("PLAYWRIGHT_DRIVER_PATH", r.DriverDir); err != nil {
-		return nil, fmt.Errorf("configurar driver de Playwright: %w", err)
-	}
-	if err := os.Setenv("PLAYWRIGHT_BROWSERS_PATH", r.BrowsersDir); err != nil {
-		return nil, fmt.Errorf("configurar browsers de Playwright: %w", err)
-	}
-	instance, err := playwright.Run(&playwright.RunOptions{
-		DriverDirectory:     r.DriverDir,
-		Browsers:            []string{"chromium"},
-		SkipInstallBrowsers: true,
-		Verbose:             false,
+	var instance *playwright.Playwright
+	err := withPlaywrightEnv(r, func() error {
+		var runErr error
+		instance, runErr = playwright.Run(&playwright.RunOptions{
+			DriverDirectory:     r.DriverDir,
+			Browsers:            []string{"chromium"},
+			SkipInstallBrowsers: true,
+			Verbose:             false,
+		})
+		if runErr != nil {
+			return fmt.Errorf("iniciar Playwright local: %w", runErr)
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("iniciar Playwright local: %w", err)
+		return nil, err
 	}
 	return instance, nil
+}
+
+// playwrightEnvMu serializes the process-wide PLAYWRIGHT_* variables with
+// the driver launch that inherits them. Parallel checklist sessions start
+// drivers concurrently; without it one launch could inherit another
+// runtime's paths between Setenv and exec.
+var playwrightEnvMu sync.Mutex
+
+func withPlaywrightEnv(r Runtime, run func() error) error {
+	playwrightEnvMu.Lock()
+	defer playwrightEnvMu.Unlock()
+	for name, value := range map[string]string{"PLAYWRIGHT_DRIVER_PATH": r.DriverDir, "PLAYWRIGHT_BROWSERS_PATH": r.BrowsersDir} {
+		if os.Getenv(name) == value {
+			continue
+		}
+		if err := os.Setenv(name, value); err != nil {
+			return fmt.Errorf("configurar %s de Playwright: %w", name, err)
+		}
+	}
+	return run()
 }
 
 func (r Runtime) CaptureURL(ctx context.Context, targetURL, outputPath string) error {
@@ -250,6 +268,9 @@ func (r Runtime) CaptureURLWithMetadataAndCookiesAndOptions(ctx context.Context,
 		return CaptureResult{}, fmt.Errorf("crear contexto Chromium: %w", err)
 	}
 	defer browserContext.Close()
+	if err := installNetworkPolicy(browserContext, parsed); err != nil {
+		return CaptureResult{}, fmt.Errorf("configurar política de red de Chromium: %w", err)
+	}
 	if len(cookies) > 0 {
 		browserCookies := make([]playwright.OptionalCookie, 0, len(cookies))
 		for _, cookie := range cookies {

@@ -247,8 +247,8 @@ func TestBuildCaptureTargetsItem31MatchesCourseContentWithoutAFragileHint(t *tes
 			if target.CSSSelector != "#region-main .course-content" {
 				t.Fatalf("item 3.1 must crop the confirmed course-content wrapper, got %q", target.CSSSelector)
 			}
-			if target.LabelHint != "" || target.RequireSelector {
-				t.Fatalf("item 3.1 must not require a fragile text hint: %#v", target)
+			if target.LabelHint != "" || !target.RequireSelector {
+				t.Fatalf("item 3.1 must be strict without a fragile text hint: %#v", target)
 			}
 			return
 		}
@@ -276,8 +276,8 @@ func TestBuildCaptureTargetsItem41MenuCursoMatchesCourseContentWithoutAFragileHi
 			if target.CSSSelector != "#region-main .course-content" {
 				t.Fatalf("item 4.1 must crop the confirmed course-content wrapper, got %q", target.CSSSelector)
 			}
-			if target.LabelHint != "" || target.RequireSelector {
-				t.Fatalf("item 4.1 must not require a fragile text hint: %#v", target)
+			if target.LabelHint != "" || !target.RequireSelector {
+				t.Fatalf("item 4.1 must be strict without a fragile text hint: %#v", target)
 			}
 			return
 		}
@@ -302,8 +302,8 @@ func TestBuildCaptureTargetsSeguimientoSesionesDocumentosDropFragileHints(t *tes
 	}
 	found := make(map[string]bool, len(itemCodes))
 	for _, target := range targets {
-		if target.LabelHint != "" || target.RequireSelector {
-			t.Fatalf("%s must not require a fragile text hint: %#v", target.ItemCode, target)
+		if target.LabelHint != "" || !target.RequireSelector {
+			t.Fatalf("%s must be strict without a fragile text hint: %#v", target.ItemCode, target)
 		}
 		found[target.ItemCode] = true
 	}
