@@ -268,15 +268,16 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			continue
 		}
 		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
-		batchesPerURL := 1
-		if batched && len(eligible) > 0 {
-			batchesPerURL = spec.MaxSlots / len(eligible)
-			if batchesPerURL < 1 {
-				batchesPerURL = 1
-			}
+		batchesPerURL := []int{}
+		if batched {
+			batchesPerURL = splitSlots(spec.MaxSlots, len(eligible))
 		}
 		addedCount := 0
 		for index, entry := range eligible {
+			batches := 1
+			if batched {
+				batches = batchesPerURL[index]
+			}
 			hint := ""
 			if len(spec.LabelHints) > 0 {
 				hint = spec.LabelHints[index%len(spec.LabelHints)]
@@ -287,7 +288,6 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				activityTitle = activity.Title
 				technical = activity.Technical
 			}
-			plan := captureGroupPlan(spec.GroupName)
 			ownerOnly := ownerOnlyForItem(spec.ItemCode)
 			selector := captureSelectorForItem(spec.ItemCode, spec.GroupName, spec.CSSSelector)
 			fallbacks := captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector)
@@ -297,7 +297,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				selector = rows.container
 				fallbacks = append([]string{rows.container}, fallbacks...)
 			}
-			for batch := 0; batch < batchesPerURL; batch++ {
+			for batch := 0; batch < batches; batch++ {
 				// Slots are contiguous: skipped routes never leave holes
 				// (a gap used to leave items with only "slot 2").
 				slot := addedCount + 1
@@ -314,7 +314,10 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 					ViewportWidth: viewportWidthForGroup(spec.GroupName), ViewportHeight: viewportHeightForGroup(spec.GroupName),
 					FullPage:  fullPageForGroup(spec.GroupName) && !batched,
 					LabelHint: hint, RouteKind: routeKindForURL(record, spec.ItemCode, entry.url),
-					RequireSelector: plan.ownerOnly || spec.GroupName == "perfil_instructor" || hint != "" || ownerFilteredGroup(spec.GroupName) || spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente",
+					// Checklist evidence must come from its semantic container:
+					// a generic full-page shot of an unrelated layout is never a
+					// valid substitute when the selector chain does not match.
+					RequireSelector: true,
 					OwnerOnly:       ownerOnly,
 				}
 				if batched {
@@ -792,7 +795,10 @@ func captureSelectorChain(groupName, primary string) []string {
 		)
 		return selectors
 	}
-	for _, selector := range []string{"#region-main .course-content", "#region-main", "#page-user-profile", ".course-content", "#page-content"} {
+	// `#page-content` wraps the whole Moodle layout (navigation, blocks and
+	// footer): matching it is a full-page shot in disguise, so it is never a
+	// fallback. The profile container only belongs to the profile chain.
+	for _, selector := range []string{"#region-main .course-content", "#region-main", ".course-content"} {
 		add(selector)
 	}
 	return selectors
@@ -809,17 +815,43 @@ func captureSelectorForItem(itemCode, groupName, fallback string) string {
 }
 
 func captureSelectorChainForItem(itemCode, groupName, primary string) []string {
-	chain := captureSelectorChain(groupName, primary)
-	if title := courseSectionTitleForItem(itemCode); title != "" && title != seguimientoSectionTitle && title != sesionesSectionTitle {
-		// A missing subsection falls back to its parent section, never to
-		// the whole course page or its first (banner) section.
+	title := courseSectionTitleForItem(itemCode)
+	if title == "" {
+		return captureSelectorChain(groupName, primary)
+	}
+	// Section-bound items are identified only by their named section. A
+	// missing subsection falls back to its parent section, never to the
+	// whole course page or its first (banner) section.
+	chain := []string{primary}
+	if title != seguimientoSectionTitle && title != sesionesSectionTitle {
 		parent := seguimientoSectionTitle
 		if strings.HasPrefix(itemCode, "8.") {
 			parent = sesionesSectionTitle
 		}
-		chain = append([]string{primary, courseSectionByTitle(parent)}, chain...)
+		chain = append(chain, courseSectionByTitle(parent))
 	}
 	return chain
+}
+
+// splitSlots spreads an item's evidence limit over its sources so the
+// remainder of an uneven split is not lost: 5 slots over 2 sources become
+// 3+2, not 2+2. Every source keeps at least one slot.
+func splitSlots(maxSlots, sources int) []int {
+	if sources <= 0 {
+		return nil
+	}
+	result := make([]int, sources)
+	base, remainder := maxSlots/sources, maxSlots%sources
+	for index := range result {
+		result[index] = base
+		if index < remainder {
+			result[index]++
+		}
+		if result[index] < 1 {
+			result[index] = 1
+		}
+	}
+	return result
 }
 
 const (
@@ -957,13 +989,10 @@ func appendGradingBatchTargets(targets *[]CaptureTarget, record coursemaps.Recor
 	if len(withGrading) == 0 {
 		return 0
 	}
-	batches := spec.MaxSlots / len(withGrading)
-	if batches < 1 {
-		batches = 1
-	}
+	batchesPerActivity := splitSlots(spec.MaxSlots, len(withGrading))
 	added := 0
-	for _, entry := range withGrading {
-		for batch := 0; batch < batches; batch++ {
+	for index, entry := range withGrading {
+		for batch := 0; batch < batchesPerActivity[index]; batch++ {
 			added++
 			*targets = append(*targets, CaptureTarget{
 				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,

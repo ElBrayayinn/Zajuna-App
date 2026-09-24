@@ -67,6 +67,12 @@ func (r Runtime) OpenBrowserSession(ctx context.Context, credentials BrowserCred
 		cleanup()
 		return nil, fmt.Errorf("crear contexto Chromium: %w", err)
 	}
+	if err := installNetworkPolicy(context, loginURL); err != nil {
+		_ = context.Close()
+		_ = browser.Close()
+		cleanup()
+		return nil, fmt.Errorf("configurar política de red de Chromium: %w", err)
+	}
 	page, err := context.NewPage()
 	if err != nil {
 		_ = context.Close()

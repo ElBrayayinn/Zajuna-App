@@ -33,6 +33,9 @@ type checklistTargetParams struct {
 	// Sessions reuses authenticated Chromium sessions across targets of one
 	// run. Nil (single-target jobs) opens and closes a session per target.
 	Sessions *browserSessionPool
+	// DeleteSkippedEvidence drops the slot's previous evidence when its row
+	// batch turns out empty, while the slot lock is still held.
+	DeleteSkippedEvidence bool
 }
 
 type targetOutcome struct {
@@ -74,12 +77,22 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		return targetOutcome{failure: target.ItemCode + ": origen de URL no permitido"}
 	}
 	outputPath := filepath.Join(w.dataDir, "evidences", "checklist", safePathPart(params.Input.FichaID), safePathPart(target.ItemCode), fmt.Sprintf("slot-%d.png", target.SlotNumber))
+	// Two runs (a full checklist job and a single-target job, or two jobs for
+	// the same ficha) must not write the same slot file and evidence rows at
+	// once: the second waits until the first has captured and persisted.
+	unlock, lockErr := checklistSlotLocks.lockAll(ctx, checklistSlotLockKeys(params.Input.FichaID, target))
+	if lockErr != nil {
+		return targetOutcome{failure: target.ItemCode + ": captura cancelada"}
+	}
+	defer unlock()
 	options := capture.CaptureOptions{
 		Selector: target.CSSSelector, Selectors: target.CSSSelectorFallbacks,
 		RevealSelectors: target.RevealSelectors, HideSelectors: target.HideSelectors,
 		ViewportWidth: target.ViewportWidth, ViewportHeight: target.ViewportHeight,
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
-		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
+		// Always strict, also for targets replayed from older job payloads:
+		// checklist evidence is never a generic full-page fallback.
+		RequireSelector: true, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
 		OptionalSlot: target.OptionalSlot,
 	}
@@ -131,7 +144,10 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		if errors.Is(captureErr, capture.ErrNoRowsInBatch) {
 			// The list is fully covered by earlier slots. Stale evidence for
 			// this slot is removed by the reference-counted prune/delete, never
-			// here: another kept row may still point to the same file.
+			// by deleting the file: another kept row may still point to it.
+			if params.DeleteSkippedEvidence {
+				w.deleteSlotEvidence(ctx, params.Input.FichaID, target)
+			}
 			return targetOutcome{skipped: true}
 		}
 		if errors.Is(captureErr, capture.ErrLoginPage) {
@@ -179,6 +195,17 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		evidenceRecords++
 	}
 	return targetOutcome{captured: true, evidenceRecords: evidenceRecords}
+}
+
+func (w *CaptureChecklistWorker) deleteSlotEvidence(ctx context.Context, fichaID string, target checklist.CaptureTarget) {
+	deleteStore, ok := w.evidence.(evidence.DeleteStore)
+	if !ok {
+		return
+	}
+	for _, itemCode := range coveredItemCodes(target) {
+		evidenceID := artifactID("evidence", fichaID, itemCode+"#"+strconv.Itoa(target.SlotNumber), "")
+		_, _ = deleteStore.DeleteEvidence(ctx, evidenceID)
+	}
 }
 
 // CaptureChecklistTargetInput is the payload for a single-target checklist job.
@@ -244,16 +271,11 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 		Input: CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
 		Target: input.Target, BaseURL: baseURL, Session: session, Password: password,
 		OwnerName: input.OwnerName, UseBrowser: useBrowser,
-	})
-	if outcome.skipped {
 		// Empty row batch: the slot is not needed. Drop any evidence a previous
 		// (longer) list left in it so the checklist does not show a stale shot.
-		if deleteStore, ok := w.parent.evidence.(evidence.DeleteStore); ok {
-			for _, itemCode := range coveredItemCodes(input.Target) {
-				evidenceID := artifactID("evidence", input.FichaID, itemCode+"#"+strconv.Itoa(input.Target.SlotNumber), "")
-				_, _ = deleteStore.DeleteEvidence(ctx, evidenceID)
-			}
-		}
+		DeleteSkippedEvidence: true,
+	})
+	if outcome.skipped {
 		_ = reporter.Progress(ctx, "completed", 100, "Objetivo omitido: el lote de filas está vacío")
 		return jobs.Result{Output: map[string]any{
 			"fichaId": input.FichaID, "itemCode": input.Target.ItemCode, "slotNumber": input.Target.SlotNumber,
