@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -186,7 +187,11 @@ func (r *Runtime) Submit(ctx context.Context, workerID string, input any) (Job, 
 		return Job{}, err
 	}
 	if err := ctx.Err(); err != nil {
-		_ = r.store.FailJob(context.Background(), job.ID, "enqueue_cancelled", "el trabajo no llegó a ejecutarse")
+		// Never ran: cancelled, not failed (a failure raises a "needs
+		// attention" notification for a job the person abandoned).
+		if markErr := r.store.MarkCancelled(context.WithoutCancel(ctx), job.ID); markErr != nil && !errors.Is(markErr, ErrInvalidTransition) {
+			return Job{}, fmt.Errorf("%w (el job %s no pudo marcarse cancelado: %v)", err, job.ID, markErr)
+		}
 		return Job{}, err
 	}
 
@@ -194,10 +199,14 @@ func (r *Runtime) Submit(ctx context.Context, workerID string, input any) (Job, 
 	case r.queue <- job.ID:
 		return job, nil
 	case <-ctx.Done():
-		_ = r.store.FailJob(context.Background(), job.ID, "enqueue_cancelled", "el trabajo no llegó a ejecutarse")
+		// The row is already persisted: without this it would stay queued and
+		// never run until the next restart resumed it behind the caller's back.
+		if err := r.store.MarkCancelled(context.WithoutCancel(ctx), job.ID); err != nil && !errors.Is(err, ErrInvalidTransition) {
+			return Job{}, fmt.Errorf("%w (el job %s no pudo marcarse cancelado: %v)", ctx.Err(), job.ID, err)
+		}
 		return Job{}, ctx.Err()
 	case <-r.runtimeDone():
-		_ = r.store.FailJob(context.Background(), job.ID, "runtime_stopped", "el runtime se detuvo antes de ejecutar el trabajo")
+		// Left queued on purpose: ReconcileInterrupted resumes it on restart.
 		return Job{}, errors.New("job runtime is not running")
 	}
 }
@@ -222,17 +231,33 @@ func (r *Runtime) Events(ctx context.Context, id string) ([]Event, error) {
 	return r.store.ListJobEvents(ctx, id)
 }
 
+// ErrJobFinished is returned by Cancel when the job already reached a
+// terminal state (or does not exist); nothing was changed.
+var ErrJobFinished = errors.New("el trabajo ya terminó o no existe; no se puede cancelar")
+
+// Cancel persists the cancellation first and only then stops the worker, so
+// a job is never left "running" with a dead worker, and a job that already
+// finished is reported as such instead of being interrupted.
 func (r *Runtime) Cancel(ctx context.Context, id string) error {
+	if err := r.store.MarkCancelled(ctx, id); err != nil {
+		if errors.Is(err, ErrInvalidTransition) {
+			return ErrJobFinished
+		}
+		return err
+	}
 	r.mu.RLock()
 	cancel := r.cancels[id]
 	r.mu.RUnlock()
 	if cancel != nil {
 		cancel()
 	}
-	if err := r.store.MarkCancelled(ctx, id); err != nil {
-		return err
-	}
 	return nil
+}
+
+// PartialResultStore is optional: stores that implement it keep the
+// structured output of failed or cancelled jobs (what was already done).
+type PartialResultStore interface {
+	SavePartialResult(ctx context.Context, id string, output json.RawMessage) error
 }
 
 func (r *Runtime) execute(id string) {
@@ -261,38 +286,44 @@ func (r *Runtime) execute(id string) {
 		_ = r.store.FailJob(r.ctx, id, "worker_not_found", "worker no registrado")
 		return
 	}
+
+	// Registered before MarkRunning so a Cancel racing with the start always
+	// finds either a non-runnable row or a cancel func to call.
+	workerCtx, cancel := context.WithCancel(r.ctx)
+	r.mu.Lock()
+	r.cancels[id] = cancel
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.cancels, id)
+		r.mu.Unlock()
+		cancel()
+	}()
 	job, err = r.store.MarkRunning(r.ctx, id)
 	if err != nil {
 		return
 	}
 
-	workerCtx, cancel := context.WithCancel(r.ctx)
-	r.mu.Lock()
-	r.cancels[job.ID] = cancel
-	r.mu.Unlock()
 	reporter := &jobReporter{store: r.store, jobID: job.ID}
 	result := executeWorker(workerCtx, worker, job, reporter)
-	r.mu.Lock()
-	delete(r.cancels, job.ID)
-	r.mu.Unlock()
-	wasCancelled := workerCtx.Err() != nil
-	cancel()
-	if wasCancelled {
-		if result.Output != nil {
-			if encoded, marshalErr := json.Marshal(result.Output); marshalErr == nil {
-				_ = r.store.AppendEvent(r.ctx, Event{JobID: id, Kind: "output", Message: "captura cancelada", Data: encoded, CreatedAt: time.Now().UTC()})
-			}
+	if workerCtx.Err() != nil {
+		if r.ctx.Err() != nil {
+			// Core shutdown: the row stays running and ReconcileInterrupted
+			// retries it on the next start.
+			return
 		}
+		// Cancelled by the user. Cancel already persisted the state; this is
+		// a no-op except if the worker context was cancelled some other way.
+		if err := r.store.MarkCancelled(r.ctx, id); err != nil && !errors.Is(err, ErrInvalidTransition) {
+			return
+		}
+		r.savePartial(id, result.Output)
 		return
 	}
 	if result.ErrorMessage != "" {
-		if result.Output != nil {
-			if encoded, marshalErr := json.Marshal(result.Output); marshalErr == nil {
-				_ = r.store.AppendEvent(r.ctx, Event{JobID: id, Kind: "output", Message: result.ErrorMessage, Data: encoded, CreatedAt: time.Now().UTC()})
-			}
-		}
+		message := SanitizeMessage(result.ErrorMessage)
 		if result.Retryable && job.Attempt < job.MaxAttempts {
-			if err := r.store.RetryJob(r.ctx, id, result.ErrorCode, result.ErrorMessage); err != nil {
+			if err := r.store.RetryJob(r.ctx, id, result.ErrorCode, message); err != nil {
 				if errors.Is(err, ErrInvalidTransition) {
 					return
 				}
@@ -301,24 +332,41 @@ func (r *Runtime) execute(id string) {
 				// persisted: that would let a job retry more times than
 				// MaxAttempts allows and leave its persisted state inconsistent
 				// with what actually ran.
-				_ = r.store.FailJob(r.ctx, id, "retry_persist_failed", err.Error())
+				_ = r.store.FailJob(r.ctx, id, "retry_persist_failed", SanitizeMessage(err.Error()))
 				return
 			}
 			r.enqueueRetry(id, time.Duration(job.Attempt)*500*time.Millisecond)
 			return
 		}
-		_ = r.store.FailJob(r.ctx, id, result.ErrorCode, result.ErrorMessage)
+		if err := r.store.FailJob(r.ctx, id, result.ErrorCode, message); err == nil {
+			r.savePartial(id, result.Output)
+		}
 		return
 	}
 
-	output, err := json.Marshal(result.Output)
+	output, err := encodeOutput(result.Output)
 	if err != nil {
-		_ = r.store.FailJob(r.ctx, id, "result_encode_failed", err.Error())
+		_ = r.store.FailJob(r.ctx, id, "result_encode_failed", SanitizeMessage(err.Error()))
 		return
 	}
 	if err := r.store.CompleteJob(r.ctx, id, output); err != nil && !errors.Is(err, ErrInvalidTransition) {
-		_ = r.store.FailJob(r.ctx, id, "result_persist_failed", err.Error())
+		_ = r.store.FailJob(r.ctx, id, "result_persist_failed", SanitizeMessage(err.Error()))
 	}
+}
+
+func (r *Runtime) savePartial(id string, value any) {
+	if value == nil {
+		return
+	}
+	partialStore, ok := r.store.(PartialResultStore)
+	if !ok {
+		return
+	}
+	output, err := encodeOutput(value)
+	if err != nil {
+		return
+	}
+	_ = partialStore.SavePartialResult(context.WithoutCancel(r.ctx), id, output)
 }
 
 func (r *Runtime) recoverInterrupted() {
@@ -371,18 +419,18 @@ type jobReporter struct {
 }
 
 func (r *jobReporter) Progress(ctx context.Context, stage string, percent int, message string) error {
-	return r.store.UpdateProgress(ctx, r.jobID, stage, percent, message)
+	return r.store.UpdateProgress(ctx, r.jobID, stage, percent, SanitizeMessage(message))
 }
 
 func (r *jobReporter) Event(ctx context.Context, kind string, message string, data any) error {
-	contents, err := json.Marshal(data)
+	contents, err := encodeOutput(data)
 	if err != nil {
 		return err
 	}
 	return r.store.AppendEvent(ctx, Event{
 		JobID:     r.jobID,
 		Kind:      kind,
-		Message:   message,
+		Message:   SanitizeMessage(message),
 		Data:      contents,
 		CreatedAt: time.Now().UTC(),
 	})
@@ -391,7 +439,8 @@ func (r *jobReporter) Event(ctx context.Context, kind string, message string, da
 func executeWorker(ctx context.Context, worker Worker, job Job, reporter Reporter) (result Result) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			result = Result{ErrorCode: "worker_panic", ErrorMessage: fmt.Sprintf("worker panic: %v", recovered)}
+			result = Result{ErrorCode: "worker_panic", ErrorMessage: "el proceso falló de forma inesperada"}
+			log.Printf("worker %s panic en job %s: %v", worker.ID(), job.ID, recovered)
 		}
 	}()
 	return worker.Execute(ctx, job, reporter)

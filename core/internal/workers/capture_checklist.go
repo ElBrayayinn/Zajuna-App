@@ -291,38 +291,45 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		}
 		return nil
 	})
-	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
-		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error()}
-	}
-
 	tally := tallyTargetOutcomes(outcomes)
 	captured, skipped, failed, evidenceRecords, failures := tally.captured, tally.skipped, tally.failed, tally.evidenceRecords, tally.failures
-	finishCtx := ctx
-	if ctx.Err() != nil {
-		finishCtx = context.Background()
+	partialOutput := func(stage string) map[string]any {
+		return map[string]any{
+			"partial": true, "stage": stage, "fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets),
+			"captured": captured, "failed": failed, "skipped": skipped, "coverageCount": evidenceRecords,
+			"failedItemCodes": failedItemCodes(failures), "failures": failures,
+			"absent": tally.absent, "absences": tally.absences, "preferences": prefs,
+		}
+	}
+	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
+		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error(), Output: partialOutput("capture")}
+	}
+	// A cancelled run never prunes: its outcomes do not cover the plan.
+	if err := ctx.Err(); err != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error(), Output: partialOutput("capture")}
 	}
 
 	prunedEvidences := 0
 	if pruneStore, ok := w.evidence.(captureChecklistPruneStore); ok {
 		itemCodes, keep := captureChecklistPrunePlan(plannedTargets, targets, outcomes)
-		pruned, pruneErr := pruneStore.PruneCaptureChecklistEvidence(finishCtx, input.FichaID, itemCodes, keep)
+		pruned, pruneErr := pruneStore.PruneCaptureChecklistEvidence(ctx, input.FichaID, itemCodes, keep)
 		if pruneErr != nil {
 			return jobs.Result{ErrorCode: "evidence_prune_failed", ErrorMessage: fmt.Sprintf("no se pudieron retirar las evidencias obsoletas: %v", pruneErr), Retryable: true}
 		}
 		prunedEvidences = pruned
 		if pruned > 0 {
-			_ = reporter.Event(finishCtx, "evidence_pruned", "Evidencias obsoletas retiradas", map[string]any{"fichaId": input.FichaID, "pruned": pruned})
+			_ = reporter.Event(ctx, "evidence_pruned", "Evidencias obsoletas retiradas", map[string]any{"fichaId": input.FichaID, "pruned": pruned})
 		}
 	}
 
 	groupCount := 0
 	if groupStore, ok := w.evidence.(evidence.GroupStore); ok {
-		groups, groupErr := groupStore.RebuildEvidenceGroups(finishCtx, input.FichaID)
+		groups, groupErr := groupStore.RebuildEvidenceGroups(ctx, input.FichaID)
 		if groupErr != nil {
 			return jobs.Result{ErrorCode: "evidence_group_failed", ErrorMessage: fmt.Sprintf("no se pudieron construir los grupos de evidencia: %v", groupErr), Retryable: true}
 		}
 		groupCount = len(groups)
-		_ = reporter.Event(finishCtx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
+		_ = reporter.Event(ctx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
 	}
 	output := map[string]any{
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
@@ -349,8 +356,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	}
 	if failed > 0 {
 		message := fmt.Sprintf("captura incompleta: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)
-		// Sin Output en un fallo, el mensaje es lo único que llega a la UI:
-		// listamos todos los ítems afectados, no solo el primero.
+		// La UI muestra el mensaje del fallo (el Output parcial es para
+		// detalle): listamos todos los ítems afectados, no solo el primero.
 		if codes := failedItemCodes(failures); len(codes) > 0 {
 			message += " (ítems " + strings.Join(codes, ", ") + ")"
 		}
@@ -362,6 +369,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			// ítems que fallaron.
 			message += fmt.Sprintf(". Sin contenido en Zajuna: %s", strings.Join(failedItemCodes(tally.absences), ", "))
 		}
+		output["partial"], output["stage"], output["failedItemCodes"] = true, "completed", failedItemCodes(failures)
 		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message, Output: output}
 	}
 	return jobs.Result{Output: output}

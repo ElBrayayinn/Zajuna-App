@@ -61,10 +61,47 @@ function normalizeKey(key: string) {
   return key.charAt(0).toLowerCase() + key.slice(1)
 }
 
+// El core entrega el secreto de sesión en el fragmento (#zc=...) al abrir la
+// app desde el lanzador. Se guarda por origen (el puerto cambia en cada
+// arranque) y viaja en una cabecera que otro proceso local no puede obtener.
+const CAPABILITY_HEADER = 'X-Zajuna-Capability'
+const CAPABILITY_STORAGE_KEY = 'zajuna.localCapability'
+let capability: string | null = null
+
+export function captureCapabilityFromLocation(target: { location: Location; history: History; localStorage?: Storage } | undefined = typeof window === 'undefined' ? undefined : window) {
+  if (!target) return
+  const match = /^#zc=([A-Za-z0-9_-]+)$/.exec(target.location.hash)
+  if (!match) return
+  capability = match[1]
+  try {
+    target.localStorage?.setItem(CAPABILITY_STORAGE_KEY, capability)
+  } catch {
+    // Sin almacenamiento la sesión dura lo que la pestaña.
+  }
+  target.history.replaceState(target.history.state, '', target.location.pathname + target.location.search)
+}
+
+function currentCapability(): string | null {
+  if (capability) return capability
+  try {
+    capability = typeof window === 'undefined' ? null : window.localStorage.getItem(CAPABILITY_STORAGE_KEY)
+  } catch {
+    capability = null
+  }
+  return capability
+}
+
+captureCapabilityFromLocation()
+
+export const LOCAL_SESSION_REQUIRED = 401
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response
+  const headers = new Headers(options.headers)
+  const secret = currentCapability()
+  if (secret) headers.set(CAPABILITY_HEADER, secret)
   try {
-    response = await fetch(path, options)
+    response = await fetch(path, { ...options, headers })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo contactar la aplicación local.'
     throw new ApiError(message, 0, path)

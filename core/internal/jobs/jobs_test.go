@@ -113,6 +113,16 @@ func (s *memoryStore) MarkCancelled(_ context.Context, id string) error {
 	})
 	return err
 }
+func (s *memoryStore) SavePartialResult(_ context.Context, id string, output json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job, ok := s.jobs[id]
+	if ok && (job.Status == StatusFailed || job.Status == StatusCancelled) {
+		job.Result = output
+		s.jobs[id] = job
+	}
+	return nil
+}
 func (s *memoryStore) ReconcileInterrupted(_ context.Context) ([]Job, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -363,7 +373,9 @@ func TestRuntimeSubmitPreservesFIFOStartOrderWithConcurrency2(t *testing.T) {
 	}
 }
 
-func TestSubmitFailsQueuedJobWhenContextCancels(t *testing.T) {
+// An abandoned submit is cancelled, not failed: a failure would raise a
+// "needs attention" notification for a job that never ran.
+func TestSubmitCancelsQueuedJobWhenContextCancels(t *testing.T) {
 	store := newMemoryStore()
 	runtime, err := NewRuntime(store, 1)
 	if err != nil {
@@ -383,17 +395,17 @@ func TestSubmitFailsQueuedJobWhenContextCancels(t *testing.T) {
 	}
 	store.mu.Lock()
 	defer store.mu.Unlock()
-	foundFailed := false
+	foundCancelled := false
 	for _, job := range store.jobs {
-		if job.Status == StatusFailed && job.ErrorCode == "enqueue_cancelled" {
-			foundFailed = true
+		if job.Status == StatusCancelled {
+			foundCancelled = true
 		}
 		if job.Status == StatusQueued {
 			t.Fatalf("cancelled submit left a queued zombie: %#v", job)
 		}
 	}
-	if !foundFailed {
-		t.Fatalf("expected failed job after cancelled enqueue, got %#v", store.jobs)
+	if !foundCancelled {
+		t.Fatalf("expected cancelled job after cancelled enqueue, got %#v", store.jobs)
 	}
 }
 
