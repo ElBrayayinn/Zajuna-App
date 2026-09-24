@@ -54,3 +54,15 @@ func TestCaptureChecklistPrunePlanKeepsCapturedFailedAndUnexecutedSlots(t *testi
 		t.Fatalf("keep = %v, want %v", keep, want)
 	}
 }
+
+func TestAbsentZajunaContentIsNotACaptureFailure(t *testing.T) {
+	tally := tallyTargetOutcomes([]targetOutcome{
+		{captured: true, evidenceRecords: 1},
+		{failure: "9.1.6: el selector requerido no apareció en la página destino: la lista no tiene publicaciones del instructor autenticado"},
+		{failure: "10.1.1: el selector requerido no apareció en la página destino: #region-main table.generaltable (candidatos=0)"},
+		{failure: "7.2: navegar para captura: timeout"},
+	})
+	if tally.absent != 2 || tally.failed != 1 || len(tally.absences) != 2 {
+		t.Fatalf("unexpected tally: %#v", tally)
+	}
+}

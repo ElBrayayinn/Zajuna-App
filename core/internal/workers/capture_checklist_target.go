@@ -81,7 +81,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
-		OptionalSlot: target.OptionalSlot,
+		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch,
 	}
 
 	var captureResult capture.CaptureResult
@@ -163,7 +163,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		"activityId": target.ActivityID, "activityTitle": target.ActivityTitle, "technical": target.Technical, "ownerOnly": target.OwnerOnly,
 		"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
 		"rowSelector": target.RowSelector, "rowsPerShot": target.RowsPerShot, "rowBatch": target.RowBatch,
-		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart,
+		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart, "contentItems": captureResult.ContentItems,
 	})
 	capturedAt := time.Now().UTC()
 	evidenceRecords := 0

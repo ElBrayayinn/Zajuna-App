@@ -65,7 +65,7 @@ func TestGroupRoutesUsesTitlesToResolveChecklistActivitiesAndSlots(t *testing.T)
 	assertMappedURL("9.1.1", "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?forceview=1&id=20")
 	assertMappedURL("9.1.3", "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?forceview=1&id=21")
 	assertMappedURL("10.1.1", "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?forceview=1&id=30")
-	assertMappedURL("5.1", "https://zajuna.sena.edu.co/zajuna/grade/report/grader/index.php?id=41080")
+	assertMappedURL("5.1", "https://zajuna.sena.edu.co/zajuna/grade/edit/tree/index.php?id=41080")
 	assertMappedURL("2.1.1", "https://zajuna.sena.edu.co/zajuna/user/profile.php")
 	assertMappedURL("4.1", "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080")
 

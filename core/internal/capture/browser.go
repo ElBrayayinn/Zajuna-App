@@ -29,6 +29,10 @@ type CaptureResult struct {
 	// of the first row in the shot. Both are 0 when the capture was not batched.
 	RowsTotal int
 	RowStart  int
+	// ContentItems counts visible activities/resources inside a captured
+	// course section (-1 when the capture was not a section). The reviewer
+	// uses it to flag sections that show only their title.
+	ContentItems int
 }
 
 var ErrBlockedPage = errors.New("la página destino fue bloqueada por el sitio remoto")
@@ -66,6 +70,8 @@ type CaptureOptions struct {
 	// matches, the capture returns ErrNoRowsInBatch ("not needed") instead of
 	// a failure.
 	OptionalSlot bool
+	// RowMatch keeps only rows whose text contains one of these terms.
+	RowMatch []string
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -254,11 +260,15 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 		return CaptureResult{}, blockedErr
 	}
 	prepareCourseMenu(page, options)
+	if err := ensureStillOn(page, finalURL); err != nil {
+		return CaptureResult{}, err
+	}
+	prepareEmbeddedSheets(page, title)
 	prepareHiddenEvidenceRegions(page, options.HideSelectors)
 	// Moodle flash notifications (e.g. "No dispone de permiso para ver los
 	// debates de este foro") must never leak into evidence.
 	prepareHiddenEvidenceRegions(page, moodleNotificationSelectors)
-	result := CaptureResult{Title: title, FinalURL: finalURL}
+	result := CaptureResult{Title: title, FinalURL: finalURL, ContentItems: -1}
 	batching := strings.TrimSpace(options.RowSelector) != "" && options.RowsPerShot > 0
 	selectors := make([]string, 0, len(options.Selectors)+1)
 	addSelector := func(value string) {
@@ -358,6 +368,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				if selector == strings.TrimSpace(options.Selector) {
 					emptyPrimaryContainer = true
 				}
+				if len(options.RowMatch) > 0 {
+					// A topic filter found no rows: the legacy whole-container
+					// capture would show other topics' rows as this item's.
+					continue
+				}
 				if options.OwnerOnly {
 					filtered := locator.Filter(playwright.LocatorFilterOptions{HasText: strings.TrimSpace(options.OwnerName)})
 					if ownerCount, ownerErr := filtered.Count(); ownerErr != nil || ownerCount == 0 {
@@ -369,14 +384,17 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			}
 			var captureErr error
 			if options.FullPage {
+				neutralizeFloatingElements(page)
 				_, captureErr = page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(absoluteOutput), FullPage: playwright.Bool(true), Timeout: playwright.Float(timeout)})
 			} else {
 				expandCourseSection(locator.First(), timeout)
+				neutralizeFloatingElements(page)
 				_, captureErr = locator.First().Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
 			}
 			if captureErr == nil {
 				result.Selector = selector
 				result.SelectorMatched = true
+				result.ContentItems = sectionContentItems(locator.First(), timeout)
 				return result, nil
 			} else {
 				lastScreenshotError = captureErr.Error()
@@ -386,6 +404,9 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if batching && options.RowBatch == 0 && options.OwnerOnly && emptyPrimaryContainer {
 		// The list exists but none of its rows is by the instructor: a real
 		// absence of evidence, reported in plain words.
+		if len(options.RowMatch) > 0 {
+			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado sobre «%s»", ErrSelectorNotFound, strings.Join(options.RowMatch, "» o «"))
+		}
 		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado", ErrSelectorNotFound)
 	}
 	if batching && options.RowBatch > 0 && emptyPrimaryContainer {
@@ -450,7 +471,14 @@ const expandCourseSectionScript = `(section) => {
 	// Only the section's own panel: nested subsections stay collapsed so the
 	// evidence shows the organization (their titles) instead of a page tens
 	// of thousands of pixels tall. Items that need a subsection target it.
-	const panels = [...section.querySelectorAll(':scope > .content.collapse, :scope > .course-content-item-content.collapse')];
+	const own = [...section.querySelectorAll(':scope > .content.collapse, :scope > .course-content-item-content.collapse')];
+	// One level of child subsections is opened too, so a section shows its
+	// actas, recordings or months instead of only their collapsed titles;
+	// deeper levels stay closed to keep the image readable.
+	const children = own.flatMap((panel) => [...panel.querySelectorAll('li.section')]
+		.filter((child) => child.parentElement.closest('li.section') === section)
+		.flatMap((child) => [...child.querySelectorAll(':scope > .content.collapse, :scope > .course-content-item-content.collapse')]));
+	const panels = [...own, ...children];
 	// A subsection stays invisible (and its screenshot times out) while any
 	// ancestor section is collapsed: open the whole chain up to the course.
 	for (let node = section.parentElement; node; node = node.parentElement) {
@@ -463,7 +491,7 @@ const expandCourseSectionScript = `(section) => {
 		panel.style.display = 'block';
 		panel.style.height = 'auto';
 	}
-	for (const toggle of section.querySelectorAll(':scope > .course-section-header [data-toggle="collapse"][aria-expanded="false"]')) {
+	for (const toggle of [section, ...children.map((panel) => panel.parentElement)].flatMap((node) => [...node.querySelectorAll(':scope > .course-section-header [data-toggle="collapse"][aria-expanded="false"]')])) {
 		toggle.classList.remove('collapsed');
 		toggle.setAttribute('aria-expanded', 'true');
 	}
@@ -512,6 +540,7 @@ const rowBatchHideScript = `(container, args) => {
 		.trim()
 		.toLowerCase();
 	const owner = normalize(args.owner);
+	const topics = (args.rowMatch || []).map(normalize).filter(Boolean);
 	const all = Array.from(container.querySelectorAll(args.rowSelector));
 	const counted = [];
 	const hide = [];
@@ -520,7 +549,8 @@ const rowBatchHideScript = `(container, args) => {
 		// still show the instructor as its last poster.
 		const author = row.querySelector('td.author, .author, [data-region="author-name"]');
 		const ownerText = author ? author.textContent : row.textContent;
-		if (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner))) {
+		const topicOK = topics.length === 0 || topics.some((topic) => normalize(row.textContent).includes(topic));
+		if (!topicOK || (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner)))) {
 			hide.push(row);
 		} else {
 			counted.push(row);
@@ -578,6 +608,7 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		"ownerOnly":   options.OwnerOnly,
 		"perShot":     options.RowsPerShot,
 		"batch":       options.RowBatch,
+		"rowMatch":    options.RowMatch,
 	}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
 	restore := func() { _, _ = page.Evaluate(rowBatchRestoreScript) }
 	if err != nil {
@@ -598,6 +629,7 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		restore()
 		return rowBatchOutcome{handled: true, total: total}, fmt.Errorf("%w: lote %d con %d filas por captura, %d filas en total", ErrNoRowsInBatch, options.RowBatch+1, options.RowsPerShot, total)
 	}
+	neutralizeFloatingElements(page)
 	_, captureErr := container.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
 	restore()
 	return rowBatchOutcome{handled: true, total: total, start: start}, captureErr
@@ -674,11 +706,16 @@ func prepareCourseMenu(page playwright.Page, options CaptureOptions) {
 		page.WaitForTimeout(300)
 		return
 	}
+	// Only in-page collapse toggles. A generic `a[aria-expanded='false']`
+	// also matched real activity links: clicking one navigated to another
+	// page (e.g. "Material de apoyo al instructor") whose screenshot was then
+	// saved as the course section evidence.
 	collapseSelectors := []string{
-		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false']",
-		"#region-main .course-content a[aria-expanded='false']",
-		"#region-main .course-content [aria-expanded='false'][role='button']",
-		"#region-main .course-content [aria-expanded='false'].collapsed",
+		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][href^='#']",
+		"#region-main .course-content button[data-toggle='collapse'][aria-expanded='false']",
+		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][data-target]",
+		"#region-main .course-content [data-bs-toggle='collapse'][aria-expanded='false'][href^='#']",
+		"#region-main .course-content button[data-bs-toggle='collapse'][aria-expanded='false']",
 	}
 	clicked := 0
 	for round := 0; round < 16 && clicked < 40; round++ {
@@ -813,4 +850,129 @@ func (c BrowserCookie) playwrightCookie() (playwright.OptionalCookie, bool) {
 		item.SameSite = playwright.SameSiteAttributeLax
 	}
 	return item, true
+}
+
+// ensureStillOn returns to the captured URL if preparing the page navigated
+// away, so a screenshot can never show a different page than the one
+// recorded as the evidence's finalUrl.
+func ensureStillOn(page playwright.Page, expected string) error {
+	if sameCapturePage(page.URL(), expected) {
+		return nil
+	}
+	if _, err := page.Goto(expected); err != nil {
+		return fmt.Errorf("la página cambió al prepararla y no se pudo volver a %s: %w", expected, err)
+	}
+	_ = page.WaitForLoadState()
+	if !sameCapturePage(page.URL(), expected) {
+		return fmt.Errorf("la página cambió al prepararla (%s en lugar de %s)", page.URL(), expected)
+	}
+	return nil
+}
+
+// sameCapturePage compares two URLs ignoring the fragment (#section-N).
+func sameCapturePage(current, expected string) bool {
+	strip := func(value string) string {
+		if index := strings.Index(value, "#"); index >= 0 {
+			return value[:index]
+		}
+		return value
+	}
+	return strip(strings.TrimSpace(current)) == strip(strings.TrimSpace(expected))
+}
+
+const embeddedSheetSelector = `#region-main iframe[src*="docs.google.com/spreadsheets"]`
+
+// sheetTabForTitle picks the published-sheet tab a cronograma page is about.
+// The phase pages of a SENA course embed the same published spreadsheet
+// without a tab, so "Fase - Hacer" used to show the FASE 1 PLANEAR tab.
+func sheetTabForTitle(title string) string {
+	value := strings.ToLower(title)
+	for _, phase := range []string{"planear", "hacer", "verificar", "actuar", "analisis", "análisis"} {
+		if strings.Contains(value, "fase - "+phase) || strings.Contains(value, "fase "+phase) || strings.Contains(value, "fase: "+phase) {
+			return phase
+		}
+	}
+	if strings.Contains(value, "cronograma general") {
+		return "general"
+	}
+	return ""
+}
+
+// prepareEmbeddedSheets makes an embedded Google Sheets cronograma readable:
+// it grows the iframe (fixed at ~726 px, which showed ~2 rows) and opens the
+// tab that matches the page (phase or general); in the embedded widget the
+// tabs are `td.switcherItem` cells (verified on a real course). Clicking a
+// tab inside the
+// published sheet only switches its own view; the page does not navigate.
+func prepareEmbeddedSheets(page playwright.Page, title string) {
+	frames := page.Locator(embeddedSheetSelector)
+	count, err := frames.Count()
+	if err != nil || count == 0 {
+		return
+	}
+	tab := sheetTabForTitle(title)
+	for index := 0; index < count; index++ {
+		_, _ = frames.Nth(index).Evaluate(`(frame) => {
+			frame.style.height = '2400px';
+			frame.style.maxHeight = 'none';
+			frame.setAttribute('height', '2400');
+			return true;
+		}`, nil)
+		if tab == "" {
+			continue
+		}
+		frame := page.FrameLocator(fmt.Sprintf("%s >> nth=%d", embeddedSheetSelector, index))
+		// The published sheet renders its grid after load: wait for it, or
+		// the evidence showed a blank grid.
+		_ = frame.Locator("table.waffle td").First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(8000)})
+		menu := frame.Locator("td.switcherItem, #sheet-menu a, #sheet-menu li")
+		candidate := menu.Filter(playwright.LocatorFilterOptions{HasText: tab})
+		if matches, countErr := candidate.Count(); countErr == nil && matches > 0 {
+			_ = candidate.First().Click(playwright.LocatorClickOptions{Timeout: playwright.Float(3000)})
+		}
+	}
+	page.WaitForTimeout(1500)
+}
+
+// neutralizeFloatingElements stops fixed/sticky page chrome from ending up
+// inside evidence: Zajuna's top bar was stitched into the middle of full-page
+// captures and a floating helper widget covered the right edge. Wide bars
+// become static; small floating widgets are hidden.
+func neutralizeFloatingElements(page playwright.Page) {
+	_, _ = page.Evaluate(`() => {
+		for (const node of document.body.querySelectorAll('*')) {
+			const style = getComputedStyle(node);
+			if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+			if (node.closest('#region-main')) continue;
+			const box = node.getBoundingClientRect();
+			if (box.width >= window.innerWidth * 0.5) {
+				node.style.setProperty('position', 'static', 'important');
+			} else {
+				node.style.setProperty('display', 'none', 'important');
+			}
+		}
+		return true;
+	}`)
+}
+
+// sectionContentItems counts the visible activities/resources of a course
+// section, or returns -1 when the captured element is not a section.
+func sectionContentItems(element playwright.Locator, timeout float64) int {
+	raw, err := element.Evaluate(`(node) => {
+		if (!node.matches('li.section, [data-for="section"]')) return -1;
+		// Activities/resources and child subsections both count: a section
+		// that organizes subsections is not empty.
+		const items = [...node.querySelectorAll('li.activity, .activity-item, a[href*="/mod/"], li.section')];
+		return items.filter((item) => item !== node && item.offsetParent !== null).length;
+	}`, nil, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
+	if err != nil {
+		return -1
+	}
+	switch value := raw.(type) {
+	case int:
+		return value
+	case float64:
+		return int(value)
+	}
+	return -1
 }

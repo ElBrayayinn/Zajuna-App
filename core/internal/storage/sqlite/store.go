@@ -23,7 +23,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const currentSchemaVersion = 13
+const currentSchemaVersion = 14
 
 type Store struct {
 	db      *sql.DB
@@ -275,6 +275,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(13, ?)`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+			return fmt.Errorf("record schema version: %w", err)
+		}
+	}
+	if version < 14 {
+		if err := applyV14(ctx, tx); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(version, applied_at) VALUES(14, ?)`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return fmt.Errorf("record schema version: %w", err)
 		}
 	}
