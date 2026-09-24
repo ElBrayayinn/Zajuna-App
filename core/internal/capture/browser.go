@@ -461,7 +461,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			return CaptureResult{}, fmt.Errorf("%w (%w): la página cargó pero no muestra %s", ErrSelectorNotFound, ErrContentAbsent, strings.TrimSpace(options.Selector))
 		}
 	}
-	if options.RequireSelector || len(selectors) > 0 {
+	if options.RequireSelector {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)
 		if len(selectorDiagnostics) > 0 {
 			diagnostics += ", selectores=" + strings.Join(selectorDiagnostics, " | ")
