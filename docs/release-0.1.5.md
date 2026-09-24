@@ -1,8 +1,9 @@
 # Zajuna App 0.1.5
 
 Base: 0.1.4 ([release-0.1.4.md](release-0.1.4.md)). Integra en una sola
-versión cuatro líneas de trabajo: SolucionCache, SolucionCapt,
-ReOrganizacionFront y AnalisisProyect.
+versión diez líneas de trabajo: SolucionCache, SolucionCapt,
+ReOrganizacionFront, AnalisisProyect, CalidadDocsCI, AnalisisEvidenceFixes,
+ConexionPreferencias, Pendientes013, CapturaHardening y HardeningCore.
 
 ## Datos locales
 
@@ -50,18 +51,58 @@ el reporte PDF antes de actualizar si lo necesitas. Las miniaturas nuevas
 - `GET /api/evidences/{id}/thumbnail`: miniaturas JPEG en caché.
 - Consulta adaptativa: 5 s con trabajos activos, 30 s en reposo.
 
-## API local y trabajos (AnalisisProyect)
+## Seguridad local y trabajos (AnalisisProyect, HardeningCore)
 
-- Las mutaciones exigen siempre un `Origin` loopback. La cookie de capacidad
-  solo se entrega en navegaciones de documento del navegador.
-- Dos capturas de la misma ficha no corren a la vez; esperar se puede
-  cancelar.
-- Los resultados de fallo y cancelación devuelven su `Output`.
-- `capture.fullPage`, `capture.reuseSession` y `session.autoRenew` de
-  Configuración se aplican a la captura. `autoRenew` vuelve a iniciar sesión
-  y reintenta una vez cuando la sesión expira.
+- Sesión local por proceso: el lanzador pide un enlace de un solo uso que
+  entrega una cookie por puerto y una cabecera `X-Zajuna-Capability`. Ninguna
+  otra respuesta emite cookies y todo `/api/*` exige sesión salvo
+  `/api/health` (mínimo) y las descargas y miniaturas (solo cookie).
+- Las mutaciones exigen `Origin` loopback; se rechaza `Sec-Fetch-Site`
+  same-site y cross-site.
+- Un trabajo abandonado al encolarse queda cancelado, no fallido. Los fallos y
+  cancelaciones guardan su resultado parcial y los mensajes se sanean.
+- Dos capturas de la misma ficha, ítem o slot no corren a la vez; esperar se
+  puede cancelar.
+
+## Preferencias y conexión (ConexionPreferencias)
+
+- Configuración › Probar conexión ejecuta una prueba real contra Zajuna.
+- `capture.fullPage`, `capture.reuseSession` y `session.autoRenew` se aplican
+  a cada captura (también programadas y de un solo ítem). `autoRenew` vuelve
+  a iniciar sesión con una sesión nueva y reintenta una vez.
+
+## Más reglas de captura (Pendientes013, CapturaHardening)
+
+- 5.1 en ventanas de columnas de hasta 2560 px en vez de una imagen de
+  ~28.000 px.
+- Los foros que Moodle niega a la cuenta se marcan restringidos y nunca se
+  eligen; la captura lo explica.
+- Todo objetivo exige su selector semántico; sin `#page-content` ni perfil
+  como respaldo. Las secciones solo caen a su sección padre.
+- El crawler descarta páginas de otros cursos; los enlaces sin texto no
+  heredan el título de la página de origen.
+- Chromium solo navega al origen de Zajuna y a una lista HTTPS de Google.
+- Perfil con el id del usuario autenticado; reporte HTML con imágenes.
+
+## Evidencias (AnalisisEvidenceFixes)
+
+- Borrar una evidencia solo borra el archivo si ninguna otra fila lo usa.
+- La API expone `fileKey` en lugar de rutas absolutas.
+- La galería por ficha muestra todas las evidencias de la ficha.
+
+## Documentación y CI (CalidadDocsCI)
+
+- Schema v14 documentado, tabla de workers y política de datos.
+- CI con smoke de navegador en Linux.
 
 ## Ajustes de integración
 
 - `/checklist` desbordaba a 125 % de escala (test WCAG); corregido.
 - Líneas base visuales regeneradas y revisadas en escritorio, tablet y móvil.
+- Regresión corregida: un filtro `Technical` en los grupos de foros dejaba
+  sin rutas 9.x, 11.x, 14.x y 15.1 en cursos reales (el descubrimiento marca
+  así todo foro sin código transversal).
+- Las miniaturas de evidencias se sirven con la sesión de cookie, como las
+  descargas.
+- HardeningCore proponía conservar datos entre versiones; no se integró por
+  la regla de producto de arriba.
