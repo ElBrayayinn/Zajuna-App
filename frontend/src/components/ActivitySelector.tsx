@@ -27,7 +27,7 @@ function savedSelection(data?: ActivitiesResponse) {
 function groupByPhase(activities: Activity[]) {
   const groups = new Map<string, Activity[]>()
   activities.forEach((activity) => {
-    const key = activity.phaseName?.trim() || 'Sin fase identificada'
+    const key = activity.phaseName?.trim() || 'Inducción y otras secciones del curso'
     const list = groups.get(key) || []
     list.push(activity)
     groups.set(key, list)

@@ -16,6 +16,7 @@ import {
   useSetupStatus,
   useTargets,
   useDismissJobs,
+  useEvidenceReview,
   isNotFound,
 } from '../hooks/api'
 import { explainJobFailure, unresolvedFailedJobs } from '../lib/jobFailure'
@@ -37,6 +38,8 @@ import { reportDownloadUrl } from '../api/client'
 import type { DashboardCategory, EvidenceGroup, Job, Report, Schedule } from '../types'
 import { RouteDiscoveryAction } from '../components/RouteDiscoveryAction'
 import { CaptureAction, SyncFichasAction } from '../components/WorkflowActions'
+import { StepBadge } from '../components/WorkflowSteps'
+import { useWorkflow } from '../hooks/workflow'
 
 type BarStyle = CSSProperties & { '--bar-height'?: string }
 
@@ -65,7 +68,7 @@ function JobEntry({ job }: { job: Job }) {
           ? explainJobFailure(job).title
           : `${friendlyJobMessage(job.message || job.stage)} · ${progress}%`}
       </small>
-      <div className={`progress${isRunning ? ' running' : ''}`}>
+      <div className={`progress${isRunning ? ' running' : ''}${job.status === 'failed' ? ' failed' : ''}`}>
         <i style={{ width: `${progress}%` }} />
       </div>
     </article>
@@ -151,6 +154,8 @@ export function Overview() {
   const createSchedule = useCreateSchedule()
   const setScheduleEnabled = useSetScheduleEnabled()
   const dismissJobs = useDismissJobs()
+  const workflow = useWorkflow()
+  const reviewSummary = useEvidenceReview(dashboardQuery.data?.activeFichaId).data?.summary
 
   const dashboard = dashboardQuery.data
   const fichas = fichasQuery.data || []
@@ -343,8 +348,14 @@ export function Overview() {
             <i style={{ width: `${progress}%` }} />
           </div>
           <div className="metric-note">
-            {total ? `${done} de ${total} ítems cumplidos` : 'Aún no hay ítems en esta ficha'}
+            {total ? `${done} de ${total} ítems marcados como cumplidos` : 'Aún no hay ítems en esta ficha'}
           </div>
+          {reviewSummary && total > 0 ? (
+            <div className="metric-note">
+              Evidencia aprobada: {reviewSummary.itemsApproved || 0} de {total} ítems ·{' '}
+              <Link to="/revision">márcalos como cumplidos en Revisión</Link>
+            </div>
+          ) : null}
         </article>
 
         <article className="metric-card">
@@ -438,15 +449,9 @@ export function Overview() {
               </button>
             </div>
             <div className="segmented-progress" role="img" aria-label={`Cumplimiento: ${done} cumplidas, ${failed} no cumplidas y ${pending} pendientes de ${total}`}>
-              <span className="done grow-in" style={{ width: `${(done / progressTotal) * 100}%` }}>
-                {done ? `${done} cumplidas` : ''}
-              </span>
-              <span className="failed grow-in" style={{ width: `${(failed / progressTotal) * 100}%` }}>
-                {failed || ''}
-              </span>
-              <span className="pending grow-in" style={{ width: `${(pending / progressTotal) * 100}%` }}>
-                {pending ? `${pending} pendientes` : ''}
-              </span>
+              {done ? <span className="done grow-in" style={{ width: `${(done / progressTotal) * 100}%` }}>{`${done} cumplidas`}</span> : null}
+              {failed ? <span className="failed grow-in" style={{ width: `${(failed / progressTotal) * 100}%` }}>{failed}</span> : null}
+              {pending ? <span className="pending grow-in" style={{ width: `${(pending / progressTotal) * 100}%` }}>{`${pending} pendientes`}</span> : null}
             </div>
             <div className="legend-row">
               <span>
@@ -604,8 +609,8 @@ export function Overview() {
                 </>
               ) : (
                 <>
-                  <strong>Todo listo para continuar</strong>
-                  <small>Revisa las actividades y prepara las evidencias cuando quieras.</small>
+                  <strong>{workflow.current ? `Siguiente: paso ${workflow.current.number}, ${workflow.current.label.toLowerCase()}` : 'Todo revisado'}</strong>
+                  <small>{workflow.current ? workflow.current.hint : 'Ya puedes generar el reporte PDF.'}</small>
                 </>
               )}
             </div>
@@ -614,8 +619,9 @@ export function Overview() {
               <CaptureAction fullWidth />
             </div>
             {evidenceCount > 0 ? (
-              <Link className="button ghost" style={{ width: '100%', marginTop: 10 }} to="/revision">
-                Revisar evidencias (paso 5)
+              <Link className={`button ${workflow.isCurrent('review') ? 'primary is-next-step' : 'ghost'}`} style={{ width: '100%', marginTop: 10 }} to="/revision">
+                <StepBadge step="review" />
+                Revisar evidencias
               </Link>
             ) : null}
           </section>

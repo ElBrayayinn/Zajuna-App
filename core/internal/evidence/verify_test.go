@@ -214,3 +214,16 @@ func TestVerifyFichaRespectsManualDecisionUntilShaChanges(t *testing.T) {
 		t.Fatalf("GET-style verification must not rewrite reviewed rows")
 	}
 }
+
+func TestVerifyFlagsSectionsWithoutContent(t *testing.T) {
+	dataDir := t.TempDir()
+	good := writeTestPNG(t, dataDir, "section.png", 900, 600, 0.3)
+	empty := VerifyRecord(dataDir, testRecord("s1", "13.1.2", good, "a", map[string]any{"selector": "#region-main .course-content li.section", "contentItems": 0}), nil, time.Now())
+	if empty.Status != ReviewPending || empty.Reasons[0].Code != ReasonEmptySection {
+		t.Fatalf("a section without activities must be pending: %#v", empty)
+	}
+	full := VerifyRecord(dataDir, testRecord("s2", "7.4.2", good, "b", map[string]any{"selector": "#region-main .course-content li.section", "contentItems": 2}), nil, time.Now())
+	if full.Status != ReviewApproved {
+		t.Fatalf("a section with content must be approved: %#v", full)
+	}
+}

@@ -112,7 +112,10 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 	}
 
 	if numericCourseID(courseID) {
-		groups["5.1"] = []string{origin + "/zajuna/grade/report/grader/index.php?id=" + url.QueryEscape(courseID)}
+		// 5.1 proves which activities/evidences are associated in the
+		// gradebook: its setup page lists them vertically (readable, batched
+		// by rows). The grader report had one column per activity (~28000 px).
+		groups["5.1"] = []string{origin + "/zajuna/grade/edit/tree/index.php?id=" + url.QueryEscape(courseID)}
 		coursePage := origin + "/zajuna/course/view.php?id=" + url.QueryEscape(courseID)
 		put([]string{"3.1", "4.1", "6.1", "7.1.1", "7.1.2", "7.2", "7.3.1", "7.3.2", "7.3.3", "7.4.1", "7.4.2", "7.4.3", "7.4.4", "8.1", "8.2", "8.3", "13.1.1", "13.1.2", "13.1.3", "13.2.1", "13.2.2"}, []string{coursePage})
 	}

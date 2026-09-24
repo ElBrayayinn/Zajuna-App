@@ -293,7 +293,11 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			_ = reporter.Event(ctx, "evidence_reviews_verified", "Evidencias revisadas automáticamente", map[string]any{"fichaId": input.FichaID, "approved": report.Summary.Approved, "pending": report.Summary.Pending, "rejected": report.Summary.Rejected})
 		}
 	}
-	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)); err != nil {
+	absentNote := ""
+	if tally.absent > 0 {
+		absentNote = fmt.Sprintf(", %d sin contenido en Zajuna: %s", tally.absent, strings.Join(failedItemCodes(tally.absences), ", "))
+	}
+	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d omitidas, %d con error%s", captured, skipped, failed, absentNote)); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
 	if failed > 0 {
@@ -306,12 +310,18 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		if len(failures) > 0 {
 			message += ". Primer error: " + failures[0]
 		}
+		if tally.absent > 0 {
+			// Al final y sin "(ítems …)": el frontend lee esa lista como los
+			// ítems que fallaron.
+			message += fmt.Sprintf(". Sin contenido en Zajuna: %s", strings.Join(failedItemCodes(tally.absences), ", "))
+		}
 		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message}
 	}
 	return jobs.Result{Output: map[string]any{
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
 		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
 		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
+		"absent": tally.absent, "absences": tally.absences,
 	}}
 }
 
@@ -322,8 +332,17 @@ type captureChecklistPruneStore interface {
 }
 
 type targetOutcomeTally struct {
-	captured, skipped, failed, evidenceRecords int
-	failures                                   []string
+	captured, skipped, failed, absent, evidenceRecords int
+	failures, absences                                 []string
+}
+
+// absentContent recognizes failures that mean "Zajuna has nothing to show
+// here" (no instructor post in a forum, an activity without a grading
+// table) rather than a capture problem. They are reported separately and do
+// not turn the whole capture into a failure.
+func absentContent(failure string) bool {
+	return strings.Contains(failure, "no tiene publicaciones del instructor") ||
+		strings.Contains(failure, "table.generaltable (candidatos=0)")
 }
 
 // tallyTargetOutcomes aggregates fan-out results. Skipped slots (empty row
@@ -337,6 +356,9 @@ func tallyTargetOutcomes(outcomes []targetOutcome) targetOutcomeTally {
 			tally.evidenceRecords += outcome.evidenceRecords
 		case outcome.skipped:
 			tally.skipped++
+		case absentContent(outcome.failure):
+			tally.absent++
+			tally.absences = append(tally.absences, outcome.failure)
 		default:
 			tally.failed++
 			if outcome.failure != "" {

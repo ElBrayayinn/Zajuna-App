@@ -39,6 +39,7 @@ const (
 	ReasonMostlyBlank      = "mostly_blank"
 	ReasonGenericSelector  = "generic_selector"
 	ReasonDuplicateContent = "duplicate_content"
+	ReasonEmptySection     = "empty_section"
 )
 
 const (
@@ -138,6 +139,7 @@ type ReviewReport struct {
 
 type reviewMetadata struct {
 	URL               string   `json:"url"`
+	ContentItems      *int     `json:"contentItems"`
 	FinalURL          string   `json:"finalUrl"`
 	Selector          string   `json:"selector"`
 	SelectorFallbacks []string `json:"selectorFallbacks"`
@@ -281,6 +283,12 @@ func VerifyRecord(dataDir string, record Record, all []Record, now time.Time) Re
 				review.Reasons = append(review.Reasons, reason)
 			}
 		}
+	}
+
+	// A course section that shows no activity, resource or file (only its
+	// title or collapsed subsections) proves nothing by itself.
+	if metadata.ContentItems != nil && *metadata.ContentItems == 0 {
+		review.Reasons = append(review.Reasons, ReviewReason{Code: ReasonEmptySection, Message: "La sección no muestra actividades ni archivos: revisa en Zajuna si falta el contenido o si está en una subsección."})
 	}
 
 	selector := strings.TrimSpace(metadata.Selector)

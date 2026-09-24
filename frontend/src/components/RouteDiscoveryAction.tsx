@@ -31,7 +31,9 @@ export function RouteDiscoveryAction({
   const jobsQuery = useJobs()
   const discover = useDiscoverCourseMaps()
   const mapReady = targetsQuery.data?.mapReady === true
-  const { isCurrent } = useWorkflow()
+  const { isCurrent, step } = useWorkflow()
+  // Paso ya hecho: botón secundario, para no competir con el siguiente paso.
+  const routesDone = step('routes')?.state === 'done'
 
   const discoverJobs = (jobsQuery.data || [])
     .filter((job) => job.type === 'discover-course-maps')
@@ -39,7 +41,7 @@ export function RouteDiscoveryAction({
   const latest = discoverJobs[0]
   const active = latest && ['queued', 'running', 'waiting_user', 'retrying'].includes(latest.status) ? latest : undefined
   const buttonLabel = !dashboard?.activeFichaId ? 'Selecciona una ficha' : discover.isPending ? 'Enviando…' : active ? (latest.status === 'queued' ? 'En cola…' : 'Buscando rutas…') : label
-  const classes = ['button', isCurrent('routes') ? 'primary is-next-step' : variant, compact ? 'small' : '', className].filter(Boolean).join(' ')
+  const classes = ['button', isCurrent('routes') ? 'primary is-next-step' : routesDone ? 'ghost' : variant, compact ? 'small' : '', className].filter(Boolean).join(' ')
 
   function handleDiscover() {
     if (active || discover.isPending) return

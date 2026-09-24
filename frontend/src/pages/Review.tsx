@@ -8,6 +8,7 @@ import {
   useDashboard,
   useEvidenceReview,
   useSetEvidenceReview,
+  useSetItemStatus,
   useSetupStatus,
   useVerifyEvidences,
 } from '../hooks/api'
@@ -220,6 +221,19 @@ export function Review() {
   const [tab, setTab] = useState<ReviewTab>('pending')
   const [query, setQuery] = useState('')
   const [preview, setPreview] = useState<EvidenceReviewEntry | null>(null)
+  const [markingDone, setMarkingDone] = useState(false)
+  const setItemStatus = useSetItemStatus()
+  const approvedNotMarked = useMemo(() => {
+    const byItem = new Map<string, boolean>()
+    for (const entry of reviewQuery.data?.evidences ?? []) {
+      if (!entry.itemCode) continue
+      byItem.set(entry.itemCode, (byItem.get(entry.itemCode) ?? true) && entry.status === 'approved')
+    }
+    // Solo ítems pendientes: nunca sobrescribir un "Sí" o un "No" que la
+    // persona marcó a mano.
+    const marked = new Set((dashboardQuery.data?.items ?? []).filter((item) => item.status === 'SI' || item.status === 'NO').map((item) => item.itemCode))
+    return [...byItem.entries()].filter(([code, ok]) => ok && !marked.has(code)).map(([code]) => code)
+  }, [reviewQuery.data, dashboardQuery.data])
   const closePreview = useCallback(() => setPreview(null), [])
 
   const review = reviewQuery.data
@@ -288,6 +302,24 @@ export function Review() {
         toast(`${friendlyError(message)}${saved ? ` (se guardaron ${saved} de ${sameImage.length})` : ''}`, true)
       }
     })()
+  }
+
+  // Un ítem con todas sus evidencias aprobadas puede marcarse como cumplido
+  // en el checklist: así el % de cumplimiento refleja la revisión.
+  const handleMarkApprovedDone = async () => {
+    setMarkingDone(true)
+    let marked = 0
+    try {
+      for (const itemCode of approvedNotMarked) {
+        await setItemStatus.mutateAsync({ itemCode, fichaId, status: 'SI' })
+        marked++
+      }
+      toast(`Marcamos ${marked} ítems como cumplidos en el checklist.`)
+    } catch (error) {
+      toast(`${friendlyError(error instanceof Error ? error.message : String(error))} (se marcaron ${marked})`, true)
+    } finally {
+      setMarkingDone(false)
+    }
   }
 
   const handleRecapture = (itemCode: string) => {
@@ -549,6 +581,17 @@ export function Review() {
           >
             <i style={{ width: `${percent}%` }} />
           </div>
+          {approvedNotMarked.length ? (
+            <div className="review-mark-done">
+              <span className="helper">
+                {approvedNotMarked.length} ítem{approvedNotMarked.length === 1 ? '' : 's'} con toda su evidencia aprobada todavía no
+                {approvedNotMarked.length === 1 ? ' está marcado' : ' están marcados'} como cumplido{approvedNotMarked.length === 1 ? '' : 's'} en el checklist.
+              </span>
+              <button type="button" className="button primary small" onClick={handleMarkApprovedDone} disabled={markingDone}>
+                {markingDone ? 'Marcando…' : `Marcar ${approvedNotMarked.length} como cumplidos`}
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
 

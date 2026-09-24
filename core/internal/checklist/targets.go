@@ -248,6 +248,9 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 		}
 		eligible := make([]eligibleURL, 0, len(urls))
 		for _, candidate := range urls {
+			if spec.GroupName == "calificaciones" {
+				candidate = gradebookSetupURL(candidate)
+			}
 			route := routeForURL(record, candidate)
 			if route != nil && !eligibleRouteForGroup(spec.GroupName, *route, selectedActivityIDs, activitiesByID) {
 				continue
@@ -300,11 +303,15 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			ownerOnly := ownerOnlyForItem(spec.ItemCode)
 			selector := captureSelectorForItem(spec.ItemCode, spec.GroupName, spec.CSSSelector)
 			fallbacks := captureSelectorChainForItem(spec.ItemCode, spec.GroupName, selector)
+			elementOnly := false
 			if (spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente") && strings.Contains(entry.url, "/mod/") {
 				// A cronograma published as a page/resource has no course
 				// sections: its main region is the evidence (not a fallback).
 				selector = `#region-main:has(iframe[src*="docs.google.com/spreadsheets"]), #region-main`
 				fallbacks = []string{selector, "#page-content"}
+				// Capture the content region only (no Zajuna header, side
+				// menu or footer): the enlarged sheet is inside it.
+				elementOnly = true
 			}
 			if batched {
 				// The container that holds the rows goes first; the previous
@@ -327,7 +334,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 					CSSSelector: selector, CSSSelectorFallbacks: fallbacks,
 					HideSelectors: forumConfigurationHideSelectors(spec.ItemCode, spec.GroupName),
 					ViewportWidth: viewportWidthForGroup(spec.GroupName), ViewportHeight: viewportHeightForGroup(spec.GroupName),
-					FullPage:  fullPageForGroup(spec.GroupName) && !batched,
+					FullPage:  fullPageForGroup(spec.GroupName) && !batched && !elementOnly,
 					LabelHint: hint, RouteKind: routeKindForURL(record, spec.ItemCode, entry.url),
 					RequireSelector: plan.ownerOnly || spec.GroupName == "perfil_instructor" || hint != "" || ownerFilteredGroup(spec.GroupName) || spec.GroupName == "cronograma_general" || spec.GroupName == "cronograma_vigente",
 					OwnerOnly:       ownerOnly,
@@ -748,7 +755,7 @@ func captureGroupPlan(groupName string) groupPlan {
 		// either, so the route alone identifies the target instead of a hint.
 		return groupPlan{[]string{"course"}, "#region-main .course-content", nil, false}
 	case "calificaciones":
-		return groupPlan{[]string{"grading"}, "#region-main .gradereport-grader-table", []string{"calificaciones"}, false}
+		return groupPlan{[]string{"grading"}, gradebookSetupTable, []string{"calificaciones"}, false}
 	case "configuracion":
 		return groupPlan{[]string{"page", "course", "phase"}, "#region-main .course-content .section", nil, false}
 	case "seguimiento_evaluacion", "seguimiento_documentos", "documentos_retencion":
@@ -791,7 +798,7 @@ func captureSelectorChain(groupName, primary string) []string {
 		"disponibilidad":         {"#region-main .course-content"},
 		"perfil_instructor":      {"#page-user-profile", "#region-main"},
 		"menu_curso":             {"#region-main .course-content", ".course-content"},
-		"calificaciones":         {"#region-main .gradereport-grader-table", "#region-main table", "#region-main"},
+		"calificaciones":         {gradebookSetupTable, "#region-main table", "#region-main"},
 		"foros":                  {"#region-main .forum_list .forum", "#region-main .forumpost", "#region-main [data-region='post']"},
 		"anuncios_fase":          {"#region-main .forum_list .forum", "#region-main .forumpost", "#region-main [data-region='post']"},
 		"anuncios_semanales":     {"#region-main .forum_list .forum", "#region-main .forumpost", "#region-main [data-region='post']"},
@@ -823,6 +830,9 @@ func captureSelectorForItem(itemCode, groupName, fallback string) string {
 		return "#page-mod-forum-view #region-main"
 	}
 	if title := courseSectionTitleForItem(itemCode); title != "" {
+		if title == seguimientoSectionTitle || title == sesionesSectionTitle {
+			return topLevelCourseSectionByTitle(title)
+		}
 		return courseSectionByTitle(title)
 	}
 	return fallback
@@ -903,12 +913,33 @@ func courseSectionTitleForItem(itemCode string) string {
 // title. `.section:has-text()` also matched every ancestor section (e.g.
 // "Información general" containing a nested "Seguimiento y evaluación").
 func courseSectionByTitle(title string) string {
-	return fmt.Sprintf(`#region-main .course-content li.section:has(> .course-section-header .sectionname:has-text(%q))`, title)
+	// :text-matches only matches an element's own text, so the variant with
+	// the title inside a link (<h3 class="sectionname"><a>…</a></h3>, other
+	// Moodle themes) is listed too.
+	pattern := sectionTitlePattern(title)
+	return fmt.Sprintf(`#region-main .course-content li.section:has(> .course-section-header .sectionname:text-matches(%q, "i")), #region-main .course-content li.section:has(> .course-section-header .sectionname a:text-matches(%q, "i"))`, pattern, pattern)
+}
+
+// sectionTitlePattern anchors the title at the start of the section name:
+// a substring also matched "Planeación, Seguimiento y Evaluación" when the
+// item was about the "Seguimiento y Evaluación" section.
+func sectionTitlePattern(title string) string {
+	return `^\s*` + regexp.QuoteMeta(title)
+}
+
+// topLevelCourseSectionByTitle only matches a main course section, never a
+// subsection with the same name (a SENA course also has a hidden
+// "Seguimiento y evaluación" inside "Información general").
+func topLevelCourseSectionByTitle(title string) string {
+	pattern := sectionTitlePattern(title)
+	return fmt.Sprintf(`#region-main .course-content li.section:not(li.section li.section):has(> .course-section-header .sectionname:text-matches(%q, "i")), #region-main .course-content li.section:not(li.section li.section):has(> .course-section-header .sectionname a:text-matches(%q, "i"))`, pattern, pattern)
 }
 
 // grabacionesSectionSelector picks the N-th per-phase recordings section.
 func grabacionesSectionSelector(index int) string {
-	return courseSectionByTitle("Grabaciones sesiones en l") + fmt.Sprintf(" >> nth=%d", index)
+	// "Fase 1 Planear: Grabaciones sesiones en línea": the phase comes first,
+	// so this one is matched anywhere in the name.
+	return `#region-main .course-content li.section:has(> .course-section-header .sectionname:has-text("Grabaciones sesiones en l"))` + fmt.Sprintf(" >> nth=%d", index)
 }
 
 func isCourseViewURL(raw string) bool {
@@ -967,7 +998,7 @@ type rowBatchPlan struct {
 // batches instead of one whole element (or a single row) per slot.
 func rowBatchPlanFor(itemCode, groupName string) (rowBatchPlan, bool) {
 	if groupName == "calificaciones" {
-		return rowBatchPlan{container: "#region-main .gradereport-grader-table", rowSelector: "tbody tr.userrow, tbody tr[data-uid]"}, true
+		return rowBatchPlan{container: gradebookSetupTable, rowSelector: "tbody tr:not(.spacer)"}, true
 	}
 	if ownerOnlyForItem(itemCode) {
 		// Instructor-authored discussions/announcements; the capture worker
@@ -1060,4 +1091,19 @@ func TechnicalSelectionForRecord(record coursemaps.Record, selected map[string]b
 		activitiesByID[activity.ID] = activity
 	}
 	return technicalSelection(selected, activitiesByID)
+}
+
+// gradebookSetupTable is the gradebook setup tree (categories and the
+// activities associated with each), used as evidence for 5.1.
+const gradebookSetupTable = "#region-main table#grade_edit_tree_table, #region-main table.setup-grades"
+
+// gradebookSetupURL rewrites a grader-report URL stored by older course maps
+// to the gradebook setup page of the same course.
+func gradebookSetupURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !strings.Contains(parsed.Path, "/grade/report/grader/") {
+		return raw
+	}
+	parsed.Path = strings.Replace(parsed.Path, "/grade/report/grader/", "/grade/edit/tree/", 1)
+	return parsed.String()
 }

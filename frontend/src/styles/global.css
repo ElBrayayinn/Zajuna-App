@@ -902,3 +902,9 @@ a:focus-visible {
 .workflow-action-hint { color:var(--pending); font-size:11px; line-height:1.4; }
 @media (max-width:900px) { .workflow-steps ol { grid-template-columns:1fr 1fr; } }
 @media (max-width:560px) { .workflow-steps ol { grid-template-columns:1fr; } }
+
+/* Revisión → checklist */
+.review-mark-done { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding:10px 12px; border-radius:9px; background:var(--brand-soft); }
+.workflow-steps.loading { min-height:62px; }
+/* Un trabajo que terminó con fallos no se ve "completo en verde" */
+.progress.failed i, .job-detail-progress-track.failed i { background:var(--pending) !important; }

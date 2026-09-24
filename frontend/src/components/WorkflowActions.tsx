@@ -82,7 +82,7 @@ export function CaptureAction({ className = '', compact = false, fullWidth = fal
     <span className="workflow-action" style={fullWidth ? { width: '100%' } : undefined}>
       <button type="button" className={classes} onClick={handleCapture} disabled={isLoading || !!blocker || busy} style={fullWidth ? { width: '100%' } : undefined}>
         <StepBadge step="capture" />
-        {busy ? 'Preparando evidencias…' : 'Preparar evidencias'}
+        {busy ? 'Preparando evidencias…' : isLoading ? 'Comprobando los pasos…' : 'Preparar evidencias'}
       </button>
       {blocker ? (
         <small className="workflow-action-hint">

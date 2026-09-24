@@ -6,7 +6,15 @@ const STATE_LABEL = { done: 'Hecho', current: 'Siguiente paso', running: 'En cur
 
 /** Barra de 5 pasos visible en todas las páginas: señala una sola acción siguiente. */
 export function WorkflowSteps() {
-  const { steps, current } = useWorkflow()
+  const { steps, current, isLoading } = useWorkflow()
+  if (isLoading) {
+    // Sin datos todavía no mostramos un paso equivocado (antes parpadeaba).
+    return (
+      <nav className="workflow-steps loading" aria-label="Pasos para preparar tus evidencias" aria-busy="true">
+        <p className="workflow-next">Comprobando en qué paso vas…</p>
+      </nav>
+    )
+  }
   return (
     <nav className="workflow-steps" aria-label="Pasos para preparar tus evidencias">
       <ol>
@@ -26,7 +34,11 @@ export function WorkflowSteps() {
         <p className="workflow-next" role="status">
           <b>Paso {current.number}:</b> {current.hint}
         </p>
-      ) : null}
+      ) : (
+        <p className="workflow-next" role="status">
+          <b>¡Todo revisado!</b> Siguiente: <Link to="/reportes">generar el reporte PDF</Link>.
+        </p>
+      )}
     </nav>
   )
 }

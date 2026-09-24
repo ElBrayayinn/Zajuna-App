@@ -175,7 +175,7 @@ func TestGradingItemsNeverReuseTheDateCardWithoutGradingRoute(t *testing.T) {
 
 func TestCourseSectionGroupsNeverTargetTheFirstSection(t *testing.T) {
 	for _, group := range []string{"seguimiento_evaluacion", "seguimiento_documentos", "documentos_retencion", "sesiones_linea"} {
-		if selector := captureGroupPlan(group).selector; !strings.Contains(selector, ":has-text(") {
+		if selector := captureGroupPlan(group).selector; !strings.Contains(selector, ":has-text(") && !strings.Contains(selector, ":text-matches(") {
 			t.Fatalf("%s must scope .section to its named section, got %q", group, selector)
 		}
 	}
@@ -210,7 +210,9 @@ func TestBuildCaptureTargetsUsesGoogleSheetsAwareCronogramaSelector(t *testing.T
 	}
 	for _, target := range targets {
 		if target.ItemCode == "1.1.1" {
-			if !strings.Contains(target.CSSSelector, "docs.google.com/spreadsheets") || target.ViewportWidth != 2560 || target.ViewportHeight != 1200 || !target.FullPage {
+			if !strings.Contains(target.CSSSelector, "docs.google.com/spreadsheets") || target.ViewportWidth != 2560 || target.ViewportHeight != 1200 || target.FullPage {
+				// On an activity page the content region is captured (not the
+				// full page with Zajuna header/menu/footer).
 				t.Fatalf("cronograma selector does not prioritize embedded Google Sheets: %q", target.CSSSelector)
 			}
 			return
@@ -448,5 +450,12 @@ func TestTransversalOnlySelectionNeverFallsBackToEveryActivity(t *testing.T) {
 	}
 	if len(TechnicalSelectionForRecord(record, map[string]bool{"2": true})) != 0 {
 		t.Fatal("transversal-only selection must count as no selection")
+	}
+}
+
+func TestSectionTitlesAreAnchoredAtTheStart(t *testing.T) {
+	selector := topLevelCourseSectionByTitle(seguimientoSectionTitle)
+	if !strings.Contains(selector, `text-matches("^`) || !strings.Contains(selector, "Seguimiento y Evaluaci") || !strings.Contains(selector, ":not(li.section li.section)") {
+		t.Fatalf("7.1.x must match a top-level section whose name starts with the title, got %s", selector)
 	}
 }
