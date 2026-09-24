@@ -36,8 +36,8 @@ export interface EvidenceContent {
 function evidenceContentKey(evidence: Evidence): string {
   const hash = String(evidence.sha256 || '').trim().toLowerCase()
   if (hash) return `hash:${hash}`
-  const path = String(evidence.filePath || '').trim().replace(/\\/g, '/').toLowerCase()
-  if (path) return `path:${path}`
+  const fileKey = String(evidence.fileKey || '').trim()
+  if (fileKey) return `file:${fileKey}`
   return `id:${evidence.id}`
 }
 
@@ -47,7 +47,7 @@ function compareItemCodes(left: string, right: string) {
 
 /**
  * Collapses evidence rows that point to identical content (same SHA-256, or
- * same file path when the hash is missing) so each image is shown once, while
+ * same stored file when the hash is missing) so each image is shown once, while
  * keeping the list of checklist items it covers. Order of first appearance is
  * preserved.
  */

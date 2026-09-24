@@ -52,7 +52,7 @@ offline de la interfaz.
 
 SQLite (`zajuna.db`, WAL, `foreign_keys = ON`) vive en la carpeta de datos del
 usuario (`%LOCALAPPDATA%\ZajunaApp` en Windows,
-`$XDG_DATA_HOME/zajuna-app` en Linux). El schema actual es **v13**
+`$XDG_DATA_HOME/zajuna-app` en Linux). El schema actual es **v14**
 (`currentSchemaVersion` en `core/internal/storage/sqlite/store.go`). Las
 migraciones se aplican en una sola transacción, solo hacia adelante, y cada
 versión queda registrada en `schema_migrations`:
@@ -72,6 +72,7 @@ versión queda registrada en `schema_migrations`:
 | v11 | `checklist_item_events` (historial por ítem). |
 | v12 | `notifications`. |
 | v13 | Una evidencia vigente por `(ficha, ítem, slot, origen)`: deduplica y cambia la clave única. |
+| v14 | `evidence_reviews` (revisión automática y manual de cada evidencia). |
 
 Tras migrar, el core recoge los archivos de evidencia que ya no referencia
 ninguna fila. Un core nunca abre ni restaura una base con schema mayor que el

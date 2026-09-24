@@ -186,8 +186,9 @@ export const api = {
   getEvidenceGroups: (fichaId: string) =>
     request<EvidenceGroup[]>(`/api/evidences/groups?fichaId=${encodeURIComponent(fichaId)}`),
 
+  // With fichaId the core returns every evidence of the ficha; the gallery must not be truncated.
   listEvidences: (fichaId?: string) =>
-    request<Evidence[]>(`/api/evidences?limit=1000${fichaId ? `&fichaId=${encodeURIComponent(fichaId)}` : ''}`),
+    request<Evidence[]>(fichaId ? `/api/evidences?fichaId=${encodeURIComponent(fichaId)}` : '/api/evidences?limit=100'),
 
   rebuildEvidenceGroups: (fichaId: string) =>
     request<EvidenceGroup[]>('/api/evidences/groups/rebuild', json({ fichaId })),

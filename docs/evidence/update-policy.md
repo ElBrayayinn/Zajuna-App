@@ -17,7 +17,7 @@ carpeta de Electron (`%APPDATA%\zajuna-app\logs` en Windows).
 Estas reglas se cumplen con cualquier política de actualización:
 
 1. **El schema solo avanza.** Al abrir la base, el core aplica las migraciones
-   pendientes en una transacción (v1…v13 hoy) y nunca abre una base de una
+   pendientes en una transacción (v1…v14 hoy) y nunca abre una base de una
    versión más nueva. Una migración que falla no deja la base a medias.
 2. **Nada se borra en caliente.** Los borrados masivos (restablecer, cambio de
    versión, restauración) se aplican al arrancar, antes de abrir SQLite, y no
@@ -66,6 +66,22 @@ Desde el schema v13, la base guarda **una evidencia actual** por
 `(ficha, ítem, ranura, origen)`. Las capturas nuevas reemplazan la anterior del
 mismo slot; el checklist muestra solo las vigentes y respeta `max_evidences`
 del catálogo.
+
+Una misma captura puede respaldar varios ítems (varias filas con el mismo
+archivo). Al reemplazar, recortar por `max_evidences`, podar el checklist o
+eliminar con `DELETE /api/evidences/{id}`, el archivo solo se borra cuando ya
+ninguna fila lo referencia.
+
+## Cómo reiniciar evidencias
+
+Si un docente necesita partir de cero (sin desinstalar):
+
+1. **API:** `POST /api/evidences/clear`  
+   Cuerpo opcional: `{ "fichaId": "<id>" }` para limitar a una ficha.  
+   Sin `fichaId` elimina todas las evidencias locales y archivos huérfanos.
+2. **Interfaz:** Ajustes → Datos → «Borrar evidencias locales».
+
+La actualización de la app **nunca** ejecuta este reinicio sola.
 
 ## Restauración de respaldos
 

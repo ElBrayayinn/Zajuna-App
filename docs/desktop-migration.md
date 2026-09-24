@@ -73,7 +73,7 @@ El core contiene:
 - Historial de cambios por ítem y decisiones de rutas.
 - Galería, hashes, metadata, reportes y backups ZIP locales.
 - Diagnóstico y centro de notificaciones (tabla introducida en el schema v12;
-  el schema vigente es v13, ver [`architecture.md`](architecture.md#persistencia)).
+  el schema vigente es v14, ver [`architecture.md`](architecture.md#persistencia)).
 
 La API expone, entre otros, `/api/setup`, `/api/fichas`, `/api/checklist`,
 `/api/course-maps`, `/api/jobs`, `/api/schedules`, `/api/evidences`,
