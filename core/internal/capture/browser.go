@@ -476,6 +476,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				_, captureErr = page.Screenshot(playwright.PageScreenshotOptions{Path: playwright.String(absoluteOutput), FullPage: playwright.Bool(true), Timeout: playwright.Float(timeout)})
 			} else {
 				expandCourseSection(locator.First(), timeout)
+				if emptyCourseSection(locator.First(), timeout) {
+					// Only the section title: the section exists but Zajuna has
+					// nothing in it. A header-only shot is not evidence.
+					return CaptureResult{}, fmt.Errorf("%w (%w): la sección no tiene actividades ni archivos", ErrSelectorNotFound, ErrContentAbsent)
+				}
 				neutralizeFloatingElements(page)
 				result.ColumnWindows, captureErr = screenshotElement(page, locator.First(), absoluteOutput, timeout, options)
 				if errors.Is(captureErr, ErrNoRowsInBatch) {
@@ -1408,6 +1413,22 @@ func neutralizeFloatingElements(page playwright.Page) {
 		}
 		return true;
 	}`)
+}
+
+// emptySectionMaxHeight is the height of a section that shows only its
+// title row (Moodle renders ~85 px); the evidence review flags anything below
+// 120 px as too small.
+const emptySectionMaxHeight = 120
+
+// emptyCourseSection reports a course section with no visible activity,
+// resource or subsection whose box is only its title row. A text-only section
+// taller than that is still captured.
+func emptyCourseSection(element playwright.Locator, timeout float64) bool {
+	if sectionContentItems(element, timeout) != 0 {
+		return false
+	}
+	box, err := element.BoundingBox()
+	return err == nil && box != nil && box.Height < emptySectionMaxHeight
 }
 
 // sectionContentItems counts the visible activities/resources of a course

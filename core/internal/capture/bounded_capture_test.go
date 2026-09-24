@@ -250,3 +250,29 @@ func TestExpandEmbeddedSheetsSmoke(t *testing.T) {
 		}
 	}
 }
+
+// A Moodle subsection that shows only its title is an absence, not evidence;
+// one with an activity is captured.
+func TestEmptyCourseSectionIsAnAbsenceSmoke(t *testing.T) {
+	_, page := browserSmokePage(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`<html><body style="margin:0"><div id="region-main"><ul class="course-content">` +
+			`<li class="section" id="empty"><div class="course-section-header" style="height:40px"><h3 class="sectionname">Documentos de retención de aprendices</h3></div><ul class="section-content"></ul></li>` +
+			`<li class="section" id="full"><div class="course-section-header" style="height:40px"><h3 class="sectionname">Planes de Mejoramiento</h3></div>` +
+			`<ul class="section-content"><li class="activity" style="height:60px"><a href="/zajuna/mod/url/view.php?id=1">Planes de Mejoramiento</a></li></ul></li>` +
+			`</ul></div></body></html>`))
+	}))
+	defer server.Close()
+	output := filepath.Join(t.TempDir(), "section.png")
+	_, err := capturePage(context.Background(), page, server.URL, output, CaptureOptions{Selector: "#empty", RequireSelector: true})
+	if !errors.Is(err, ErrContentAbsent) || !errors.Is(err, ErrSelectorNotFound) {
+		t.Fatalf("an empty section must be a typed absence, got %v", err)
+	}
+	if _, statErr := os.Stat(output); statErr == nil {
+		t.Fatal("no evidence file may be written for an empty section")
+	}
+	result, err := capturePage(context.Background(), page, server.URL, output, CaptureOptions{Selector: "#full", RequireSelector: true})
+	if err != nil || result.ContentItems < 1 {
+		t.Fatalf("a section with an activity must be captured: %v %#v", err, result)
+	}
+}
