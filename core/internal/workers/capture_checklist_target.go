@@ -64,7 +64,7 @@ func reusableBrowserSession(captureErr error, finalURL string) bool {
 	if captureErr == nil {
 		return !isZajunaLoginURL(finalURL)
 	}
-	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch)
+	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch) || errors.Is(captureErr, capture.ErrForumAccessDenied)
 }
 
 func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, params checklistTargetParams) targetOutcome {
@@ -82,6 +82,8 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
 		OptionalSlot: target.OptionalSlot,
+		MaxWidth:     target.MaxCaptureWidth, ColumnBatch: target.ColumnBatch,
+		ExpandEmbeddedSheets: strings.HasPrefix(target.GroupName, "cronograma_"),
 	}
 
 	var captureResult capture.CaptureResult
@@ -140,6 +142,9 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		if errors.Is(captureErr, capture.ErrChallengePage) {
 			return targetOutcome{failure: target.ItemCode + ": Zajuna pidió CAPTCHA o MFA"}
 		}
+		if errors.Is(captureErr, capture.ErrForumAccessDenied) {
+			return targetOutcome{failure: target.ItemCode + ": el foro asignado no está disponible para tu cuenta; vuelve a buscar las rutas del curso"}
+		}
 		return targetOutcome{failure: target.ItemCode + ": " + captureErr.Error()}
 	}
 	if isZajunaLoginURL(captureResult.FinalURL) {
@@ -164,6 +169,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
 		"rowSelector": target.RowSelector, "rowsPerShot": target.RowsPerShot, "rowBatch": target.RowBatch,
 		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart,
+		"maxCaptureWidth": target.MaxCaptureWidth, "columnBatch": target.ColumnBatch, "columnWindows": captureResult.ColumnWindows,
 	})
 	capturedAt := time.Now().UTC()
 	evidenceRecords := 0

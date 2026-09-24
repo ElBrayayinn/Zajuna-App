@@ -60,6 +60,11 @@ type CaptureTarget struct {
 	// OptionalSlot: the slot may not exist on this course (no evidence, not
 	// a failure). Used for per-phase course sections.
 	OptionalSlot bool `json:"optionalSlot,omitempty"`
+	// MaxCaptureWidth bounds the shot width: a wider element is split into
+	// windows of whole columns and ColumnBatch (zero-based) picks one. A
+	// window past the last column yields no evidence.
+	MaxCaptureWidth int `json:"maxCaptureWidth,omitempty"`
+	ColumnBatch     int `json:"columnBatch,omitempty"`
 }
 
 type CapturePlanSummary struct {
@@ -268,15 +273,12 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			continue
 		}
 		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
-		batchesPerURL := 1
-		if batched && len(eligible) > 0 {
-			batchesPerURL = spec.MaxSlots / len(eligible)
-			if batchesPerURL < 1 {
-				batchesPerURL = 1
-			}
-		}
 		addedCount := 0
 		for index, entry := range eligible {
+			batchesPerURL := 1
+			if batched {
+				batchesPerURL = batchesForList(spec.MaxSlots, len(eligible), index)
+			}
 			hint := ""
 			if len(spec.LabelHints) > 0 {
 				hint = spec.LabelHints[index%len(spec.LabelHints)]
@@ -319,6 +321,13 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				}
 				if batched {
 					target.RowSelector, target.RowsPerShot, target.RowBatch = rows.rowSelector, RowsPerShot, batch
+				}
+				if spec.GroupName == "calificaciones" {
+					// The grader has one column per grade item (~28.000 px on
+					// a real course). 5.1 proves which activities are in the
+					// gradebook, so each slot shows the first rows and the
+					// next window of columns, never wider than the limit.
+					target.RowBatch, target.ColumnBatch, target.MaxCaptureWidth = 0, batch, MaxCaptureWidth
 				}
 				targets = append(targets, target)
 				addedCount++
@@ -386,6 +395,8 @@ func captureUnitKey(target CaptureTarget) string {
 		strconv.Itoa(target.RowsPerShot),
 		strconv.Itoa(target.RowBatch),
 		strconv.FormatBool(target.OptionalSlot),
+		strconv.Itoa(target.MaxCaptureWidth),
+		strconv.Itoa(target.ColumnBatch),
 	}, "\x1f")
 }
 
@@ -597,6 +608,9 @@ func canonicalRouteURL(raw string) string {
 // match one of the instructor-selected activities; generic named forums and
 // announcements remain eligible because their author is checked in Chromium.
 func eligibleRouteForGroup(groupName string, route coursemaps.Route, selectedActivityIDs map[string]bool, activitiesByID map[string]coursemaps.Activity) bool {
+	if route.Restricted {
+		return false
+	}
 	if !ownerFilteredGroup(groupName) {
 		return true
 	}
@@ -913,6 +927,24 @@ func captureSpecFor(itemCode string) CaptureSpec {
 // 1–2, slot 2 rows 3–4, and so on, up to the item's evidence limit.
 const RowsPerShot = 2
 
+// MaxCaptureWidth matches the widest viewport used elsewhere (cronogramas):
+// wider shots become unreadable once scaled into the report.
+const MaxCaptureWidth = 2560
+
+// batchesForList splits an item's evidence limit among its lists. Integer
+// division alone left slots unplanned (5 slots over 2 lists planned 4): the
+// remainder goes to the first lists, so every slot up to the limit exists.
+func batchesForList(maxSlots, lists, index int) int {
+	if lists <= 0 || maxSlots <= lists {
+		return 1
+	}
+	batches := maxSlots / lists
+	if index < maxSlots%lists {
+		batches++
+	}
+	return batches
+}
+
 type rowBatchPlan struct {
 	container   string
 	rowSelector string
@@ -957,13 +989,9 @@ func appendGradingBatchTargets(targets *[]CaptureTarget, record coursemaps.Recor
 	if len(withGrading) == 0 {
 		return 0
 	}
-	batches := spec.MaxSlots / len(withGrading)
-	if batches < 1 {
-		batches = 1
-	}
 	added := 0
-	for _, entry := range withGrading {
-		for batch := 0; batch < batches; batch++ {
+	for index, entry := range withGrading {
+		for batch := 0; batch < batchesForList(spec.MaxSlots, len(withGrading), index); batch++ {
 			added++
 			*targets = append(*targets, CaptureTarget{
 				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,

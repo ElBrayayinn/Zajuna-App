@@ -94,6 +94,9 @@ func TestReusableBrowserSession(t *testing.T) {
 	if !reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrSelectorNotFound), "") {
 		t.Fatal("selector not found is a page outcome, the session is still valid")
 	}
+	if !reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrForumAccessDenied), "") {
+		t.Fatal("a forum without access is a page outcome, the session is still valid")
+	}
 	if reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrLoginPage), "") {
 		t.Fatal("a login page error invalidates the session")
 	}

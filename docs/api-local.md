@@ -235,12 +235,33 @@ en lugar de repetir la tarjeta de fechas de `6.1`.
 Las evidencias con forma de lista o tabla se capturan por lotes de filas
 (`rowSelector`, `rowsPerShot` = 2, `rowBatch`): el slot 1 muestra las filas
 1–2, el slot 2 las filas 3–4 y así hasta el límite de evidencias del ítem, con
-el encabezado de la tabla visible. Aplica al reporte de calificaciones (`5.1`)
-y a las discusiones y anuncios publicados por el instructor (`9.1.5`–`9.1.7`,
-`11.x`, `14.x`, `15.1`), donde además solo se muestran filas del instructor.
-Un lote que empieza después de la última fila no genera evidencia (queda
-"omitido", no como fallo) y la captura retira las evidencias de slots que ya no
-corresponden.
+el encabezado de la tabla visible. Aplica a las discusiones y anuncios
+publicados por el instructor (`9.1.5`–`9.1.7`, `11.x`, `14.x`, `15.1`), donde
+además solo se muestran filas del instructor. Cuando un ítem tiene varias
+listas, sus slots se reparten entre ellas y el resto de la división va a las
+primeras (8 slots en 3 listas: 3 + 3 + 2), así que ningún slot queda sin
+planificar. Un lote que empieza después de la última fila no genera evidencia
+(queda "omitido", no como fallo) y la captura retira las evidencias de slots
+que ya no corresponden.
+
+El calificador (`5.1`) tiene una columna por ítem de calificación y en un curso
+real mide ~28.000 px de ancho. Cada slot muestra las filas 1–2 y una ventana
+de columnas completas de hasta 2560 px (`maxCaptureWidth`, `columnBatch`): el
+slot 1 las primeras columnas, el slot 2 las siguientes, etc. Una ventana
+posterior a la última columna queda "omitida". La metadata de la evidencia
+guarda `columnWindows`, el número de ventanas que necesitaba la tabla.
+
+Los cronogramas (`1.x`) con un iframe de Google Sheets (`docs.google.com/
+spreadsheets`) agrandan el iframe al tamaño de la hoja antes de capturar
+(máximo 2560 × 16.000 px). No se hace clic ni se navega, y si no se puede medir
+la hoja se captura igual que antes.
+
+Un foro al que la cuenta no tiene acceso (Moodle redirige con «No dispone de
+permiso para ver los debates de este foro») queda marcado `restricted` en el
+mapa de rutas y nunca se elige como evidencia. Si un mapa antiguo aún lo
+incluye, la captura falla con un mensaje que pide volver a buscar las rutas.
+El perfil (`2.x`) usa `profile.php?id=<id>` con el id del usuario autenticado,
+leído de `M.cfg.userId` en la página del curso.
 
 ### `GET /api/checklist/reviews?fichaId=<id>`
 
