@@ -67,6 +67,8 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 	}
 	warning := ""
 	pagesVisited := 0
+	sessionUserID := ""
+	restricted := map[string]bool{}
 
 	for len(queue) > 0 && pagesVisited < options.MaxPages {
 		if err := ctx.Err(); err != nil {
@@ -92,6 +94,15 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 			return coursemaps.Record{}, fmt.Errorf("%w: la sesión venció durante el descubrimiento", ErrSessionExpired)
 		}
 		pagesVisited++
+		if node.URL == courseURL {
+			sessionUserID = parseSessionUserID(body)
+		}
+		if classifyRoute(node.URL) == "forum" && forumAccessDenied(body) {
+			// Moodle redirected to the course page: its links are not the
+			// forum's and the forum itself is unusable as evidence.
+			restricted[node.URL] = true
+			continue
+		}
 
 		matches := anchorHrefPattern.FindAllStringSubmatch(body, -1)
 		if len(matches) > options.MaxLinksPerPage {
@@ -174,15 +185,25 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 
 	routes := make([]coursemaps.Route, 0, len(routeOrder))
 	for _, target := range routeOrder {
-		routes = append(routes, routeIndex[target])
+		route := routeIndex[target]
+		if restricted[target] {
+			route.Restricted = true
+		}
+		routes = append(routes, route)
 	}
 
-	byItemCode, stats := groupRoutesForCourse(routes, courseID, c.baseURL+"/zajuna/user/profile.php")
+	// Without an id, profile.php shows whoever owns the capture session; with
+	// the id read from the course page the evidence is pinned to that user.
+	profileURL := c.baseURL + "/zajuna/user/profile.php"
+	if sessionUserID != "" {
+		profileURL += "?id=" + url.QueryEscape(sessionUserID)
+	}
+	byItemCode, stats := groupRoutesForCourse(routes, courseID, profileURL)
 	now := time.Now().UTC()
 	return coursemaps.Record{
 		CourseID:      courseID,
 		CourseURL:     security.RedactURL(courseURL),
-		ProfileURL:    security.RedactURL(c.baseURL + "/zajuna/user/profile.php"),
+		ProfileURL:    security.RedactURL(profileURL),
 		ByItemCode:    byItemCode,
 		Routes:        routes,
 		LinkCount:     len(routes),
@@ -193,6 +214,44 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 		DiscoveredAt:  now,
 		UpdatedAt:     now,
 	}, nil
+}
+
+// sessionUserIDPatterns read the authenticated user's id from a Moodle page:
+// M.cfg.userId (Moodle 4) or the notification popover of the user menu. Links
+// to other users' profiles (teachers, forum authors) are never used.
+var sessionUserIDPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`M\.cfg\s*=\s*\{[^;]*?"userId"\s*:\s*"?(\d+)`),
+	regexp.MustCompile(`(?is)<[^>]+id=["']nav-notification-popover-container["'][^>]*\bdata-userid=["'](\d+)["']`),
+}
+
+func parseSessionUserID(body string) string {
+	for _, pattern := range sessionUserIDPatterns {
+		match := pattern.FindStringSubmatch(body)
+		// 0 is "not logged in" and 1 is Moodle's guest user.
+		if len(match) == 2 && match[1] != "0" && match[1] != "1" {
+			return match[1]
+		}
+	}
+	return ""
+}
+
+// forumAccessDeniedMarkers are Moodle's "noviewdiscussionspermission" notice
+// (shown after redirecting away from the forum) in Spanish and English.
+var forumAccessDeniedMarkers = []string{
+	"no dispone de permiso para ver los debates",
+	"no tiene permiso para ver los debates",
+	"do not have the permission to view discussions",
+	"do not have permission to view discussions",
+}
+
+func forumAccessDenied(body string) bool {
+	lower := strings.ToLower(body)
+	for _, marker := range forumAccessDeniedMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeCrawlOptions(options CrawlOptions) CrawlOptions {
@@ -416,6 +475,9 @@ func checklistRouteGroups(routes []coursemaps.Route) map[string][]string {
 	for itemCode, kinds := range rules {
 		seen := map[string]bool{}
 		for _, route := range routes {
+			if route.Restricted {
+				continue
+			}
 			for _, kind := range kinds {
 				if route.Kind == kind && !seen[route.URL] {
 					groups[itemCode] = append(groups[itemCode], route.URL)
@@ -450,6 +512,9 @@ func mergeRoute(routes map[string]coursemaps.Route, candidate coursemaps.Route) 
 		}
 		if candidate.Technical {
 			existing.Technical = true
+		}
+		if candidate.Restricted {
+			existing.Restricted = true
 		}
 		if candidate.Depth < existing.Depth {
 			existing.Depth = candidate.Depth

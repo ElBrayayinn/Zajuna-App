@@ -71,7 +71,7 @@ func reusableBrowserSession(captureErr error, finalURL string) bool {
 	if captureErr == nil {
 		return !isZajunaLoginURL(finalURL)
 	}
-	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch)
+	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch) || errors.Is(captureErr, capture.ErrForumAccessDenied)
 }
 
 // browserSessionExpired tells whether a capture failed only because Zajuna
@@ -132,6 +132,8 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
 		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch, RowRequireReply: target.RowRequireReply,
 		CourseLayout: target.CourseLayout, AbsenceSelector: target.AbsenceSelector,
+		MaxWidth: target.MaxCaptureWidth, ColumnBatch: target.ColumnBatch,
+		ExpandEmbeddedSheets: strings.HasPrefix(target.GroupName, "cronograma_"),
 	}
 
 	var captureResult capture.CaptureResult
@@ -175,6 +177,9 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		if errors.Is(captureErr, capture.ErrChallengePage) {
 			return targetOutcome{failure: target.ItemCode + ": Zajuna pidió CAPTCHA o MFA"}
 		}
+		if errors.Is(captureErr, capture.ErrForumAccessDenied) {
+			return targetOutcome{failure: target.ItemCode + ": el foro asignado no está disponible para tu cuenta; vuelve a buscar las rutas del curso"}
+		}
 		if errors.Is(captureErr, capture.ErrContentAbsent) {
 			return targetOutcome{absent: true, failure: target.ItemCode + ": " + absenceMessage(target, captureErr)}
 		}
@@ -203,6 +208,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		"rowSelector": target.RowSelector, "rowsPerShot": target.RowsPerShot, "rowBatch": target.RowBatch,
 		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart, "contentItems": captureResult.ContentItems,
 		"rowMatch": target.RowMatch, "rowRequireReply": target.RowRequireReply, "semanticCheck": target.SemanticCheck, "courseLayout": target.CourseLayout,
+		"maxCaptureWidth": target.MaxCaptureWidth, "columnBatch": target.ColumnBatch, "columnWindows": captureResult.ColumnWindows,
 	})
 	capturedAt := time.Now().UTC()
 	evidenceRecords := 0

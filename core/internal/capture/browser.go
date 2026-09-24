@@ -7,11 +7,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
+	"github.com/zajuna-app/core/internal/security"
 )
 
 var playwrightEnvMu sync.Mutex
@@ -36,6 +38,9 @@ type CaptureResult struct {
 	// course section (-1 when the capture was not a section). The reviewer
 	// uses it to flag sections that show only their title.
 	ContentItems int
+	// ColumnWindows is how many width-bounded windows the element needed
+	// (see CaptureOptions.MaxWidth); 0 when the width was not bounded.
+	ColumnWindows int
 }
 
 var ErrBlockedPage = errors.New("la página destino fue bloqueada por el sitio remoto")
@@ -63,7 +68,12 @@ const (
 	defaultViewportHeight = 1200
 )
 
-const browserUserAgent ="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+// ErrForumAccessDenied means Moodle refused the forum to this account and
+// redirected away from it: the route map points to a forum the instructor
+// cannot see, so no row of it can ever be evidence.
+var ErrForumAccessDenied = errors.New("el foro no está disponible para esta cuenta de Zajuna")
+
+const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 type CaptureOptions struct {
 	Selector        string
@@ -100,6 +110,14 @@ type CaptureOptions struct {
 	// CourseLayout puts the course sections in a known state before the
 	// capture (CourseLayoutMenu, CourseLayoutFirstSection or "" to keep them).
 	CourseLayout string
+	// MaxWidth bounds element shots: a wider element is split into windows
+	// of whole columns and ColumnBatch (zero-based) picks one. A window past
+	// the last column returns ErrNoRowsInBatch.
+	MaxWidth    int
+	ColumnBatch int
+	// ExpandEmbeddedSheets grows Google Sheets iframes to their content so
+	// the shot shows the whole sheet instead of its scroll viewport.
+	ExpandEmbeddedSheets bool
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -294,6 +312,18 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if blocked, blockedErr := isBlockedPage(page, title); blocked {
 		return CaptureResult{}, blockedErr
 	}
+	// Checked before the notifications are hidden: the permission notice is
+	// the proof that the forum is unavailable.
+	if forumAccessDenied(parsedTarget, finalURL, body) {
+		return CaptureResult{}, fmt.Errorf("%w: Zajuna redirigió a %s", ErrForumAccessDenied, security.RedactURL(finalURL))
+	}
+	// Order matters: expandEmbeddedSheets grows the frame to the sheet
+	// (mostly its width); prepareEmbeddedSheets then opens the phase tab and
+	// sets the final height measured inside the nested widget frame, capped so
+	// the evidence review does not flag it as too tall.
+	if options.ExpandEmbeddedSheets {
+		expandEmbeddedSheets(page)
+	}
 	prepareCourseMenu(page, options)
 	if err := ensureStillOn(page, finalURL); err != nil {
 		return CaptureResult{}, err
@@ -385,6 +415,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 						result.SelectorMatched = true
 						result.RowsTotal = batch.total
 						result.RowStart = batch.start + 1
+						result.ColumnWindows = batch.columnWindows
 						return result, nil
 					}
 					// Rows were counted here, so this container is the list:
@@ -425,7 +456,10 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			} else {
 				expandCourseSection(locator.First(), timeout)
 				neutralizeFloatingElements(page)
-				_, captureErr = locator.First().Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
+				result.ColumnWindows, captureErr = screenshotElement(page, locator.First(), absoluteOutput, timeout, options)
+				if errors.Is(captureErr, ErrNoRowsInBatch) {
+					return CaptureResult{}, captureErr
+				}
 			}
 			if captureErr == nil {
 				result.Selector = selector
@@ -660,9 +694,10 @@ type rowBatchOutcome struct {
 	// handled is true when rows were counted and the batch window was
 	// captured (or its screenshot attempted). false with a nil error means
 	// there were no rows on batch 0 and the caller must fall back.
-	handled bool
-	total   int
-	start   int
+	handled       bool
+	total         int
+	start         int
+	columnWindows int
 }
 
 // captureRowBatch screenshots only the requested batch of rows inside the
@@ -698,9 +733,261 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		return rowBatchOutcome{handled: true, total: total}, fmt.Errorf("%w: lote %d con %d filas por captura, %d filas en total", ErrNoRowsInBatch, options.RowBatch+1, options.RowsPerShot, total)
 	}
 	neutralizeFloatingElements(page)
-	_, captureErr := container.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
+	columnWindows, captureErr := screenshotElement(page, container, absoluteOutput, timeout, options)
 	restore()
-	return rowBatchOutcome{handled: true, total: total, start: start}, captureErr
+	return rowBatchOutcome{handled: true, total: total, start: start, columnWindows: columnWindows}, captureErr
+}
+
+// columnGeometryScript lifts overflow clipping on the element's ancestors
+// (Moodle wraps the grader in a scrolling div, so the hidden part would not
+// render) and returns the element box plus the right edge of every cell of
+// its widest visible row, all in page coordinates.
+const columnGeometryScript = `(element) => {
+	for (let node = element.parentElement; node; node = node.parentElement) {
+		const style = getComputedStyle(node);
+		if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+			node.style.setProperty('overflow', 'visible', 'important');
+		}
+		if (style.maxWidth !== 'none') {
+			node.style.setProperty('max-width', 'none', 'important');
+		}
+	}
+	let cells = [];
+	for (const row of element.querySelectorAll('tr')) {
+		if (row.offsetParent === null) {
+			continue;
+		}
+		const rowCells = row.querySelectorAll(':scope > th, :scope > td');
+		if (rowCells.length > cells.length) {
+			cells = Array.from(rowCells);
+		}
+	}
+	const rect = element.getBoundingClientRect();
+	return {
+		left: rect.left + window.scrollX,
+		top: rect.top + window.scrollY,
+		width: rect.width,
+		height: rect.height,
+		edges: cells.map((cell) => cell.getBoundingClientRect().right + window.scrollX),
+	};
+}`
+
+type columnSpan struct {
+	start, end float64
+}
+
+// columnWindows splits [left, left+width) into windows no wider than
+// maxWidth that end on a column edge, so no column is cut in half. A single
+// column wider than the limit is cut at the limit.
+func columnWindows(left, width float64, edges []float64, maxWidth float64) []columnSpan {
+	if width <= 0 || maxWidth <= 0 {
+		return nil
+	}
+	right := left + width
+	if width <= maxWidth {
+		return []columnSpan{{left, right}}
+	}
+	sorted := append([]float64(nil), edges...)
+	sort.Float64s(sorted)
+	windows := make([]columnSpan, 0, int(width/maxWidth)+1)
+	for start := left; start < right-0.5; {
+		limit := start + maxWidth
+		end := 0.0
+		if right <= limit {
+			end = right
+		} else {
+			for _, edge := range sorted {
+				if edge > start+0.5 && edge <= limit {
+					end = edge
+				}
+			}
+			if end == 0 {
+				end = limit
+			}
+		}
+		windows = append(windows, columnSpan{start, end})
+		start = end
+	}
+	return windows
+}
+
+// screenshotElement writes the element shot. With MaxWidth set, a wider
+// element is clipped to window ColumnBatch; the returned count is the
+// number of windows the element needs (0 when the width is not bounded).
+func screenshotElement(page playwright.Page, element playwright.Locator, absoluteOutput string, timeout float64, options CaptureOptions) (int, error) {
+	elementShot := func() error {
+		_, err := element.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
+		return err
+	}
+	if options.MaxWidth <= 0 {
+		return 0, elementShot()
+	}
+	raw, err := element.Evaluate(columnGeometryScript, nil, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
+	if err != nil {
+		return 0, fmt.Errorf("medir columnas de la captura: %w", err)
+	}
+	values, _ := raw.(map[string]any)
+	edges := make([]float64, 0)
+	if list, ok := values["edges"].([]any); ok {
+		for _, value := range list {
+			if edge, ok := evaluatedFloat(value); ok {
+				edges = append(edges, edge)
+			}
+		}
+	}
+	left, _ := evaluatedFloat(values["left"])
+	top, _ := evaluatedFloat(values["top"])
+	width, _ := evaluatedFloat(values["width"])
+	height, _ := evaluatedFloat(values["height"])
+	windows := columnWindows(left, width, edges, float64(options.MaxWidth))
+	if options.ColumnBatch < 0 || (options.ColumnBatch > 0 && options.ColumnBatch >= len(windows)) {
+		return len(windows), fmt.Errorf("%w: ventana de columnas %d, el elemento solo necesita %d", ErrNoRowsInBatch, options.ColumnBatch+1, len(windows))
+	}
+	if len(windows) <= 1 || height <= 0 {
+		return len(windows), elementShot()
+	}
+	window := windows[options.ColumnBatch]
+	_, err = page.Screenshot(playwright.PageScreenshotOptions{
+		Path:     playwright.String(absoluteOutput),
+		FullPage: playwright.Bool(true),
+		Clip:     &playwright.Rect{X: window.start, Y: top, Width: window.end - window.start, Height: height},
+		Timeout:  playwright.Float(timeout),
+	})
+	return len(windows), err
+}
+
+func evaluatedFloat(value any) (float64, bool) {
+	switch number := value.(type) {
+	case float64:
+		return number, true
+	case int:
+		return float64(number), true
+	case int64:
+		return float64(number), true
+	}
+	return 0, false
+}
+
+// forumAccessDenied tells whether a forum target was refused: Moodle
+// redirects off the forum (to the course page) and shows its
+// "noviewdiscussionspermission" notice.
+func forumAccessDenied(target *url.URL, finalURL, body string) bool {
+	if target == nil || !strings.HasSuffix(strings.ToLower(target.Path), "/mod/forum/view.php") {
+		return false
+	}
+	if final, err := url.Parse(finalURL); err == nil && final.Path != "" && !strings.Contains(strings.ToLower(final.Path), "/mod/forum/") {
+		return true
+	}
+	lower := strings.ToLower(body)
+	for _, marker := range []string{"no dispone de permiso para ver los debates", "no tiene permiso para ver los debates", "permission to view discussions"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// Embedded Google Sheets are bounded so a huge sheet cannot produce an
+// image Chromium refuses to encode.
+const (
+	maxEmbeddedSheets      = 4
+	maxEmbeddedSheetWidth  = 2560
+	maxEmbeddedSheetHeight = 16000
+)
+
+// sheetContentSizeScript runs inside a Google Sheets frame: it lifts the
+// published sheet's own scroll containers and measures the full grid.
+const sheetContentSizeScript = `() => {
+	const style = document.createElement('style');
+	style.setAttribute('data-zajuna-sheet-expand', 'true');
+	style.textContent = 'html,body,#sheets-viewport,#sheets-viewport > div,.grid-container{overflow:visible !important;height:auto !important;max-height:none !important;width:auto !important;max-width:none !important}';
+	(document.head || document.documentElement).appendChild(style);
+	const root = document.documentElement;
+	let width = Math.max(root.scrollWidth, document.body ? document.body.scrollWidth : 0);
+	let height = Math.max(root.scrollHeight, document.body ? document.body.scrollHeight : 0);
+	for (const table of document.querySelectorAll('table')) {
+		const rect = table.getBoundingClientRect();
+		width = Math.max(width, Math.ceil(rect.right + window.scrollX));
+		height = Math.max(height, Math.ceil(rect.bottom + window.scrollY));
+	}
+	return { width, height };
+}`
+
+// resizeSheetFrameScript grows the iframe (never shrinks it) and lifts
+// fixed heights/clipping on its ancestors; position:static undoes
+// aspect-ratio wrappers that pin the iframe absolutely.
+const resizeSheetFrameScript = `(frame, size) => {
+	const rect = frame.getBoundingClientRect();
+	const width = Math.max(Math.ceil(rect.width), size.width);
+	const height = Math.max(Math.ceil(rect.height), size.height);
+	frame.style.setProperty('position', 'static', 'important');
+	frame.style.setProperty('width', width + 'px', 'important');
+	frame.style.setProperty('height', height + 'px', 'important');
+	frame.style.setProperty('max-width', 'none', 'important');
+	frame.style.setProperty('max-height', 'none', 'important');
+	for (let node = frame.parentElement; node && node !== document.body; node = node.parentElement) {
+		const style = getComputedStyle(node);
+		if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+			node.style.setProperty('overflow', 'visible', 'important');
+		}
+		if (style.maxHeight !== 'none') {
+			node.style.setProperty('max-height', 'none', 'important');
+		}
+		if (node.style.height) {
+			node.style.setProperty('height', 'auto', 'important');
+		}
+	}
+	return { width, height };
+}`
+
+// expandEmbeddedSheets is best effort: nothing is clicked or navigated,
+// only frames still on docs.google.com are touched, and any failure keeps
+// the previous (viewport-only) capture.
+func expandEmbeddedSheets(page playwright.Page) {
+	frames := page.Locator(`iframe[src*="docs.google.com/spreadsheets"]`)
+	count, err := frames.Count()
+	if err != nil || count == 0 {
+		return
+	}
+	resized := false
+	for index := 0; index < count && index < maxEmbeddedSheets; index++ {
+		element := frames.Nth(index)
+		handle, err := element.ElementHandle(playwright.LocatorElementHandleOptions{Timeout: playwright.Float(3000)})
+		if err != nil {
+			continue
+		}
+		frame, err := handle.ContentFrame()
+		if err != nil || frame == nil || !embeddedSheetFrameURL(frame.URL()) {
+			continue
+		}
+		_ = frame.WaitForLoadState(playwright.FrameWaitForLoadStateOptions{State: playwright.LoadStateLoad, Timeout: playwright.Float(8000)})
+		raw, err := frame.Evaluate(sheetContentSizeScript)
+		if err != nil {
+			continue
+		}
+		width, height := boundedSheetSize(evaluatedInt(raw, "width"), evaluatedInt(raw, "height"))
+		if width == 0 || height == 0 {
+			continue
+		}
+		if _, err := element.Evaluate(resizeSheetFrameScript, map[string]any{"width": width, "height": height}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(3000)}); err == nil {
+			resized = true
+		}
+	}
+	if resized {
+		page.WaitForTimeout(500)
+	}
+}
+
+func embeddedSheetFrameURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "https" && strings.EqualFold(parsed.Hostname(), "docs.google.com") && strings.HasPrefix(parsed.Path, "/spreadsheets/")
+}
+
+func boundedSheetSize(width, height int) (int, int) {
+	if width <= 0 || height <= 0 {
+		return 0, 0
+	}
+	return min(width, maxEmbeddedSheetWidth), min(height, maxEmbeddedSheetHeight)
 }
 
 

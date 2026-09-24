@@ -80,6 +80,11 @@ type CaptureTarget struct {
 	// selector did not match, so the slot is a real absence (see
 	// capture.ErrContentAbsent) and not a failure.
 	AbsenceSelector string `json:"absenceSelector,omitempty"`
+	// MaxCaptureWidth bounds the shot width: a wider element is split into
+	// windows of whole columns and ColumnBatch (zero-based) picks one. A
+	// window past the last column yields no evidence.
+	MaxCaptureWidth int `json:"maxCaptureWidth,omitempty"`
+	ColumnBatch     int `json:"columnBatch,omitempty"`
 }
 
 // courseLayoutForGroup: 4.1 proves the menu (every section closed) and 3.1
@@ -347,15 +352,12 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			continue
 		}
 		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
-		batchCounts := make([]int, len(eligible))
-		for i := range batchCounts {
-			batchCounts[i] = 1
-		}
-		if batched && len(eligible) > 0 {
-			batchCounts = distributeSlotBatches(spec.MaxSlots, len(eligible))
-		}
 		addedCount := 0
 		for index, entry := range eligible {
+			batchesPerURL := 1
+			if batched {
+				batchesPerURL = batchesForList(spec.MaxSlots, len(eligible), index)
+			}
 			hint := ""
 			if len(spec.LabelHints) > 0 {
 				hint = spec.LabelHints[index%len(spec.LabelHints)]
@@ -386,7 +388,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				selector = rows.container
 				fallbacks = append([]string{rows.container}, fallbacks...)
 			}
-			for batch := 0; batch < batchCounts[index]; batch++ {
+			for batch := 0; batch < batchesPerURL; batch++ {
 				// Slots are contiguous: skipped routes never leave holes
 				// (a gap used to leave items with only "slot 2").
 				slot := addedCount + 1
@@ -415,6 +417,13 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				target.CourseLayout = courseLayoutForGroup(spec.GroupName)
 				if target.SemanticCheck == SemanticForumDates {
 					target.AbsenceSelector = forumPageSelector
+				}
+				if spec.GroupName == "calificaciones" {
+					// The grader has one column per grade item (~28.000 px on
+					// a real course). 5.1 proves which activities are in the
+					// gradebook, so each slot shows the first rows and the
+					// next window of columns, never wider than the limit.
+					target.RowBatch, target.ColumnBatch, target.MaxCaptureWidth = 0, batch, MaxCaptureWidth
 				}
 				targets = append(targets, target)
 				addedCount++
@@ -487,6 +496,8 @@ func captureUnitKey(target CaptureTarget) string {
 		strings.TrimSpace(target.SemanticCheck),
 		strings.TrimSpace(target.CourseLayout),
 		strings.TrimSpace(target.AbsenceSelector),
+		strconv.Itoa(target.MaxCaptureWidth),
+		strconv.Itoa(target.ColumnBatch),
 	}, "\x1f")
 }
 
@@ -710,6 +721,9 @@ func canonicalRouteURL(raw string) string {
 // match one of the instructor-selected activities; generic named forums and
 // announcements remain eligible because their author is checked in Chromium.
 func eligibleRouteForGroup(groupName string, route coursemaps.Route, selectionGiven bool, selectedActivityIDs map[string]bool, activitiesByID map[string]coursemaps.Activity) bool {
+	if route.Restricted {
+		return false
+	}
 	if !ownerFilteredGroup(groupName) {
 		return true
 	}
@@ -1095,6 +1109,24 @@ func captureSpecFor(itemCode string) CaptureSpec {
 // RowsPerShot is the batch size for list/table evidence: slot 1 shows rows
 // 1–2, slot 2 rows 3–4, and so on, up to the item's evidence limit.
 const RowsPerShot = 2
+
+// MaxCaptureWidth matches the widest viewport used elsewhere (cronogramas):
+// wider shots become unreadable once scaled into the report.
+const MaxCaptureWidth = 2560
+
+// batchesForList splits an item's evidence limit among its lists. Integer
+// division alone left slots unplanned (5 slots over 2 lists planned 4): the
+// remainder goes to the first lists, so every slot up to the limit exists.
+func batchesForList(maxSlots, lists, index int) int {
+	if lists <= 0 || maxSlots <= lists {
+		return 1
+	}
+	batches := maxSlots / lists
+	if index < maxSlots%lists {
+		batches++
+	}
+	return batches
+}
 
 type rowBatchPlan struct {
 	container   string

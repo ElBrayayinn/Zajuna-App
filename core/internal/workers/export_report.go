@@ -115,7 +115,7 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
 	omittedGroups := totalGroups - len(groups)
-	htmlContent := buildReportHTML(input.Title, evidences)
+	htmlContent := buildReportHTML(w.dataDir, input.Title, evidences)
 	if len(groups) > 0 {
 		htmlContent = buildGroupedReportHTML(w.dataDir, input.Title, input.FichaID, groups, omittedGroups)
 	}
@@ -304,7 +304,13 @@ func embeddedEvidenceImage(dataDir string, item evidence.Record) string {
 	if err != nil {
 		return ""
 	}
-	path, err := filepath.Abs(item.FilePath)
+	path := item.FilePath
+	if !filepath.IsAbs(path) {
+		// Relative paths are stored relative to the data directory, never
+		// to the process working directory.
+		path = filepath.Join(dataDir, path)
+	}
+	path, err = filepath.Abs(path)
 	if err != nil {
 		return ""
 	}
@@ -319,10 +325,14 @@ func embeddedEvidenceImage(dataDir string, item evidence.Record) string {
 	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(contents)
 }
 
-func buildReportHTML(title string, evidences []evidence.Record) string {
+func buildReportHTML(dataDir, title string, evidences []evidence.Record) string {
 	var rows strings.Builder
-	for _, item := range evidences {
+	var figures strings.Builder
+	embedded := make(map[string]int)
+	for index, item := range evidences {
 		rows.WriteString("<tr><td>")
+		rows.WriteString(fmt.Sprintf("%d", index+1))
+		rows.WriteString("</td><td>")
 		rows.WriteString(html.EscapeString(item.Name))
 		rows.WriteString("</td><td>")
 		rows.WriteString(html.EscapeString(item.Format))
@@ -331,11 +341,30 @@ func buildReportHTML(title string, evidences []evidence.Record) string {
 		rows.WriteString("</td><td>")
 		rows.WriteString(html.EscapeString(item.CapturedAt.Format(time.RFC3339)))
 		rows.WriteString("</td></tr>")
+
+		imageKey := reportImageKey(item)
+		if _, seen := embedded[imageKey]; imageKey != "" && seen {
+			continue
+		}
+		image := embeddedEvidenceImage(dataDir, item)
+		if image == "" {
+			continue
+		}
+		if imageKey != "" {
+			embedded[imageKey] = index + 1
+		}
+		figures.WriteString(`<figure class="evidence-figure"><img class="evidence-image" src="`)
+		figures.WriteString(image)
+		figures.WriteString(`" alt="`)
+		figures.WriteString(html.EscapeString(item.Name))
+		figures.WriteString(`"><figcaption class="meta">`)
+		figures.WriteString(fmt.Sprintf("%d. %s", index+1, html.EscapeString(item.Name)))
+		figures.WriteString(`</figcaption></figure>`)
 	}
 	if len(evidences) == 0 {
-		rows.WriteString(`<tr><td colspan="4">No hay evidencias locales.</td></tr>`)
+		rows.WriteString(`<tr><td colspan="5">No hay evidencias locales.</td></tr>`)
 	}
-	return fmt.Sprintf(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>%s</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:40px}h1{color:#145d5a}p{color:#526173}table{width:100%%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;border-bottom:1px solid #d9e1ea;padding:10px;font-size:12px}th{background:#edf5f4}</style></head><body><h1>%s</h1><p>Generado localmente por Zajuna App · %s</p><table><thead><tr><th>Evidencia</th><th>Formato</th><th>SHA-256</th><th>Capturada</th></tr></thead><tbody>%s</tbody></table></body></html>`, html.EscapeString(title), html.EscapeString(title), time.Now().UTC().Format(time.RFC3339), rows.String())
+	return fmt.Sprintf(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>%s</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:40px}h1{color:#145d5a}p{color:#526173}.meta{font-size:11px;line-height:1.5}table{width:100%%;border-collapse:collapse;margin-top:24px}th,td{text-align:left;border-bottom:1px solid #d9e1ea;padding:10px;font-size:12px}th{background:#edf5f4}.evidence-figure{break-inside:avoid;margin:28px 0 0}.evidence-image{display:block;max-width:100%%;max-height:720px;object-fit:contain;border:1px solid #d9e1ea}</style></head><body><h1>%s</h1><p>Generado localmente por Zajuna App · %s</p><table><thead><tr><th>#</th><th>Evidencia</th><th>Formato</th><th>SHA-256</th><th>Capturada</th></tr></thead><tbody>%s</tbody></table>%s</body></html>`, html.EscapeString(title), html.EscapeString(title), time.Now().UTC().Format(time.RFC3339), rows.String(), figures.String())
 }
 
 func reportHash(contents []byte) string {

@@ -166,7 +166,7 @@ func orderedRoutesByKind(routes []coursemaps.Route, kinds []string) []string {
 	values := make([]string, 0)
 	seen := map[string]bool{}
 	for _, route := range routes {
-		if !routeHasKind(route, kinds) {
+		if route.Restricted || !routeHasKind(route, kinds) {
 			continue
 		}
 		value := forceViewURL(route.URL)
@@ -182,7 +182,7 @@ func orderedRoutesByKind(routes []coursemaps.Route, kinds []string) []string {
 func matchingRoutes(routes []coursemaps.Route, kinds, terms []string, minimum int, filter func(coursemaps.Route) bool) []routeMatch {
 	matches := make([]routeMatch, 0)
 	for index, route := range routes {
-		if !routeHasKind(route, kinds) || (filter != nil && !filter(route)) {
+		if route.Restricted || !routeHasKind(route, kinds) || (filter != nil && !filter(route)) {
 			continue
 		}
 		score := scoreRoute(route, terms)
