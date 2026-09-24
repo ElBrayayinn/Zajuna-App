@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg" // register the JPEG decoder for manual uploads
 	_ "image/png"  // register the PNG decoder for captures
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -40,6 +41,7 @@ const (
 	ReasonGenericSelector  = "generic_selector"
 	ReasonDuplicateContent = "duplicate_content"
 	ReasonEmptySection     = "empty_section"
+	ReasonOutdatedRule     = "outdated_rule"
 )
 
 const (
@@ -144,6 +146,7 @@ type reviewMetadata struct {
 	Selector          string   `json:"selector"`
 	SelectorFallbacks []string `json:"selectorFallbacks"`
 	CoveredItemCodes  []string `json:"coveredItemCodes"`
+	SemanticCheck     string   `json:"semanticCheck"`
 }
 
 // ImageStats are the measured properties of an evidence image.
@@ -298,12 +301,51 @@ func VerifyRecord(dataDir string, record Record, all []Record, now time.Time) Re
 		}
 	}
 
+	// Items whose proof depends on content (instructor replies, a
+	// conclusion, forum dates) are only valid when the capture enforced that
+	// rule; evidence from an older, weaker rule showed the wrong rows.
+	if required := checklist.SemanticCheckForItem(record.ItemCode); required != "" && strings.TrimSpace(record.Source) == "capture-checklist" && metadata.SemanticCheck != required {
+		review.Reasons = append(review.Reasons, ReviewReason{Code: ReasonOutdatedRule, Message: outdatedRuleMessage(required)})
+	}
+
 	if duplicates := duplicateItemCodes(record, metadata, all); len(duplicates) > 0 {
 		review.Reasons = append(review.Reasons, ReviewReason{Code: ReasonDuplicateContent, Message: "Es idéntica a la evidencia del ítem " + strings.Join(duplicates, ", ") + "."})
 	}
 
 	review.Status = statusForReasons(review.Reasons)
 	return review
+}
+
+func outdatedRuleMessage(rule string) string {
+	switch rule {
+	case checklist.SemanticForumReplies:
+		return "Se capturó con una regla anterior que no exige respuestas del instructor: vuelve a capturar el ítem."
+	case checklist.SemanticForumConclusion:
+		return "Se capturó con una regla anterior que no exige un debate de conclusión: vuelve a capturar el ítem."
+	case checklist.SemanticForumDates:
+		return "Se capturó con una regla anterior que no exige las fechas del foro: vuelve a capturar el ítem."
+	}
+	return "Se capturó con una regla anterior: vuelve a capturar el ítem."
+}
+
+// sameCaptureTarget compares two capture URLs ignoring what does not change
+// the page shown: Moodle's forceview flag, the fragment and parameter order.
+// The same forum reached as view.php?id=N and view.php?forceview=1&id=N was
+// reported as a duplicate of another item.
+func sameCaptureTarget(left, right string) bool {
+	return canonicalCaptureURL(left) == canonicalCaptureURL(right)
+}
+
+func canonicalCaptureURL(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return strings.TrimSpace(raw)
+	}
+	query := parsed.Query()
+	query.Del("forceview")
+	parsed.RawQuery = query.Encode()
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func imageReasons(stats ImageStats) []ReviewReason {
@@ -365,7 +407,8 @@ func duplicateItemCodes(record Record, metadata reviewMetadata, all []Record) []
 		if len(other.Metadata) > 0 {
 			_ = json.Unmarshal(other.Metadata, &otherMetadata)
 		}
-		if metadata.Selector != "" && otherMetadata.Selector == metadata.Selector && otherMetadata.URL == metadata.URL {
+		if metadata.Selector != "" && otherMetadata.Selector == metadata.Selector &&
+			(sameCaptureTarget(otherMetadata.URL, metadata.URL) || (metadata.FinalURL != "" && sameCaptureTarget(otherMetadata.FinalURL, metadata.FinalURL))) {
 			continue
 		}
 		if !covered[other.ItemCode] {

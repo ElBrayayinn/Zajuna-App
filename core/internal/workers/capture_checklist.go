@@ -342,6 +342,8 @@ type targetOutcomeTally struct {
 // not turn the whole capture into a failure.
 func absentContent(failure string) bool {
 	return strings.Contains(failure, "no tiene publicaciones del instructor") ||
+		strings.Contains(failure, "no tiene respuestas del instructor") ||
+		strings.Contains(failure, semanticAbsenceMarker) ||
 		strings.Contains(failure, "table.generaltable (candidatos=0)")
 }
 
@@ -373,8 +375,9 @@ func tallyTargetOutcomes(outcomes []targetOutcome) targetOutcomeTally {
 // targets and, per item, the slots whose evidence must survive: captured
 // slots (fresh evidence), failed slots (previous evidence is kept) and slots
 // of the full plan that this run did not execute (filtered out by itemCodes
-// or cut by maxTargets). Skipped slots (empty row batches) and slots no longer
-// in the plan are left out, so their evidence is pruned.
+// or cut by maxTargets). Skipped slots (empty row batches), absent slots (no
+// content in Zajuna) and slots no longer in the plan are left out, so their
+// evidence is pruned.
 func captureChecklistPrunePlan(planned, executed []checklist.CaptureTarget, outcomes []targetOutcome) ([]string, map[string]map[int]bool) {
 	keep := make(map[string]map[int]bool)
 	mark := func(target checklist.CaptureTarget) {
@@ -403,7 +406,10 @@ func captureChecklistPrunePlan(planned, executed []checklist.CaptureTarget, outc
 				itemCodes = append(itemCodes, itemCode)
 			}
 		}
-		if index < len(outcomes) && outcomes[index].skipped {
+		// An absent slot is a definitive "Zajuna has nothing for this": the
+		// evidence an earlier run (or an older, weaker rule) left there is
+		// stale and must not keep the item looking covered.
+		if index < len(outcomes) && (outcomes[index].skipped || absentContent(outcomes[index].failure)) {
 			continue
 		}
 		mark(target)

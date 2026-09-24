@@ -45,7 +45,14 @@ var ErrSelectorNotFound = errors.New("el selector requerido no apareció en la p
 // capture. Callers must treat it as "slot not needed", not as a failure.
 var ErrNoRowsInBatch = errors.New("no quedan filas para este lote")
 
-const browserUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+// Default capture viewport, used when a target does not set its own. It is
+// the size the cronogramas use, which gives course sections a readable width.
+const (
+	defaultViewportWidth  = 2560
+	defaultViewportHeight = 1200
+)
+
+const browserUserAgent ="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 type CaptureOptions struct {
 	Selector        string
@@ -72,6 +79,12 @@ type CaptureOptions struct {
 	OptionalSlot bool
 	// RowMatch keeps only rows whose text contains one of these terms.
 	RowMatch []string
+	// RowRequireReply keeps only discussions with one or more replies whose
+	// last message is by OwnerName (see checklist.CaptureTarget).
+	RowRequireReply bool
+	// CourseLayout puts the course sections in a known state before the
+	// capture (CourseLayoutMenu, CourseLayoutFirstSection or "" to keep them).
+	CourseLayout string
 }
 
 // BrowserCookie is the cookie shape needed to bridge an authenticated HTTP
@@ -232,10 +245,15 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if err := ValidateCaptureNavigationURL(targetURL, parsedTarget); err != nil {
 		return CaptureResult{}, err
 	}
-	if options.ViewportWidth > 0 && options.ViewportHeight > 0 {
-		if err := page.SetViewportSize(options.ViewportWidth, options.ViewportHeight); err != nil {
-			return CaptureResult{}, fmt.Errorf("configurar viewport de captura: %w", err)
-		}
+	// Always set the viewport: pooled sessions reuse the page, so a target
+	// without its own size inherited whatever the previous capture set (the
+	// same course section came out 2000 or 976 px wide between runs).
+	width, height := options.ViewportWidth, options.ViewportHeight
+	if width <= 0 || height <= 0 {
+		width, height = defaultViewportWidth, defaultViewportHeight
+	}
+	if err := page.SetViewportSize(width, height); err != nil {
+		return CaptureResult{}, fmt.Errorf("configurar viewport de captura: %w", err)
 	}
 	if _, err := page.Goto(targetURL); err != nil {
 		return CaptureResult{}, fmt.Errorf("navegar para captura: %w", err)
@@ -368,9 +386,10 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 				if selector == strings.TrimSpace(options.Selector) {
 					emptyPrimaryContainer = true
 				}
-				if len(options.RowMatch) > 0 {
-					// A topic filter found no rows: the legacy whole-container
-					// capture would show other topics' rows as this item's.
+				if len(options.RowMatch) > 0 || options.RowRequireReply {
+					// A topic or reply filter found no rows: the legacy
+					// whole-container capture would show rows that do not
+					// prove this item.
 					continue
 				}
 				if options.OwnerOnly {
@@ -404,6 +423,9 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if batching && options.RowBatch == 0 && options.OwnerOnly && emptyPrimaryContainer {
 		// The list exists but none of its rows is by the instructor: a real
 		// absence of evidence, reported in plain words.
+		if options.RowRequireReply {
+			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene respuestas del instructor autenticado (debates con réplicas cuyo último mensaje sea suyo)", ErrSelectorNotFound)
+		}
 		if len(options.RowMatch) > 0 {
 			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado sobre «%s»", ErrSelectorNotFound, strings.Join(options.RowMatch, "» o «"))
 		}
@@ -542,15 +564,38 @@ const rowBatchHideScript = `(container, args) => {
 	const owner = normalize(args.owner);
 	const topics = (args.rowMatch || []).map(normalize).filter(Boolean);
 	const all = Array.from(container.querySelectorAll(args.rowSelector));
+	// Column positions come from the header text ("Réplicas", "Último
+	// mensaje"), which is stable across Moodle themes; class names are the
+	// fallback.
+	const headers = Array.from(container.querySelectorAll('thead th, thead td')).map((cell) => normalize(cell.textContent));
+	const columnIndex = (pattern) => headers.findIndex((text) => pattern.test(text));
+	const repliesColumn = columnIndex(/^(replicas|respuestas|replies)\b/);
+	const lastPostColumn = columnIndex(/^(ultimo mensaje|last post)/);
+	const cellAt = (row, index, fallback) => {
+		const cells = Array.from(row.querySelectorAll(':scope > td, :scope > th'));
+		if (index >= 0 && index < cells.length) return cells[index];
+		return row.querySelector(fallback);
+	};
 	const counted = [];
 	const hide = [];
 	for (const row of all) {
 		// Prefer the author cell: a discussion started by someone else may
 		// still show the instructor as its last poster.
 		const author = row.querySelector('td.author, .author, [data-region="author-name"]');
-		const ownerText = author ? author.textContent : row.textContent;
+		let ownerText = author ? author.textContent : row.textContent;
+		let replyOK = true;
+		if (args.requireReply) {
+			// "Responde": the instructor wrote the last message of a
+			// discussion that has replies. Without both columns the row
+			// cannot prove it, so it is not evidence.
+			const repliesCell = cellAt(row, repliesColumn, 'td.replies, .replies');
+			const lastPostCell = cellAt(row, lastPostColumn, 'td.lastpost, .lastpost');
+			const replies = repliesCell ? parseInt((repliesCell.textContent.match(/\d+/) || ['0'])[0], 10) : 0;
+			replyOK = replies > 0 && Boolean(lastPostCell);
+			ownerText = lastPostCell ? lastPostCell.textContent : '';
+		}
 		const topicOK = topics.length === 0 || topics.some((topic) => normalize(row.textContent).includes(topic));
-		if (!topicOK || (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner)))) {
+		if (!topicOK || !replyOK || (args.ownerOnly && (owner === '' || !normalize(ownerText).includes(owner)))) {
 			hide.push(row);
 		} else {
 			counted.push(row);
@@ -609,6 +654,7 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		"perShot":     options.RowsPerShot,
 		"batch":       options.RowBatch,
 		"rowMatch":    options.RowMatch,
+		"requireReply": options.RowRequireReply,
 	}, playwright.LocatorEvaluateOptions{Timeout: playwright.Float(timeout)})
 	restore := func() { _, _ = page.Evaluate(rowBatchRestoreScript) }
 	if err != nil {
@@ -651,10 +697,13 @@ func evaluatedInt(raw any, key string) int {
 	return 0
 }
 
-// prepareCourseMenu gives Moodle's accordion sections a chance to render
-// their activity cards before a semantic selector is evaluated. This is
-// intentionally limited to explicit collapse controls inside the course
-// content; it never clicks activity links or arbitrary page controls.
+// prepareCourseMenu leaves the course sections in a known state before a
+// semantic selector is evaluated. It never clicks Moodle's collapse toggles:
+// Moodle saves every toggle as a user preference, so clicking changed the
+// instructor's own course view in Zajuna and made each capture depend on the
+// ones before it (3.1 and 4.1 showed different sections on every run).
+// Sections are opened or closed in the DOM only; their content is already
+// rendered, hidden by the collapse classes.
 func prepareCourseMenu(page playwright.Page, options CaptureOptions) {
 	selectors := append([]string{options.Selector}, options.Selectors...)
 	needsCourseMenu := false
@@ -671,88 +720,77 @@ func prepareCourseMenu(page playwright.Page, options CaptureOptions) {
 		State:   playwright.LoadStateNetworkidle,
 		Timeout: playwright.Float(5000),
 	})
-	if len(options.RevealSelectors) > 0 {
-		for _, selector := range options.RevealSelectors {
-			control := page.Locator(strings.TrimSpace(selector))
-			if count, err := control.Count(); err == nil && count > 0 {
-				expanded, _ := control.First().GetAttribute("aria-expanded")
-				if strings.EqualFold(strings.TrimSpace(expanded), "false") {
-					_ = control.First().Click(playwright.LocatorClickOptions{
-						Force:   playwright.Bool(true),
-						Timeout: playwright.Float(1000),
-					})
-				}
-				_, _ = page.Evaluate(`(selector) => {
-					const control = document.querySelector(selector);
-					if (!control) return false;
-					const targetID = control.getAttribute('aria-controls') || (control.getAttribute('href') || '').replace(/^#/, '');
-					const target = targetID ? document.getElementById(targetID) : null;
-					if (!target) return false;
-					control.setAttribute('aria-expanded', 'true');
-					control.classList.remove('collapsed');
-					let node = target;
-					while (node && node.id !== 'region-main') {
-						node.classList.add('show');
-						node.classList.remove('collapse');
-						node.removeAttribute('hidden');
-						if (getComputedStyle(node).display === 'none') node.style.display = 'block';
-						if (getComputedStyle(node).visibility === 'hidden') node.style.visibility = 'visible';
-						node = node.parentElement;
-					}
-					return true;
-				}`, strings.TrimSpace(selector))
-			}
-		}
-		page.WaitForTimeout(300)
-		return
+	_, _ = page.Evaluate(courseLayoutScript, strings.TrimSpace(options.CourseLayout))
+	for _, selector := range options.RevealSelectors {
+		_, _ = page.Evaluate(revealCollapseTargetScript, strings.TrimSpace(selector))
 	}
-	// Only in-page collapse toggles. A generic `a[aria-expanded='false']`
-	// also matched real activity links: clicking one navigated to another
-	// page (e.g. "Material de apoyo al instructor") whose screenshot was then
-	// saved as the course section evidence.
-	collapseSelectors := []string{
-		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][href^='#']",
-		"#region-main .course-content button[data-toggle='collapse'][aria-expanded='false']",
-		"#region-main .course-content [data-toggle='collapse'][aria-expanded='false'][data-target]",
-		"#region-main .course-content [data-bs-toggle='collapse'][aria-expanded='false'][href^='#']",
-		"#region-main .course-content button[data-bs-toggle='collapse'][aria-expanded='false']",
-	}
-	clicked := 0
-	for round := 0; round < 16 && clicked < 40; round++ {
-		openedOne := false
-		for _, selector := range collapseSelectors {
-			locator := page.Locator(selector)
-			count, err := locator.Count()
-			if err != nil || count == 0 {
-				continue
-			}
-			for index := 0; index < count && clicked < 40; index++ {
-				candidate := locator.Nth(index)
-				visible, visibleErr := candidate.IsVisible()
-				if visibleErr != nil || !visible {
-					continue
-				}
-				if err := candidate.Click(playwright.LocatorClickOptions{
-					Force:   playwright.Bool(true),
-					Timeout: playwright.Float(500),
-				}); err != nil {
-					continue
-				}
-				clicked++
-				openedOne = true
-				break
-			}
-			if openedOne {
-				break
-			}
-		}
-		if !openedOne {
-			break
-		}
-		page.WaitForTimeout(100)
-	}
-	page.WaitForTimeout(350)
+	page.WaitForTimeout(300)
 }
+
+// Course layouts a capture can request (see checklist.CaptureTarget).
+const (
+	// CourseLayoutMenu closes every section: the evidence is the menu.
+	CourseLayoutMenu = "menu"
+	// CourseLayoutFirstSection closes every section and opens the first
+	// top-level one with its whole subtree (material and evidence links).
+	CourseLayoutFirstSection = "first-section"
+)
+
+// courseLayoutScript applies a course layout in the DOM. An empty layout
+// leaves the page as Zajuna rendered it; the captured section is then opened
+// by expandCourseSection.
+const courseLayoutScript = `(layout) => {
+	const content = document.querySelector('#region-main .course-content');
+	if (!content || (layout !== 'menu' && layout !== 'first-section')) return false;
+	const panelsOf = (section) => [...section.querySelectorAll(':scope > .content.collapse, :scope > .course-content-item-content.collapse')];
+	const setOpen = (section, open) => {
+		for (const panel of panelsOf(section)) {
+			panel.classList.toggle('show', open);
+			panel.style.display = open ? 'block' : 'none';
+			panel.style.height = open ? 'auto' : '';
+		}
+		for (const toggle of section.querySelectorAll(':scope > .course-section-header [data-toggle="collapse"], :scope > .course-section-header [data-bs-toggle="collapse"]')) {
+			toggle.setAttribute('aria-expanded', String(open));
+			toggle.classList.toggle('collapsed', !open);
+		}
+	};
+	const sections = [...content.querySelectorAll('li.section')];
+	sections.forEach((section) => setOpen(section, false));
+	if (layout === 'first-section') {
+		// Section 0 is the course header (banner, announcements): it stays
+		// open and is not the "first section" of the course content.
+		const general = document.getElementById('section-0');
+		if (general) setOpen(general, true);
+		const first = sections.find((section) => section !== general && !section.parentElement.closest('li.section') && panelsOf(section).length > 0);
+		if (first) {
+			setOpen(first, true);
+			first.querySelectorAll('li.section').forEach((section) => setOpen(section, true));
+		}
+	}
+	return true;
+}`
+
+// revealCollapseTargetScript opens the panel a collapse control points to
+// (and every collapsed ancestor) without clicking the control.
+const revealCollapseTargetScript = `(selector) => {
+	const control = document.querySelector(selector);
+	if (!control) return false;
+	const targetID = control.getAttribute('aria-controls') || (control.getAttribute('href') || '').replace(/^#/, '');
+	const target = targetID ? document.getElementById(targetID) : null;
+	if (!target) return false;
+	control.setAttribute('aria-expanded', 'true');
+	control.classList.remove('collapsed');
+	let node = target;
+	while (node && node.id !== 'region-main') {
+		node.classList.add('show');
+		node.classList.remove('collapse');
+		node.removeAttribute('hidden');
+		if (getComputedStyle(node).display === 'none') node.style.display = 'block';
+		if (getComputedStyle(node).visibility === 'hidden') node.style.visibility = 'visible';
+		node = node.parentElement;
+	}
+	return true;
+}`
 
 func isBlockedPage(page playwright.Page, title string) (bool, error) {
 	body, err := page.Locator("body").InnerText()
@@ -923,8 +961,11 @@ func prepareEmbeddedSheets(page playwright.Page, title string) {
 		}
 		frame := page.FrameLocator(fmt.Sprintf("%s >> nth=%d", embeddedSheetSelector, index))
 		// The published sheet renders its grid after load: wait for it, or
-		// the evidence showed a blank grid.
-		_ = frame.Locator("table.waffle td").First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(8000)})
+		// the evidence showed a blank grid. In the widget the grid lives in
+		// a nested frame (#pageswitcher-content), not in the widget itself.
+		if waitErr := frame.FrameLocator(embeddedSheetContentFrame).Locator("table.waffle td").First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(8000)}); waitErr != nil {
+			_ = frame.Locator("table.waffle td").First().WaitFor(playwright.LocatorWaitForOptions{State: playwright.WaitForSelectorStateVisible, Timeout: playwright.Float(2000)})
+		}
 		menu := frame.Locator("td.switcherItem, #sheet-menu a, #sheet-menu li")
 		candidate := menu.Filter(playwright.LocatorFilterOptions{HasText: tab})
 		if matches, countErr := candidate.Count(); countErr == nil && matches > 0 {
@@ -932,6 +973,90 @@ func prepareEmbeddedSheets(page playwright.Page, title string) {
 		}
 	}
 	page.WaitForTimeout(1500)
+	// A fixed 2400 px still cut long phases (the general cronograma showed
+	// only Inducción and part of Planear): grow each iframe to the height of
+	// the sheet it now shows, within what the evidence review accepts.
+	for index := 0; index < count; index++ {
+		height := embeddedSheetNeededHeight(page.FrameLocator(fmt.Sprintf("%s >> nth=%d", embeddedSheetSelector, index)))
+		if height <= embeddedSheetMinHeight {
+			continue
+		}
+		if height > embeddedSheetMaxHeight {
+			height = embeddedSheetMaxHeight
+		}
+		_, _ = frames.Nth(index).Evaluate(`(frame, height) => {
+			frame.style.height = height + 'px';
+			frame.setAttribute('height', String(height));
+			return true;
+		}`, height)
+	}
+	page.WaitForTimeout(1000)
+}
+
+const (
+	embeddedSheetMinHeight = 2400
+	// The captured region adds the page title and tabs to the iframe; the
+	// review flags images taller than 9000 px.
+	embeddedSheetMaxHeight = 8400
+	// The published-sheet widget shows the selected tab in this nested
+	// frame; the widget document only holds the tab bar around it.
+	embeddedSheetContentFrame = "#pageswitcher-content"
+)
+
+// embeddedSheetNeededHeight returns the widget height that shows the whole
+// selected sheet: the sheet content height plus the widget chrome (tab bar)
+// around the nested content frame. 0 when it cannot be measured.
+func embeddedSheetNeededHeight(widget playwright.FrameLocator) int {
+	options := playwright.LocatorEvaluateOptions{Timeout: playwright.Float(3000)}
+	raw, err := widget.FrameLocator(embeddedSheetContentFrame).Locator("body").Evaluate(embeddedSheetContentHeightScript, nil, options)
+	if err != nil {
+		// A plain pubhtml page (no widget) holds the grid directly.
+		raw, err = widget.Locator("body").Evaluate(embeddedSheetContentHeightScript, nil, options)
+		if err != nil {
+			return 0
+		}
+		return evaluatedNumber(raw)
+	}
+	content := evaluatedNumber(raw)
+	if content <= 0 {
+		return 0
+	}
+	chrome, err := widget.Locator("body").Evaluate(embeddedSheetChromeScript, nil, options)
+	if err != nil {
+		return 0
+	}
+	return content + evaluatedNumber(chrome) + 40
+}
+
+// embeddedSheetContentHeightScript measures the full height of a sheet
+// document: its scroll height or, when an inner container scrolls, the
+// bottom of its grids.
+const embeddedSheetContentHeightScript = `() => {
+	let bottom = Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+	for (const grid of document.querySelectorAll('table.waffle')) {
+		const box = grid.getBoundingClientRect();
+		if (box.height > 0) bottom = Math.max(bottom, box.top + box.height + window.scrollY);
+	}
+	return Math.ceil(bottom);
+}`
+
+// embeddedSheetChromeScript returns the widget height not used by the
+// nested content frame (tab bar, borders).
+const embeddedSheetChromeScript = `() => {
+	const content = document.querySelector('#pageswitcher-content');
+	return content ? Math.max(0, Math.ceil(window.innerHeight - content.getBoundingClientRect().height)) : 0;
+}`
+
+func evaluatedNumber(raw any) int {
+	switch value := raw.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	}
+	return 0
 }
 
 // neutralizeFloatingElements stops fixed/sticky page chrome from ending up

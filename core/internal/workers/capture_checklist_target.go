@@ -81,7 +81,8 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		FullPage: target.FullPage, LabelHint: target.LabelHint, OwnerName: params.OwnerName,
 		RequireSelector: target.RequireSelector, OwnerOnly: target.OwnerOnly,
 		RowSelector: target.RowSelector, RowsPerShot: target.RowsPerShot, RowBatch: target.RowBatch,
-		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch,
+		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch, RowRequireReply: target.RowRequireReply,
+		CourseLayout: target.CourseLayout,
 	}
 
 	var captureResult capture.CaptureResult
@@ -140,6 +141,9 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		if errors.Is(captureErr, capture.ErrChallengePage) {
 			return targetOutcome{failure: target.ItemCode + ": Zajuna pidió CAPTCHA o MFA"}
 		}
+		if message := semanticAbsence(target, captureErr); message != "" {
+			return targetOutcome{failure: target.ItemCode + ": " + message}
+		}
 		return targetOutcome{failure: target.ItemCode + ": " + captureErr.Error()}
 	}
 	if isZajunaLoginURL(captureResult.FinalURL) {
@@ -164,6 +168,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		"coveredItemCodes": coveredItemCodes(target), "captureUnitKey": target.RouteKey,
 		"rowSelector": target.RowSelector, "rowsPerShot": target.RowsPerShot, "rowBatch": target.RowBatch,
 		"rowsTotal": captureResult.RowsTotal, "rowStart": captureResult.RowStart, "contentItems": captureResult.ContentItems,
+		"rowMatch": target.RowMatch, "rowRequireReply": target.RowRequireReply, "semanticCheck": target.SemanticCheck, "courseLayout": target.CourseLayout,
 	})
 	capturedAt := time.Now().UTC()
 	evidenceRecords := 0
@@ -179,6 +184,23 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		evidenceRecords++
 	}
 	return targetOutcome{captured: true, evidenceRecords: evidenceRecords}
+}
+
+// semanticAbsenceMarker prefixes failures that mean Zajuna has no content
+// that satisfies the item's semantic rule (see absentContent).
+const semanticAbsenceMarker = "sin contenido válido en Zajuna"
+
+// semanticAbsence turns "no candidate at all" for a target with a semantic
+// rule into a plain absence: the page loaded but shows nothing that proves
+// the item (e.g. a forum without dates for 9.1.3). Other errors stay failures.
+func semanticAbsence(target checklist.CaptureTarget, captureErr error) string {
+	if target.SemanticCheck != checklist.SemanticForumDates || !errors.Is(captureErr, capture.ErrSelectorNotFound) {
+		return ""
+	}
+	if !strings.Contains(captureErr.Error(), "candidatos=0") {
+		return ""
+	}
+	return semanticAbsenceMarker + ": el foro no muestra fechas de apertura y cierre"
 }
 
 // CaptureChecklistTargetInput is the payload for a single-target checklist job.
@@ -240,8 +262,8 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
 	outcome := w.parent.captureChecklistTarget(ctx, checklistTargetParams{
-		JobID: job.ID,
-		Input: CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
+		JobID:  job.ID,
+		Input:  CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
 		Target: input.Target, BaseURL: baseURL, Session: session, Password: password,
 		OwnerName: input.OwnerName, UseBrowser: useBrowser,
 	})

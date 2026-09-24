@@ -227,3 +227,49 @@ func TestVerifyFlagsSectionsWithoutContent(t *testing.T) {
 		t.Fatalf("a section with content must be approved: %#v", full)
 	}
 }
+
+func TestVerifyRecordSameForumWithForceviewIsNotADuplicate(t *testing.T) {
+	dataDir := t.TempDir()
+	path := writeTestPNG(t, dataDir, "announcements.png", 800, 600, 0.5)
+	selector := "#region-main table.discussion-list, #region-main table.forumheaderlist"
+	// 11.4 reached the announcements forum with forceview=1 and 15.1 without
+	// it: the same page, so the same rows are expected, not a capture error.
+	format := testRecord("format", "11.4", path, "same", map[string]any{"selector": selector, "url": "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?forceview=1&id=3010173"})
+	netiqueta := testRecord("netiqueta", "15.1", path, "same", map[string]any{"selector": selector, "url": "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=3010173"})
+	all := []Record{format, netiqueta}
+	for _, record := range all {
+		if review := VerifyRecord(dataDir, record, all, time.Now()); review.Status != ReviewApproved {
+			t.Fatalf("%s must be approved, got %#v", record.ItemCode, review.Reasons)
+		}
+	}
+	// A different forum with identical bytes is still reported.
+	other := testRecord("other", "9.1.1", path, "same", map[string]any{"selector": selector, "url": "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=99"})
+	if review := VerifyRecord(dataDir, other, append(all, other), time.Now()); !reasonCodes(review)[ReasonDuplicateContent] {
+		t.Fatalf("a different page with the same image must be a duplicate: %#v", review.Reasons)
+	}
+}
+
+func TestVerifyRecordFlagsEvidenceFromAnOlderSemanticRule(t *testing.T) {
+	dataDir := t.TempDir()
+	path := writeTestPNG(t, dataDir, "forum.png", 800, 600, 0.5)
+	// Captured before replies were required: an instructor discussion with
+	// no replies was approved as proof that the instructor answers.
+	old := testRecord("old", "9.1.6", path, "old", map[string]any{"selector": "#region-main table.discussion-list"})
+	review := VerifyRecord(dataDir, old, []Record{old}, time.Now())
+	if review.Status != ReviewPending || !reasonCodes(review)[ReasonOutdatedRule] {
+		t.Fatalf("evidence from an older rule must be pending: %#v", review)
+	}
+	current := testRecord("current", "9.1.6", path, "current", map[string]any{"selector": "#region-main table.discussion-list", "semanticCheck": "forum-replies"})
+	if review := VerifyRecord(dataDir, current, []Record{current}, time.Now()); review.Status != ReviewApproved {
+		t.Fatalf("evidence captured with the current rule must be approved: %#v", review.Reasons)
+	}
+	// Items without a semantic rule and manual uploads are unaffected.
+	plain := testRecord("plain", "6.1", path, "plain", nil)
+	manual := testRecord("manual", "14.1.1", path, "manual", nil)
+	manual.Source = "manual-upload"
+	for _, record := range []Record{plain, manual} {
+		if review := VerifyRecord(dataDir, record, []Record{record}, time.Now()); reasonCodes(review)[ReasonOutdatedRule] {
+			t.Fatalf("%s must not be flagged as outdated", record.ID)
+		}
+	}
+}

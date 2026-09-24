@@ -191,8 +191,16 @@ func TestForumConfigurationUsesFullForumRegionWithoutOwnerRequirement(t *testing
 	}
 	for _, target := range targets {
 		if target.ItemCode == "9.1.3" {
-			if target.OwnerOnly || target.CSSSelector != "#page-mod-forum-view #region-main" || !target.RequireSelector || len(target.HideSelectors) != 1 || target.HideSelectors[0] != "#region-main table" {
+			// The full forum region, but only when it shows the configured
+			// dates: a forum without them must not become evidence.
+			if target.OwnerOnly || target.CSSSelector != ForumDatesSelector || !target.RequireSelector || len(target.HideSelectors) != 1 || target.HideSelectors[0] != "#region-main table" {
 				t.Fatalf("forum configuration should use a strict full-region capture: %#v", target)
+			}
+			if len(target.CSSSelectorFallbacks) != 1 || target.CSSSelectorFallbacks[0] != ForumDatesSelector {
+				t.Fatalf("forum configuration must not fall back to a region without dates: %#v", target.CSSSelectorFallbacks)
+			}
+			if target.SemanticCheck != SemanticForumDates {
+				t.Fatalf("forum configuration must record its semantic rule, got %q", target.SemanticCheck)
 			}
 			return
 		}
@@ -457,5 +465,61 @@ func TestSectionTitlesAreAnchoredAtTheStart(t *testing.T) {
 	selector := topLevelCourseSectionByTitle(seguimientoSectionTitle)
 	if !strings.Contains(selector, `text-matches("^`) || !strings.Contains(selector, "Seguimiento y Evaluaci") || !strings.Contains(selector, ":not(li.section li.section)") {
 		t.Fatalf("7.1.x must match a top-level section whose name starts with the title, got %s", selector)
+	}
+}
+
+func TestForumReplyAndConclusionItemsEnforceTheirContentRule(t *testing.T) {
+	forum := `["https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=88"]`
+	record := coursemaps.Record{
+		ByItemCode: map[string]json.RawMessage{"9.1.5": json.RawMessage(forum), "9.1.6": json.RawMessage(forum), "9.1.7": json.RawMessage(forum), "14.1.1": json.RawMessage(forum), "14.1.2": json.RawMessage(forum)},
+		Routes:     []coursemaps.Route{{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=88", Title: "Foro Temático"}},
+	}
+	targets, _, err := BuildCaptureTargets(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]CaptureTarget{}
+	for _, target := range targets {
+		for _, code := range target.CoveredItemCodes {
+			if _, ok := seen[code]; !ok {
+				seen[code] = target
+			}
+		}
+	}
+	for _, code := range []string{"9.1.5", "9.1.6", "9.1.7"} {
+		target, ok := seen[code]
+		if !ok {
+			t.Fatalf("%s target was not generated", code)
+		}
+		// An instructor discussion without replies does not prove that the
+		// instructor answers.
+		if !target.RowRequireReply || !target.OwnerOnly || target.SemanticCheck != SemanticForumReplies {
+			t.Fatalf("%s must require instructor replies: %#v", code, target)
+		}
+	}
+	for _, code := range []string{"14.1.1", "14.1.2"} {
+		target, ok := seen[code]
+		if !ok {
+			t.Fatalf("%s target was not generated", code)
+		}
+		if target.RowRequireReply || strings.Join(target.RowMatch, "|") != "conclusion" || target.SemanticCheck != SemanticForumConclusion {
+			t.Fatalf("%s must require a conclusion discussion: %#v", code, target)
+		}
+	}
+	if captureUnitKey(seen["9.1.6"]) == captureUnitKey(seen["14.1.1"]) {
+		t.Fatal("replies and conclusion items must not share one capture")
+	}
+}
+
+func TestSemanticCheckForItem(t *testing.T) {
+	for code, want := range map[string]string{
+		"9.1.3": SemanticForumDates, "9.1.4": SemanticForumDates,
+		"9.1.5": SemanticForumReplies, "9.1.6": SemanticForumReplies, "9.1.7": SemanticForumReplies,
+		"14.1.1": SemanticForumConclusion, "14.1.2": SemanticForumConclusion,
+		"9.1.1": "", "11.4": "", "6.1": "",
+	} {
+		if got := SemanticCheckForItem(code); got != want {
+			t.Fatalf("SemanticCheckForItem(%s) = %q, want %q", code, got, want)
+		}
 	}
 }

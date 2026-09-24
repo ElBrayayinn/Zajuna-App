@@ -64,7 +64,61 @@ type CaptureTarget struct {
 	// (accent/case-insensitive), so each announcement item shows its own
 	// announcements instead of the same generic rows as every other item.
 	RowMatch []string `json:"rowMatch,omitempty"`
+	// RowRequireReply keeps only discussions with at least one reply whose
+	// last message is by the instructor: the proof that the instructor
+	// answered, instead of a discussion the instructor merely opened.
+	RowRequireReply bool `json:"rowRequireReply,omitempty"`
+	// SemanticCheck names the content rule this capture enforced. It is
+	// persisted with the evidence so the automatic review can tell apart
+	// evidence captured with an older, weaker rule (see SemanticCheckForItem).
+	SemanticCheck string `json:"semanticCheck,omitempty"`
+	// CourseLayout is the state the course sections are put in before a
+	// whole-course capture ("menu" or "first-section"), so the evidence does
+	// not depend on what the instructor left open in Zajuna.
+	CourseLayout string `json:"courseLayout,omitempty"`
 }
+
+// courseLayoutForGroup: 4.1 proves the menu (every section closed) and 3.1
+// the material and evidence links (the first section open with its whole
+// subtree). Other course captures crop one section and open only that one.
+func courseLayoutForGroup(groupName string) string {
+	switch groupName {
+	case "menu_curso":
+		return "menu"
+	case "disponibilidad":
+		return "first-section"
+	}
+	return ""
+}
+
+// Semantic content rules enforced at capture time.
+const (
+	// SemanticForumReplies: discussions answered by the instructor.
+	SemanticForumReplies = "forum-replies"
+	// SemanticForumConclusion: an instructor discussion titled as conclusion.
+	SemanticForumConclusion = "forum-conclusion"
+	// SemanticForumDates: a forum page that shows its opening/closing dates.
+	SemanticForumDates = "forum-dates"
+)
+
+// SemanticCheckForItem returns the content rule an item's evidence must have
+// been captured with, or "" when the route and selector already identify it.
+func SemanticCheckForItem(itemCode string) string {
+	switch itemCode {
+	case "9.1.5", "9.1.6", "9.1.7":
+		return SemanticForumReplies
+	case "14.1.1", "14.1.2":
+		return SemanticForumConclusion
+	case "9.1.3", "9.1.4":
+		return SemanticForumDates
+	}
+	return ""
+}
+
+// ForumDatesSelector matches a forum page only when Moodle shows its activity
+// dates ("Apertura:", "Cierre:", "Vencimiento:", "Fecha límite:"). A forum
+// without configured dates is not evidence of 9.1.3/9.1.4.
+const ForumDatesSelector = `#page-mod-forum-view #region-main:has([data-region="activity-dates"], .activity-dates, :text-matches("^\\s*(Apertura|Abri[óo]|Cierre|Cierra|Vencimiento|Vence|Fecha l[ií]mite|Fecha de corte)\\s*:", "i"))`
 
 type CapturePlanSummary struct {
 	ItemCount        int `json:"itemCount"`
@@ -342,7 +396,10 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				if batched {
 					target.RowSelector, target.RowsPerShot, target.RowBatch = rows.rowSelector, RowsPerShot, batch
 					target.RowMatch = rowMatchForItem(spec.ItemCode)
+					target.RowRequireReply = SemanticCheckForItem(spec.ItemCode) == SemanticForumReplies
 				}
+				target.SemanticCheck = SemanticCheckForItem(spec.ItemCode)
+				target.CourseLayout = courseLayoutForGroup(spec.GroupName)
 				targets = append(targets, target)
 				addedCount++
 			}
@@ -410,6 +467,9 @@ func captureUnitKey(target CaptureTarget) string {
 		strconv.Itoa(target.RowBatch),
 		strconv.FormatBool(target.OptionalSlot),
 		strings.Join(target.RowMatch, "\x00"),
+		strconv.FormatBool(target.RowRequireReply),
+		strings.TrimSpace(target.SemanticCheck),
+		strings.TrimSpace(target.CourseLayout),
 	}, "\x1f")
 }
 
@@ -826,7 +886,10 @@ func captureSelectorChain(groupName, primary string) []string {
 }
 
 func captureSelectorForItem(itemCode, groupName, fallback string) string {
-	if groupName == "foros" && (itemCode == "9.1.1" || itemCode == "9.1.2" || itemCode == "9.1.3" || itemCode == "9.1.4") {
+	if groupName == "foros" && (itemCode == "9.1.3" || itemCode == "9.1.4") {
+		return ForumDatesSelector
+	}
+	if groupName == "foros" && (itemCode == "9.1.1" || itemCode == "9.1.2") {
 		return "#page-mod-forum-view #region-main"
 	}
 	if title := courseSectionTitleForItem(itemCode); title != "" {
@@ -839,6 +902,10 @@ func captureSelectorForItem(itemCode, groupName, fallback string) string {
 }
 
 func captureSelectorChainForItem(itemCode, groupName, primary string) []string {
+	if primary == ForumDatesSelector {
+		// No fallback: a forum page without dates must not become evidence.
+		return []string{ForumDatesSelector}
+	}
 	chain := captureSelectorChain(groupName, primary)
 	if title := courseSectionTitleForItem(itemCode); title != "" && title != seguimientoSectionTitle && title != sesionesSectionTitle {
 		// A missing subsection falls back to its parent section, never to
@@ -874,6 +941,8 @@ func rowMatchForItem(itemCode string) []string {
 		return []string{"invitacion a sesion", "sesion en linea"}
 	case "11.3":
 		return []string{"aprobados"}
+	case "14.1.1", "14.1.2":
+		return []string{"conclusion"}
 	}
 	return nil
 }

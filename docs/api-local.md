@@ -548,11 +548,32 @@ perfil/foro o que sea un fixture fuera del catálogo del checklist.
 Cada evidencia queda `approved`, `pending` o `rejected` (tabla
 `evidence_reviews`, schema v14). La verificación automática detecta problemas
 técnicos: `file_missing` y `login_page` (rechazada); `too_wide` (> 4000 px),
-`too_tall` (> 9000 px), `too_small` (< 200×120 px), `mostly_blank` (≥ 96 %
-casi blanco), `generic_selector` y `duplicate_content` (pendiente). Una
-decisión manual se respeta mientras el `sha256` no cambie; al recapturar se
-vuelve a verificar. `capture-checklist` ejecuta la verificación al terminar
-(sin hacer fallar la captura).
+`too_tall` (> 9000 px), `too_small` (< 200×120 px, solo en secciones del
+curso), `mostly_blank` (≥ 99,5 % casi blanco), `empty_section` (sección sin
+actividades ni archivos), `generic_selector`, `duplicate_content` y
+`outdated_rule` (pendiente). Una decisión manual se respeta mientras el
+`sha256` no cambie; al recapturar se vuelve a verificar. `capture-checklist`
+ejecuta la verificación al terminar (sin hacer fallar la captura).
+
+- `duplicate_content` compara el `sha256` con evidencias de otros ítems. No
+  cuenta como duplicado cuando las dos apuntan a la misma página y selector:
+  la URL se compara sin `forceview`, sin fragmento y sin importar el orden de
+  los parámetros (11.4 y 15.1 usan el mismo foro de anuncios).
+- `outdated_rule`: los ítems cuya prueba depende del contenido (ver
+  `checklist.SemanticCheckForItem`) guardan en la metadata la regla con la que
+  se capturaron (`semanticCheck`). Una captura hecha con una regla anterior
+  queda pendiente hasta volver a capturar el ítem. No aplica a subidas
+  manuales.
+
+| Ítems | Regla (`semanticCheck`) | Qué exige la captura |
+|---|---|---|
+| 9.1.5, 9.1.6, 9.1.7 | `forum-replies` | Debates con réplicas cuyo último mensaje es del instructor. |
+| 14.1.1, 14.1.2 | `forum-conclusion` | Debate del instructor cuyo título contiene «conclusión». |
+| 9.1.3, 9.1.4 | `forum-dates` | Página del foro que muestra sus fechas (apertura, cierre, vencimiento). |
+
+Si Zajuna no tiene contenido que cumpla la regla, el slot queda **ausente**
+(«sin contenido en Zajuna»), no fallido, y la evidencia que dejó una corrida
+anterior en ese slot se retira.
 
 - `GET /api/evidences/review?fichaId=<id>`: estado guardado (solo verifica las
   evidencias sin revisión). Responde `{fichaId, verifiedAt, summary,
