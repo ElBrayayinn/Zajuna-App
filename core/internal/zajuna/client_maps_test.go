@@ -116,3 +116,21 @@ func TestDiscoverCourseMapReadsJumpOptionsWithActivityTitles(t *testing.T) {
 		t.Fatalf("expected route title from jump option: %#v", record.Routes)
 	}
 }
+
+func TestIsCourseMapFollowCandidateStaysOnCourse(t *testing.T) {
+	course := "https://zajuna.sena.edu.co/zajuna/course/view.php?id=41080"
+	other := "https://zajuna.sena.edu.co/zajuna/course/view.php?id=99999"
+	forum := "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=12"
+	if !isCourseMapFollowCandidate(course, "course", "41080") {
+		t.Fatal("same course page must be followed")
+	}
+	if isCourseMapFollowCandidate(other, "course", "41080") {
+		t.Fatal("other course pages must not be crawled")
+	}
+	if !isCourseMapFollowCandidate(forum, "forum", "41080") {
+		t.Fatal("same-site activity pages remain follow candidates")
+	}
+	if fallbackRouteTitle(forum, "forum") == "" {
+		t.Fatal("empty anchors still get a title fallback")
+	}
+}

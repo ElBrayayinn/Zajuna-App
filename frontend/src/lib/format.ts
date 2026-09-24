@@ -37,6 +37,7 @@ const JOB_TYPE_LABELS: Record<JobType, string> = {
   'capture-browser': 'Preparar captura',
   'export-report': 'Generar reporte',
   backup: 'Crear copia de respaldo',
+  'test-zajuna-connection': 'Probar conexión Zajuna',
 }
 
 export function friendlyJobType(value: JobType) {

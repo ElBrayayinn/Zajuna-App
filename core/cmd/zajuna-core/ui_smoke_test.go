@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mxschmitt/playwright-go"
@@ -92,7 +93,7 @@ func TestDashboardBrowserSmoke(t *testing.T) {
 	}
 	// "/" redirects to /resumen; the accessible heading names the current page.
 	pageTitle, err := page.Locator("#dashboard-title").TextContent()
-	if err != nil || pageTitle != "Resumen" {
+	if err != nil || strings.TrimSpace(pageTitle) != "Resumen" {
 		t.Fatalf("unexpected dashboard title %q: %v", pageTitle, err)
 	}
 	for _, selector := range []string{"main[aria-labelledby='dashboard-title']", "#workspace", "#overview-jobs", "#ficha-select", ".evidence-gallery", ".reports-card"} {

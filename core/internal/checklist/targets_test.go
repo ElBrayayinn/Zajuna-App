@@ -579,3 +579,14 @@ func TestTransversalOnlySelectionDoesNotEnableEveryActivityForum(t *testing.T) {
 		t.Fatalf("every item must be counted once: %+v", summary)
 	}
 }
+
+func TestDistributeSlotBatchesUsesRemainder(t *testing.T) {
+	got := distributeSlotBatches(8, 3)
+	if len(got) != 3 || got[0] != 3 || got[1] != 3 || got[2] != 2 {
+		t.Fatalf("8 slots among 3 lists: got %v, want 3,3,2", got)
+	}
+	even := distributeSlotBatches(6, 3)
+	if len(even) != 3 || even[0] != 2 || even[1] != 2 || even[2] != 2 {
+		t.Fatalf("even split: got %v", even)
+	}
+}

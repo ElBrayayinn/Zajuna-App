@@ -32,7 +32,8 @@ type checklistTargetParams struct {
 	CookieMu   *sync.Mutex
 	// Sessions reuses authenticated Chromium sessions across targets of one
 	// run. Nil (single-target jobs) opens and closes a session per target.
-	Sessions *browserSessionPool
+	Sessions  *browserSessionPool
+	AutoRenew bool
 }
 
 type targetOutcome struct {
@@ -63,7 +64,10 @@ func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context
 // usable after a capture. "Selector not found" and empty row batches are
 // page-level outcomes; login redirects, challenges and navigation errors may
 // leave the session in an unknown state, so it is replaced.
-func reusableBrowserSession(captureErr error, finalURL string) bool {
+func reusableBrowserSession(captureErr error, finalURL string, autoRenew bool) bool {
+	if !autoRenew {
+		return false
+	}
 	if captureErr == nil {
 		return !isZajunaLoginURL(finalURL)
 	}
@@ -107,7 +111,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		}
 		captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
 		if params.Sessions != nil {
-			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL))
+			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL, params.AutoRenew))
 		} else {
 			browserSession.Close()
 		}

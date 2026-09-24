@@ -185,13 +185,19 @@ func (r *Runtime) Submit(ctx context.Context, workerID string, input any) (Job, 
 	if err := r.store.CreateJob(ctx, job); err != nil {
 		return Job{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		_ = r.store.FailJob(context.Background(), job.ID, "enqueue_cancelled", "el trabajo no llegó a ejecutarse")
+		return Job{}, err
+	}
 
 	select {
 	case r.queue <- job.ID:
 		return job, nil
 	case <-ctx.Done():
+		_ = r.store.FailJob(context.Background(), job.ID, "enqueue_cancelled", "el trabajo no llegó a ejecutarse")
 		return Job{}, ctx.Err()
 	case <-r.runtimeDone():
+		_ = r.store.FailJob(context.Background(), job.ID, "runtime_stopped", "el runtime se detuvo antes de ejecutar el trabajo")
 		return Job{}, errors.New("job runtime is not running")
 	}
 }
@@ -272,9 +278,19 @@ func (r *Runtime) execute(id string) {
 	wasCancelled := workerCtx.Err() != nil
 	cancel()
 	if wasCancelled {
+		if result.Output != nil {
+			if encoded, marshalErr := json.Marshal(result.Output); marshalErr == nil {
+				_ = r.store.AppendEvent(r.ctx, Event{JobID: id, Kind: "output", Message: "captura cancelada", Data: encoded, CreatedAt: time.Now().UTC()})
+			}
+		}
 		return
 	}
 	if result.ErrorMessage != "" {
+		if result.Output != nil {
+			if encoded, marshalErr := json.Marshal(result.Output); marshalErr == nil {
+				_ = r.store.AppendEvent(r.ctx, Event{JobID: id, Kind: "output", Message: result.ErrorMessage, Data: encoded, CreatedAt: time.Now().UTC()})
+			}
+		}
 		if result.Retryable && job.Attempt < job.MaxAttempts {
 			if err := r.store.RetryJob(r.ctx, id, result.ErrorCode, result.ErrorMessage); err != nil {
 				if errors.Is(err, ErrInvalidTransition) {

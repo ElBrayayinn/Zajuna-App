@@ -55,11 +55,9 @@ const FullResetMarker = "full"
 // AppVersionFile records which app version created the local data.
 const AppVersionFile = ".app-version"
 
-// EnforceVersion makes every new version start from a clean workspace, as an
-// installed desktop app should: when the data on disk was created by a
-// different version (or by a release older than this marker, which never
-// wrote it), everything is wiped, backups included, before SQLite opens.
-// Development builds ("dev" or empty) never wipe.
+// EnforceVersion records which app version last opened this data directory.
+// It never deletes user data: upgrades keep evidencias, fichas and backups.
+// A full wipe is only the in-app reset or an installer/uninstaller marker.
 func EnforceVersion(dataDir, version string) (bool, error) {
 	version = strings.TrimSpace(version)
 	if version == "" || version == "dev" {
@@ -70,30 +68,13 @@ func EnforceVersion(dataDir, version string) (bool, error) {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, fmt.Errorf("read app version marker: %w", err)
 	}
-	stale := strings.TrimSpace(string(previous)) != version
-	wiped := false
-	if stale && (len(previous) > 0 || hasUserData(dataDir)) {
-		var partial *partialWipeError
-		if err := wipe(dataDir, true); err != nil && !errors.As(err, &partial) {
-			return false, err
-		}
-		wiped = true
+	if strings.TrimSpace(string(previous)) == version {
+		return false, nil
 	}
-	if stale {
-		if err := os.WriteFile(markerPath, []byte(version+"\n"), 0o600); err != nil {
-			return wiped, fmt.Errorf("write app version marker: %w", err)
-		}
+	if err := os.WriteFile(markerPath, []byte(version+"\n"), 0o600); err != nil {
+		return false, fmt.Errorf("write app version marker: %w", err)
 	}
-	return wiped, nil
-}
-
-func hasUserData(dataDir string) bool {
-	for _, name := range []string{"zajuna.db", "config.json", "evidences", "reports"} {
-		if _, err := os.Stat(filepath.Join(dataDir, name)); err == nil {
-			return true
-		}
-	}
-	return false
+	return false, nil
 }
 
 // wipe removes the user data. The database is mandatory: if it cannot be

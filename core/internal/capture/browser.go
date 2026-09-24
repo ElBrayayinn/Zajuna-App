@@ -8,10 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
 )
+
+var playwrightEnvMu sync.Mutex
 
 type Runtime struct {
 	Root        string
@@ -154,6 +157,8 @@ func (r Runtime) Start() (*playwright.Playwright, error) {
 	if !r.Installed() {
 		return nil, fmt.Errorf("runtime Chromium no instalado en %s; ejecuta npm run browser:install", r.Root)
 	}
+	playwrightEnvMu.Lock()
+	defer playwrightEnvMu.Unlock()
 	if err := os.Setenv("PLAYWRIGHT_DRIVER_PATH", r.DriverDir); err != nil {
 		return nil, fmt.Errorf("configurar driver de Playwright: %w", err)
 	}
@@ -456,7 +461,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			return CaptureResult{}, fmt.Errorf("%w (%w): la página cargó pero no muestra %s", ErrSelectorNotFound, ErrContentAbsent, strings.TrimSpace(options.Selector))
 		}
 	}
-	if options.RequireSelector {
+	if options.RequireSelector || len(selectors) > 0 {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)
 		if len(selectorDiagnostics) > 0 {
 			diagnostics += ", selectores=" + strings.Join(selectorDiagnostics, " | ")
@@ -697,6 +702,7 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 	restore()
 	return rowBatchOutcome{handled: true, total: total, start: start}, captureErr
 }
+
 
 func evaluatedInt(raw any, key string) int {
 	values, ok := raw.(map[string]any)

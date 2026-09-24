@@ -3,6 +3,7 @@ package zajuna
 import (
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/zajuna-app/core/internal/coursemaps"
 )
@@ -24,7 +25,7 @@ var forumPoolTerms = map[string][]string{
 	"dudas_singleton":     {"foro de dudas", "dudas o inquietudes", "dudas e inquietudes"},
 	"tematico_slot":       {"foro temático", "foro tematico", "temático", "tematico"},
 	"anuncios_singleton":  {"anuncios"},
-	"anuncio_slot":        {"anuncio", "comunicativa", "aprendices aprobados"},
+	"anuncio_slot":        {"anuncios", "anuncio", "comunicativa", "aprendices aprobados"},
 	"sesion_slot":         {"sesión en línea", "sesion en linea", "sesión sincrónica", "grabación sesión"},
 	// MDL-153: this mode used to be "induccion_singleton" searching for
 	// induction/onboarding terms — unrelated to item 15.1 ("Lenguaje cortés y
@@ -66,12 +67,13 @@ func buildExactChecklistRouteGroups(routes []coursemaps.Route, courseID, profile
 	})
 	put([]string{"1.2.1", "1.2.2", "1.2.3", "1.2.4", "1.2.5", "1.2.6", "1.2.7"}, fases)
 
+	forumFilter := func(route coursemaps.Route) bool { return !route.Technical }
 	forumPools := make(map[string][]string, len(forumPoolTerms))
 	for mode, terms := range forumPoolTerms {
 		if strings.HasSuffix(mode, "_singleton") {
-			forumPools[mode] = singleValue(pickSingletonRoute(routes, []string{"forum"}, terms, 8, nil))
+			forumPools[mode] = singleValue(pickSingletonRoute(routes, []string{"forum"}, terms, 8, forumFilter))
 		} else {
-			forumPools[mode] = buildOrderedRoutePool(routes, []string{"forum"}, terms, 8, nil)
+			forumPools[mode] = buildOrderedRoutePool(routes, []string{"forum"}, terms, 8, forumFilter)
 		}
 	}
 	for itemCode, mode := range forumResolveModes {
@@ -211,13 +213,41 @@ func scoreRoute(route coursemaps.Route, terms []string) int {
 		}
 		if label == term {
 			score += 50
-		} else if strings.Contains(label, term) {
+		} else if containsNormalizedTerm(label, term) {
 			score += len([]rune(term)) + 10
-		} else if strings.Contains(searchable, term) {
+		} else if containsNormalizedTerm(searchable, term) {
 			score += 4
 		}
 	}
 	return score
+}
+
+func containsNormalizedTerm(haystack, term string) bool {
+	if term == "" || haystack == "" {
+		return false
+	}
+	if haystack == term {
+		return true
+	}
+	start := 0
+	for {
+		index := strings.Index(haystack[start:], term)
+		if index < 0 {
+			return false
+		}
+		index += start
+		left := []rune(haystack[:index])
+		right := []rune(haystack[index+len(term):])
+		leftOK := len(left) == 0 || !(unicode.IsLetter(left[len(left)-1]) || unicode.IsDigit(left[len(left)-1]))
+		rightOK := len(right) == 0 || !(unicode.IsLetter(right[0]) || unicode.IsDigit(right[0]))
+		if leftOK && rightOK {
+			return true
+		}
+		start = index + 1
+		if start >= len(haystack) {
+			return false
+		}
+	}
 }
 
 func resolverText(route coursemaps.Route) string {
@@ -235,7 +265,7 @@ func normalizeResolverText(value string) string {
 func titleHasAnyTerm(route coursemaps.Route, terms []string) bool {
 	title := normalizeResolverText(route.Title)
 	for _, term := range terms {
-		if term = normalizeResolverText(term); term != "" && strings.Contains(title, term) {
+		if term = normalizeResolverText(term); term != "" && containsNormalizedTerm(title, term) {
 			return true
 		}
 	}

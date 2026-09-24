@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { backupDownloadUrl } from '../api/client'
+import { api, backupDownloadUrl } from '../api/client'
 import { PageError, PageSkeleton } from '../components/AsyncState'
 import { useAppInfo, useResetApp, useBackups, useCleanupBackups, useCreateBackup, useDashboard, useDeleteBackup, useFichas, useRestoreBackup, useClearEvidences, useSaveSettings, useSaveSetup, useSettings, useSetupStatus } from '../hooks/api'
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
-import type { AppSettings } from '../types'
+import type { AppSettings, Job } from '../types'
 
 type SettingsTabId = 'account' | 'capture' | 'storage' | 'backup' | 'notifications' | 'about'
 type DocumentType = 'CC' | 'TI' | 'CE'
@@ -58,6 +58,7 @@ export function Settings() {
   const [resetBackupFirst, setResetBackupFirst] = useState(true)
   const [resetForgetCredentials, setResetForgetCredentials] = useState(false)
   const [resetDone, setResetDone] = useState<{ restarting: boolean; backupName?: string } | null>(null)
+  const [connectionCheck, setConnectionCheck] = useState<'idle' | 'checking' | 'ok' | 'fail'>('idle')
 
   const [documentType, setDocumentType] = useState<DocumentType>(setup?.zajunaDocumentType || 'CC')
   const [username, setUsername] = useState(setup?.zajunaUsername || '')
@@ -110,12 +111,43 @@ export function Settings() {
     )
   }
 
+  async function waitForJob(id: string): Promise<Job> {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const job = await api.getJob(id)
+      if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+        return job
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 500))
+    }
+    throw new Error('La prueba de conexión tardó demasiado.')
+  }
+
+  async function verifyConnection(document: string, type: DocumentType) {
+    setConnectionCheck('checking')
+    try {
+      const job = await api.testConnection({ username: document, documentType: type })
+      const done = await waitForJob(job.id)
+      if (done.status === 'completed') {
+        setConnectionCheck('ok')
+        toast('Conexión verificada con Zajuna.')
+        return
+      }
+      setConnectionCheck('fail')
+      toast(friendlyError(done.errorMessage || 'No se pudo verificar la conexión.'), true)
+    } catch (err) {
+      setConnectionCheck('fail')
+      const message = err instanceof Error ? err.message : 'No se pudo verificar la conexión.'
+      toast(friendlyError(message), true)
+    }
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     try {
       await saveSetup.mutateAsync({ zajunaUsername: username.trim(), zajunaDocumentType: documentType, zajunaPassword: password })
-      toast('Conexión guardada correctamente.')
+      toast('Conexión guardada. Comprobando acceso a Zajuna…')
       setPassword('')
+      await verifyConnection(username.trim(), documentType)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo guardar la conexión.'
       toast(friendlyError(message), true)
@@ -309,11 +341,24 @@ export function Settings() {
               <div className="settings-row">
                 <div>
                   <strong>Estado de conexión</strong>
-                  <span>{setup?.setupComplete ? 'Conexión configurada en este equipo.' : 'Pendiente de configurar.'}</span>
+                  <span>
+                    {connectionCheck === 'checking' && 'Comprobando el acceso a Zajuna…'}
+                    {connectionCheck === 'ok' && 'La sesión respondió correctamente.'}
+                    {connectionCheck === 'fail' && 'La prueba de conexión no pudo autenticar.'}
+                    {connectionCheck === 'idle' && (setup?.setupComplete ? 'Credenciales guardadas en este equipo. Prueba la conexión para verificarlas.' : 'Pendiente de configurar.')}
+                  </span>
                 </div>
-                <span className={`status-chip ${setup?.setupComplete ? 'ok' : 'pending'}`}>
-                  {setup?.setupComplete ? 'Verificada' : 'Pendiente'}
+                <span className={`status-chip ${connectionCheck === 'ok' ? 'ok' : connectionCheck === 'fail' ? 'error' : setup?.setupComplete ? 'pending' : 'pending'}`}>
+                  {connectionCheck === 'checking' && 'Comprobando'}
+                  {connectionCheck === 'ok' && 'Verificada'}
+                  {connectionCheck === 'fail' && 'Falló'}
+                  {connectionCheck === 'idle' && (setup?.setupComplete ? 'Configurada' : 'Pendiente')}
                 </span>
+              </div>
+              <div className="form-actions">
+                <button className="button" type="button" disabled={connectionCheck === 'checking' || !setup?.setupComplete} onClick={() => verifyConnection(username.trim(), documentType)}>
+                  {connectionCheck === 'checking' ? 'Comprobando…' : 'Probar conexión'}
+                </button>
               </div>
             </section>
           </div>

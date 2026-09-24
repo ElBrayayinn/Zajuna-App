@@ -121,6 +121,9 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 			if route.Title == "" {
 				route.Title = pageTitle
 			}
+			if route.Title == "" {
+				route.Title = fallbackRouteTitle(target, kind)
+			}
 			mergeDiscoveredRoute(route)
 
 			if node.Depth < options.MaxDepth && isCourseMapFollowCandidate(target, kind, courseID) && !visitedPages[target] {
@@ -138,6 +141,12 @@ func (c *Client) DiscoverCourseMap(ctx context.Context, session Session, courseI
 			route := coursemaps.Route{
 				URL: target, Kind: classifyRoute(target), Title: cleanText(match[2]),
 				Depth: node.Depth + 1, SourceURL: node.URL,
+			}
+			if route.Title == "" {
+				route.Title = pageTitle
+			}
+			if route.Title == "" {
+				route.Title = fallbackRouteTitle(target, route.Kind)
 			}
 			if route.Kind == "forum" || route.Kind == "assign" || route.Kind == "grading" {
 				route.Technical = coursemaps.IsTechnicalActivity(route.Title)
@@ -280,11 +289,46 @@ func isHTMLCandidate(rawURL, kind string) bool {
 }
 
 func isCourseMapFollowCandidate(rawURL, kind, courseID string) bool {
-	if kind == "course" {
-		parsed, err := url.Parse(rawURL)
-		return err == nil && parsed.Query().Get("id") == courseID && isHTMLCandidate(rawURL, kind)
+	if !isHTMLCandidate(rawURL, kind) {
+		return false
 	}
-	return isHTMLCandidate(rawURL, kind)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	path := strings.ToLower(parsed.Path)
+	if strings.Contains(path, "/login/") || strings.Contains(path, "/admin/") || strings.Contains(path, "/enrol/") {
+		return false
+	}
+	query := parsed.Query()
+	if strings.Contains(path, "/course/") {
+		id := query.Get("id")
+		return id == courseID
+	}
+	if strings.Contains(path, "/grade/") {
+		id := query.Get("id")
+		return id == "" || id == courseID
+	}
+	if course := query.Get("course"); course != "" && course != courseID {
+		return false
+	}
+	return true
+}
+
+func fallbackRouteTitle(rawURL, kind string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Path == "" {
+		return kind
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	last := parts[len(parts)-1]
+	if last == "" && len(parts) > 1 {
+		last = parts[len(parts)-2]
+	}
+	if id := parsed.Query().Get("id"); id != "" {
+		return strings.TrimSpace(kind + " " + last + " " + id)
+	}
+	return strings.TrimSpace(kind + " " + last)
 }
 
 func hasResourceExtension(path string) bool {

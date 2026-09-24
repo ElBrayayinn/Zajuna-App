@@ -23,7 +23,6 @@ type evidenceView struct {
 	ItemCode   string `json:"itemCode,omitempty"`
 	SlotNumber int    `json:"slotNumber"`
 	Name       string `json:"name"`
-	FilePath   string `json:"filePath"`
 	Format     string `json:"format"`
 	Source     string `json:"source"`
 	SHA256     string `json:"sha256"`
@@ -54,11 +53,11 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 			writeError(w, http.StatusServiceUnavailable, errors.New("el almacenamiento de evidencias no está disponible"))
 			return
 		}
-		limit := 50
+		limit := 1000
 		if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
 			parsed, err := strconv.Atoi(rawLimit)
-			if err != nil || parsed < 1 || parsed > 100 {
-				writeError(w, http.StatusBadRequest, errors.New("limit debe ser un número entre 1 y 100"))
+			if err != nil || parsed < 1 || parsed > 10000 {
+				writeError(w, http.StatusBadRequest, errors.New("limit debe ser un número entre 1 y 10000"))
 				return
 			}
 			limit = parsed
@@ -220,6 +219,9 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
+		if groupStore, ok := store.(evidence.GroupStore); ok {
+			_, _ = groupStore.RebuildEvidenceGroups(r.Context(), fichaID)
+		}
 		writeJSON(w, http.StatusCreated, toEvidenceView(record))
 	})
 
@@ -236,10 +238,6 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 		}
 		if !isLocalArtifact(item.FilePath, filepath.Join(dataDir, "evidences")) {
 			writeError(w, http.StatusForbidden, errors.New("la evidencia está fuera del almacenamiento local permitido"))
-			return
-		}
-		if err := os.Remove(item.FilePath); err != nil && !os.IsNotExist(err) {
-			writeError(w, http.StatusInternalServerError, errors.New("no se pudo retirar el archivo local"))
 			return
 		}
 		if _, err := deleteStore.DeleteEvidence(r.Context(), item.ID); err != nil {
@@ -299,7 +297,7 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 }
 
 func toEvidenceView(item evidence.Record) evidenceView {
-	return evidenceView{ID: item.ID, FichaID: item.FichaID, ItemCode: item.ItemCode, SlotNumber: item.SlotNumber, Name: item.Name, FilePath: item.FilePath, Format: item.Format, Source: item.Source, SHA256: item.SHA256, CapturedAt: item.CapturedAt.Format("2006-01-02T15:04:05.999Z07:00")}
+	return evidenceView{ID: item.ID, FichaID: item.FichaID, ItemCode: item.ItemCode, SlotNumber: item.SlotNumber, Name: item.Name, Format: item.Format, Source: item.Source, SHA256: item.SHA256, CapturedAt: item.CapturedAt.Format("2006-01-02T15:04:05.999Z07:00")}
 }
 
 func toEvidenceGroupView(group evidence.Group) evidenceGroupView {
