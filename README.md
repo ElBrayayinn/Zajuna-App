@@ -74,13 +74,22 @@ npm run dev
 ```powershell
 npm run build --prefix frontend
 npm run lint --prefix frontend
+npm run test --prefix frontend
 go -C core test ./...
 go -C core vet ./...
 npm run test:downloads
 npm run test:smoke:native
+npm run test:desktop
 npm audit --omit=dev --audit-level=high
 npm run test:browser:core
 ```
+
+CI (`.github/workflows/ci.yml`) ejecuta lint, Vitest y build del frontend;
+`go vet`, `go test` y `govulncheck` del core; los tests de `scripts/` y
+`desktop/`; y un job `browser-smoke` en Linux que instala Chromium con
+`scripts/install-playwright.cjs` y corre los smokes contra fixtures locales.
+El smoke visual del dashboard queda fuera de CI porque compara hashes exactos
+de capturas que dependen del renderizado de fuentes del sistema.
 
 El smoke visual comprueba Resumen en desktop, tablet y móvil; el smoke
 empaquetado inicia el ejecutable, verifica `/api/health` en loopback, el
