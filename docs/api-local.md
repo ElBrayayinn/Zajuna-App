@@ -6,22 +6,29 @@ interfaz integrada.
 
 ## Protección del origen local
 
-Al iniciar el core se genera una capability aleatoria por proceso. Solo las
-navegaciones de documento del navegador (`GET` fuera de `/api/` con
-`Sec-Fetch-Mode: navigate` y `Sec-Fetch-Dest: document`) reciben la cookie
-`zajuna_capability` con `HttpOnly` y `SameSite=Strict`; un `GET` simple (por
-ejemplo `curl /` o `/api/health`) no la recibe. El navegador integrado la
-reenvía automáticamente en las mutaciones. Un cliente local deliberado podría
-falsificar esas cabeceras: es una barrera adicional, no un secreto fuera de
-banda. `POST`, `PUT`, `PATCH` y `DELETE` requieren además:
+Invariantes que cualquier versión del core mantiene:
 
-- `Host` loopback y `Origin` loopback coincidente (obligatorio).
-- `Sec-Fetch-Site` que no sea `cross-site`.
-- `Content-Type` JSON para cuerpos JSON o `multipart/form-data` para uploads.
-- Límites de tamaño, headers y timeouts del servidor.
+- El servidor escucha solo en loopback y toda petición con `Host` que no sea
+  loopback (`127.0.0.1`, `::1`, `localhost`) se rechaza con `400`.
+- Las mutaciones (`POST`, `PUT`, `PATCH`, `DELETE` bajo `/api/`) exigen una
+  credencial local emitida por el propio proceso, que cambia en cada arranque
+  y no viaja en URLs ni es legible desde JavaScript.
+- Las mutaciones cross-site o con `Origin` distinto del core se rechazan.
+- Los cuerpos con datos declaran `application/json` (o `multipart/form-data`
+  en `/api/evidences/upload`) y tienen límite de tamaño; el servidor aplica
+  timeouts y `MaxHeaderBytes`.
 
-Un cliente externo no debe copiar la cookie ni asumir que el endpoint es un
-servidor público. Los helpers de tests que crean `newRouterWithServices`
+Implementación vigente: la credencial es la cookie `zajuna_capability`
+(`HttpOnly`, `SameSite=Strict`, 32 bytes aleatorios por proceso) que el core
+emite en cada respuesta y el navegador reenvía solo. Sin ella la mutación
+recibe `403`; con `Sec-Fetch-Site: cross-site` u `Origin` no loopback o de
+otro puerto, `403`; con `Content-Type` incorrecto, `415`. El límite general de
+cuerpo es 32 MiB y algunas rutas aplican uno menor.
+
+La interfaz integrada no necesita conocer estos detalles porque llama a la API
+same-origin. Un cliente externo no debe copiar la credencial, depender del
+nombre de la cookie ni asumir que el endpoint es un servidor público: el
+mecanismo concreto puede endurecerse sin cambiar las invariantes. Los helpers de tests que crean `newRouterWithServices`
 prueban handlers sin middleware para aislar cada caso; el runtime real de
 `main` siempre registra `protectLocalAPI`.
 
@@ -53,6 +60,27 @@ Nunca devuelve la contraseña.
 
 La contraseña se guarda en el almacén seguro del sistema operativo. La
 configuración no sensible se guarda localmente.
+
+### `GET /api/app/info`
+
+Devuelve `version`, `dataDir` (carpeta de datos local), `supervised` (si el
+core corre bajo el launcher Electron) y `resetPending` (si hay un
+restablecimiento preparado para el próximo arranque).
+
+### `POST /api/app/reset`
+
+```json
+{ "backupFirst": true, "forgetCredentials": false }
+```
+
+Prepara el restablecimiento completo de los datos locales. No borra nada en
+caliente: escribe el marcador `.reset-pending` y apaga el core; el borrado se
+aplica en el siguiente arranque, antes de abrir SQLite. Con `backupFirst`
+crea antes una copia ZIP (si falla, responde `500` y no prepara nada) y
+devuelve su nombre en `backupName`; esa copia se conserva tras el reset. Con
+`forgetCredentials` borra la contraseña guardada en el almacén del sistema.
+Responde `{ "staged": true, "restarting": <supervised> }`. Ver
+[`evidence/update-policy.md`](evidence/update-policy.md).
 
 ### `POST /api/zajuna/test-connection`
 
@@ -334,7 +362,19 @@ contraseñas. Si Zajuna devuelve la pantalla de login, el job termina con
 ### `GET /api/jobs?limit=20`
 
 Lista los últimos jobs persistidos, ordenados por actividad. `limit` acepta un
-valor entre 1 y 100.
+valor entre 1 y 100. Cada job incluye `dismissed` cuando el usuario lo quitó
+de «Requiere tu atención», y `fichaId`/`itemCodes` (solo el alcance no
+sensible del input) para reintentar el mismo alcance.
+
+### `POST /api/jobs/dismiss`
+
+```json
+{ "ids": ["job-…"] }
+```
+
+Marca entre 1 y 100 jobs como descartados de «Requiere tu atención». El job y
+su historial siguen en Trabajos; se recuerdan como máximo los últimos 500 IDs
+descartados.
 
 ### `POST /api/jobs`
 
@@ -492,7 +532,9 @@ las tablas mínimas (`schema_migrations`, `jobs`, `fichas`, `evidences`)
 antes de marcar `.restore-pending`. El swap es atómico. Si `sqlite.Open`
 falla después del swap, el core restaura `*.restore-old`, registra
 `.restore-applied.json` y reintenta abrir la base anterior. Un ZIP corrupto,
-con hash incorrecto o schema fuera de 1…12 se rechaza y no toca la DB activa.
+con hash incorrecto o con schema fuera de `1…CurrentSchemaVersion` (hoy
+1…13) se rechaza y no toca la DB activa. Un backup con schema anterior se
+acepta y se migra hacia adelante al abrirse.
 
 ## Evidencias y reportes
 
@@ -537,9 +579,9 @@ Reinicia evidencias locales. Cuerpo opcional:
 { "fichaId": "<id>" }
 ```
 
-Sin `fichaId` elimina todas. **Actualizar la app no borra evidencias**; este
-endpoint (o Ajustes) es la forma explícita de hacerlo. Ver
-[`evidence/update-policy.md`](evidence/update-policy.md).
+Sin `fichaId` elimina todas. Es el borrado explícito de evidencias desde la
+API o Configuración. Qué ocurre con los datos al instalar o actualizar la app
+está en [`evidence/update-policy.md`](evidence/update-policy.md).
 
 ### `DELETE /api/evidences/{id}`
 
@@ -653,15 +695,28 @@ se actualiza automáticamente.
 
 ## Contratos de workers disponibles
 
-| Tipo | Estado |
-|---|---|
-| `sync-fichas` | Implementado; sesión HTTP de Zajuna y persistencia SQLite. |
-| `test-zajuna-connection` | Implementado; login real y validación de `Mis cursos` sin escritura de fichas. |
-| `discover-course-maps` | Implementado; crawl HTTP autenticado, fases/actividades, rutas clasificadas y persistencia SQLite. |
-| `capture-evidence` | Implementado; descarga HTML local con hash. |
-| `capture-browser` | Implementado; captura PNG local con Chromium empaquetado y sesión Zajuna efímera opcional. |
-| `capture-checklist` | Implementado; resuelve `itemCode`/slots desde el mapa local, captura regiones con Chromium y registra evidencias por tarea. |
-| `export-report` | Implementado; genera HTML/PDF local. |
+Son los workers que `core/cmd/zajuna-core/main.go` registra en el runtime. El
+`type` de `POST /api/jobs` debe ser uno de estos IDs; cualquier otro se
+rechaza con `400`. `POST /api/schedules` no valida el `workerType` al crear el
+schedule: un tipo desconocido falla cuando el scheduler intenta encolarlo.
+
+| Tipo | Lo encola | Qué hace |
+|---|---|---|
+| `sync-fichas` | `POST /api/setup`, `POST /api/fichas/sync`, schedules | Sesión HTTP de Zajuna y persistencia de fichas/cursos en SQLite. |
+| `test-zajuna-connection` | `POST /api/zajuna/test-connection` | Login real y validación de `Mis cursos` sin escribir fichas. |
+| `discover-course-maps` | `POST /api/course-maps/discover` | Crawl HTTP autenticado: fases, actividades y rutas clasificadas en SQLite. |
+| `capture-evidence` | `POST /api/jobs` | Descarga HTML del origen Zajuna permitido y lo guarda con hash. |
+| `capture-browser` | `POST /api/jobs` | Captura PNG con el Chromium empaquetado y sesión Zajuna efímera opcional. |
+| `capture-checklist` | `POST /api/checklist/capture` | Resuelve `itemCode`/slots desde el mapa local y captura en paralelo (pool de sesiones Chromium) registrando evidencias por tarea. |
+| `capture-checklist-target` | `POST /api/jobs` | Captura un único objetivo del checklist como job propio; `capture-checklist` hace el mismo trabajo en proceso para cada objetivo. |
+| `export-report` | `POST /api/reports` | Genera el reporte HTML/PDF local. |
+
+Todos los jobs se crean con `maxAttempts: 3`. Solo se reintentan los fallos
+que el worker marca como reintentables (por ejemplo, errores transitorios de
+red de Zajuna); errores de entrada, credencial ausente o cancelación terminan
+en `failed`/`cancelled`. La concurrencia del runtime es 2 por defecto y se
+ajusta entre 1 y 4 con `--jobs-concurrency` o `ZAJUNA_JOBS_CONCURRENCY`; un
+valor fuera de ese rango vuelve a 2.
 
 El cliente debe mostrar el progreso que devuelve la API y no ejecutar trabajos
 largos dentro de la petición HTTP.
