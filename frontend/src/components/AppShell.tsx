@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
+import { PageSkeleton } from './AsyncState'
+import { PageErrorBoundary } from './PageErrorBoundary'
+import { preloadPages } from '../pages/lazy'
 import { findNavItem } from '../lib/nav'
 import { useSettings } from '../hooks/api'
 
@@ -10,6 +13,10 @@ export function AppShell() {
   const navItem = findNavItem(location.pathname)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    preloadPages()
+  }, [])
   const settingsQuery = useSettings()
 
   useEffect(() => {
@@ -62,7 +69,12 @@ export function AppShell() {
             </section>
           )}
           <div id="workspace">
-            <Outlet />
+            {/* Keyed by route so leaving a failed page shows the next one. */}
+            <PageErrorBoundary key={location.pathname}>
+              <Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
+            </PageErrorBoundary>
           </div>
         </main>
       </div>

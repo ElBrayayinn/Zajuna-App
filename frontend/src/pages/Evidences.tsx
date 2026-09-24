@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { evidenceDownloadUrl } from '../api/client'
+import { evidenceDownloadUrl, evidenceThumbnailUrl } from '../api/client'
 import { MissingActiveFicha, PageError, PageSkeleton } from '../components/AsyncState'
 import {
   useDashboard,
@@ -379,7 +379,7 @@ function EvidenceMiniatures({
                     onClick={() => toggle(evidence.id)}
                   >
                     <span className="evidence-miniature-preview">
-                      {image ? <img src={evidenceDownloadUrl(evidence.id)} alt="" loading="lazy" /> : <span className="evidence-format-icon">{format.toUpperCase() || 'FILE'}</span>}
+                      {image ? <img src={evidenceThumbnailUrl(evidence.id)} alt="" loading="lazy" decoding="async" /> : <span className="evidence-format-icon">{format.toUpperCase() || 'FILE'}</span>}
                       <span className="evidence-select-mark" aria-hidden="true">{selected ? '✓' : ''}</span>
                     </span>
                     <span className="evidence-miniature-copy">

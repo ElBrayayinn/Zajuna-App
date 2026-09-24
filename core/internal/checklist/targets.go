@@ -180,6 +180,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 	for _, activity := range coursemaps.Activities(record) {
 		activitiesByID[activity.ID] = activity
 	}
+	routes := newRouteIndex(record)
 	targets := make([]CaptureTarget, 0)
 	summary := CapturePlanSummary{ItemCount: len(CaptureSpecs())}
 	for _, spec := range CaptureSpecs() {
@@ -239,7 +240,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 		}
 		eligible := make([]eligibleURL, 0, len(urls))
 		for _, candidate := range urls {
-			route := routeForURL(record, candidate)
+			route := routes.lookup(candidate)
 			if route != nil && !eligibleRouteForGroup(spec.GroupName, *route, selectedActivityIDs, activitiesByID) {
 				continue
 			}
@@ -570,13 +571,25 @@ func routeKindForURL(record coursemaps.Record, itemCode, targetURL string) strin
 	return "route"
 }
 
-func routeForURL(record coursemaps.Record, targetURL string) *coursemaps.Route {
-	for index := range record.Routes {
-		if record.Routes[index].URL == targetURL || canonicalRouteURL(record.Routes[index].URL) == canonicalRouteURL(targetURL) {
-			return &record.Routes[index]
+// routeIndex resolves a mapped URL to its route without rescanning (and
+// re-parsing) every route of the course for each candidate. An exact URL match
+// is also a canonical match, so keeping the first route per canonical URL
+// returns the same route the previous linear scan did.
+type routeIndex map[string]*coursemaps.Route
+
+func newRouteIndex(record coursemaps.Record) routeIndex {
+	index := make(routeIndex, len(record.Routes))
+	for position := range record.Routes {
+		key := canonicalRouteURL(record.Routes[position].URL)
+		if _, exists := index[key]; !exists {
+			index[key] = &record.Routes[position]
 		}
 	}
-	return nil
+	return index
+}
+
+func (index routeIndex) lookup(targetURL string) *coursemaps.Route {
+	return index[canonicalRouteURL(targetURL)]
 }
 
 func canonicalRouteURL(raw string) string {

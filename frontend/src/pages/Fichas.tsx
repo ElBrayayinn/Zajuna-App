@@ -161,11 +161,6 @@ export function Fichas() {
           <div>
             <div className="eyebrow">
               Ficha activa
-              {activeFicha ? (
-                <span className="badge" style={{ marginLeft: 8, background: 'var(--brand)', color: '#fff' }}>
-                  FICHA ACTIVA
-                </span>
-              ) : null}
             </div>
             <h2>{activeFicha ? activeFicha.name : 'Sin ficha seleccionada'}</h2>
             <div className="active-ficha-meta">

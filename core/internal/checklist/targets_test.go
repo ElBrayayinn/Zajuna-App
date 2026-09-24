@@ -334,3 +334,21 @@ func TestApplyRouteReviewsPersistsDecisionAndManualOverrides(t *testing.T) {
 		t.Fatalf("manual route override was not applied: %#v", updated[0])
 	}
 }
+
+func TestRouteIndexKeepsFirstCanonicalMatch(t *testing.T) {
+	record := coursemaps.Record{Routes: []coursemaps.Route{
+		{URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=7&forceview=1", Kind: "forum", Title: "primera"},
+		{URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=7", Kind: "forum", Title: "segunda"},
+		{URL: "https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=10", Kind: "page"},
+	}}
+	index := newRouteIndex(record)
+	if route := index.lookup("https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=7"); route == nil || route.Title != "primera" {
+		t.Fatalf("expected the first canonical match, got %#v", route)
+	}
+	if route := index.lookup(" https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=10 "); route == nil || route.Kind != "page" {
+		t.Fatalf("expected the page route, got %#v", route)
+	}
+	if route := index.lookup("https://zajuna.sena.edu.co/zajuna/mod/page/view.php?id=99"); route != nil {
+		t.Fatalf("expected no route, got %#v", route)
+	}
+}

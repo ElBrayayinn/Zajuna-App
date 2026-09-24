@@ -47,6 +47,8 @@ type rebuildEvidenceGroupsRequest struct {
 }
 
 func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir string) {
+	thumbs := newThumbnailer(dataDir)
+	registerEvidenceThumbnailRoute(mux, store, dataDir, thumbs)
 	mux.HandleFunc("GET /api/evidences", func(w http.ResponseWriter, r *http.Request) {
 		if store == nil {
 			writeError(w, http.StatusServiceUnavailable, errors.New("el almacenamiento de evidencias no está disponible"))
@@ -244,6 +246,7 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 			writeError(w, http.StatusInternalServerError, errors.New("no se pudo retirar el registro de la evidencia"))
 			return
 		}
+		thumbs.remove(item.ID, "")
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true, "id": item.ID})
 	})
 
@@ -267,6 +270,7 @@ func registerEvidenceRoutes(mux *http.ServeMux, store evidence.Store, dataDir st
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		thumbs.prune(r.Context(), store)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"cleared": true,
 			"deletedRows": deletedRows,

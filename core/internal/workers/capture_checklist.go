@@ -54,6 +54,10 @@ type CaptureChecklistWorker struct {
 	fichaStore  checklistCaptureFichaStore
 	evidence    evidence.Store
 	concurrency int
+	// allowPrivateTargets lets same-package tests capture a loopback fixture.
+	// It is never set in production: Zajuna routes must not resolve into the
+	// local network (see security.ValidateHTTPURL).
+	allowPrivateTargets bool
 }
 
 func NewCaptureChecklistWorker(runtime capture.Runtime, dataDir string, client authenticatedCaptureClient, credentials secrets.Store, mapStore coursemaps.Store, fichaStore checklistCaptureFichaStore, evidenceStore evidence.Store) (*CaptureChecklistWorker, error) {

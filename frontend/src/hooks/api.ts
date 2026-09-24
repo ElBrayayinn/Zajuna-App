@@ -1,9 +1,24 @@
 import { useEffect, useRef } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../api/client'
-import type { JobStatus } from '../types'
+import type { Job, JobStatus } from '../types'
 
 const POLL_MS = 5000
+// Without active work nothing changes on its own: user actions and finished
+// jobs already invalidate what they touch, so idle polling only has to catch
+// changes made elsewhere (a scheduled run, another window).
+const IDLE_POLL_MS = 30_000
+const IDLE_JOBS_POLL_MS = 15_000
+const ACTIVE_JOB_STATUSES: JobStatus[] = ['queued', 'running', 'waiting_user', 'retrying']
+
+function hasActiveJobs(jobs: Job[] | undefined) {
+  return !!jobs?.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))
+}
+
+/** Polls fast only while a job is running; otherwise falls back to the idle rate. */
+function activityPollInterval(queryClient: QueryClient) {
+  return () => (hasActiveJobs(queryClient.getQueryData<Job[]>(['jobs'])) ? POLL_MS : IDLE_POLL_MS)
+}
 
 export function isNotFound(error: unknown) {
   return error instanceof ApiError && error.status === 404
@@ -32,11 +47,12 @@ export function useSaveSettings() {
 }
 
 export function useDiagnostics() {
-  return useQuery({ queryKey: ['diagnostics'], queryFn: api.getDiagnostics, refetchInterval: 15000 })
+  return useQuery({ queryKey: ['diagnostics'], queryFn: api.getDiagnostics, refetchInterval: IDLE_POLL_MS })
 }
 
 export function useNotifications() {
-  return useQuery({ queryKey: ['notifications'], queryFn: api.listNotifications, refetchInterval: POLL_MS })
+  const queryClient = useQueryClient()
+  return useQuery({ queryKey: ['notifications'], queryFn: api.listNotifications, refetchInterval: activityPollInterval(queryClient) })
 }
 
 export function useMarkNotificationRead() {
@@ -92,7 +108,8 @@ export function useSaveSetup() {
 }
 
 export function useFichas() {
-  return useQuery({ queryKey: ['fichas'], queryFn: () => api.listFichas(100), refetchInterval: POLL_MS })
+  const queryClient = useQueryClient()
+  return useQuery({ queryKey: ['fichas'], queryFn: () => api.listFichas(100), refetchInterval: activityPollInterval(queryClient) })
 }
 
 export function useSyncFichas() {
@@ -124,17 +141,27 @@ export function useSetActiveFicha() {
 export function useJobs() {
   const queryClient = useQueryClient()
   const previousStatuses = useRef<Record<string, string>>({})
-  const query = useQuery({ queryKey: ['jobs'], queryFn: () => api.listJobs(50), refetchInterval: POLL_MS })
+  const query = useQuery({
+    queryKey: ['jobs'],
+    queryFn: () => api.listJobs(50),
+    refetchInterval: (current) => (hasActiveJobs(current.state.data) ? POLL_MS : IDLE_JOBS_POLL_MS),
+  })
 
   useEffect(() => {
     if (!query.data) return
     const terminal = new Set(['completed', 'failed', 'cancelled'])
     const previous = previousStatuses.current
     const completedCapture = query.data.some((job) => {
-      const wasActive = ['queued', 'running', 'waiting_user', 'retrying'].includes(previous[job.id] || '')
+      const wasActive = ACTIVE_JOB_STATUSES.includes(previous[job.id] as JobStatus)
       return wasActive && terminal.has(job.status)
     })
+    const startedWork = query.data.some(
+      (job) => ACTIVE_JOB_STATUSES.includes(job.status) && !ACTIVE_JOB_STATUSES.includes(previous[job.id] as JobStatus),
+    )
     previousStatuses.current = Object.fromEntries(query.data.map((job) => [job.id, job.status]))
+    // Refetching now moves the dashboard to the fast rate without waiting
+    // for its next idle tick.
+    if (startedWork) queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     if (!completedCapture) return
     queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     queryClient.invalidateQueries({ queryKey: ['evidenceGroups'] })
@@ -143,6 +170,9 @@ export function useJobs() {
     queryClient.invalidateQueries({ queryKey: ['targets'] })
     queryClient.invalidateQueries({ queryKey: ['reviews'] })
     queryClient.invalidateQueries({ queryKey: ['reports'] })
+    // Finished jobs create notifications and a ficha sync rewrites the list.
+    queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    queryClient.invalidateQueries({ queryKey: ['fichas'] })
   }, [query.data, queryClient])
 
   return query
@@ -204,7 +234,8 @@ export function useCancelJob() {
 }
 
 export function useSchedules() {
-  return useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: POLL_MS })
+  const queryClient = useQueryClient()
+  return useQuery({ queryKey: ['schedules'], queryFn: api.listSchedules, refetchInterval: activityPollInterval(queryClient) })
 }
 
 export function useCreateSchedule() {
@@ -224,11 +255,13 @@ export function useSetScheduleEnabled() {
 }
 
 export function useDashboard(fichaId?: string) {
+  const queryClient = useQueryClient()
+  const pollInterval = activityPollInterval(queryClient)
   return useQuery({
     queryKey: ['dashboard', fichaId ?? 'active'],
     queryFn: () => api.getDashboard(fichaId),
     retry: retryTransient,
-    refetchInterval: (query) => (isNotFound(query.state.error) ? false : POLL_MS),
+    refetchInterval: (query) => (isNotFound(query.state.error) ? false : pollInterval()),
   })
 }
 
@@ -399,14 +432,20 @@ export function useClearEvidences() {
 }
 
 export function useReports() {
-  return useQuery({ queryKey: ['reports'], queryFn: () => api.listReports(50), refetchInterval: POLL_MS })
+  const queryClient = useQueryClient()
+  return useQuery({ queryKey: ['reports'], queryFn: () => api.listReports(50), refetchInterval: activityPollInterval(queryClient) })
 }
 
 export function useGenerateReport() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: api.generateReport,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
+    onSuccess: () => {
+      // The report row appears when its job finishes; tracking the job keeps
+      // polling fast until then.
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['reports'] })
+    },
   })
 }
 
