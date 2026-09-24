@@ -73,3 +73,18 @@ func TestDiscoveredGeneralForumsResolveTheirItems(t *testing.T) {
 		}
 	}
 }
+
+func TestNetiquetaFallsBackOnlyToTheAnnouncementsForum(t *testing.T) {
+	routes := []coursemaps.Route{
+		{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=1", Title: "ANUNCIOS", Technical: true},
+		{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=2", Title: "Foro Temático", Technical: true},
+	}
+	got := buildExactChecklistRouteGroups(routes, "41080", "")["15.1"]
+	if len(got) != 1 || !strings.Contains(got[0], "id=1") {
+		t.Fatalf("15.1 without a netiqueta forum must use the announcements forum only, got %v", got)
+	}
+	withNetiqueta := append(routes, coursemaps.Route{Kind: "forum", URL: "https://zajuna.sena.edu.co/zajuna/mod/forum/view.php?id=3", Title: "Netiqueta y buena ortografía"})
+	if got := buildExactChecklistRouteGroups(withNetiqueta, "41080", "")["15.1"]; len(got) != 1 || !strings.Contains(got[0], "id=3") {
+		t.Fatalf("a netiqueta forum wins, got %v", got)
+	}
+}

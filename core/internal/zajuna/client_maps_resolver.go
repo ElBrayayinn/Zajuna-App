@@ -98,6 +98,12 @@ func buildExactChecklistRouteGroupsForMap(routes []coursemaps.Route, courseID, p
 		// general "Anuncios" forum to unrelated announcement items.
 		groups[itemCode] = append([]string{}, forumPools[mode]...)
 	}
+	if len(groups["15.1"]) == 0 {
+		// 15.1 (lenguaje cortés y netiqueta) is shown in the instructor's own
+		// posts. Without a forum named for it, the announcements forum is its
+		// evidence (as in the audited course), never every forum of the course.
+		groups["15.1"] = append([]string{}, forumPools["anuncios_singleton"]...)
+	}
 
 	assigns := buildOrderedRoutePool(routes, []string{"assign"}, pagePoolTerms["assign_slot"], 4, nil)
 	if len(assigns) == 0 {
