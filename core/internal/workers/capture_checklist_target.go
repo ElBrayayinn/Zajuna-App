@@ -52,6 +52,9 @@ type targetOutcome struct {
 	// absent: the page loaded but has nothing that proves the item
 	// (capture.ErrContentAbsent). Its previous evidence is stale.
 	absent bool
+	// coveredItemCodes lists every item an absent target stood for, so each
+	// one reports the absence (e.g. 9.1.7 shares the capture of 9.1.6).
+	coveredItemCodes []string
 }
 
 func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context, baseURL *url.URL, input CaptureChecklistInput, password string) (*capture.BrowserSession, error) {
@@ -197,7 +200,7 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 			return targetOutcome{failure: target.ItemCode + ": el foro asignado no está disponible para tu cuenta; vuelve a buscar las rutas del curso"}
 		}
 		if errors.Is(captureErr, capture.ErrContentAbsent) {
-			return targetOutcome{absent: true, failure: target.ItemCode + ": " + absenceMessage(target, captureErr)}
+			return targetOutcome{absent: true, failure: target.ItemCode + ": " + absenceMessage(target, captureErr), coveredItemCodes: coveredItemCodes(target)}
 		}
 		return targetOutcome{failure: target.ItemCode + ": " + captureErr.Error()}
 	}

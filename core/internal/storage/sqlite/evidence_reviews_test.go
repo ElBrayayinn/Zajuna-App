@@ -166,3 +166,36 @@ func TestAutomaticVerificationNeverOverwritesAConcurrentManualDecision(t *testin
 		t.Fatalf("a new file must be reviewed automatically, got %#v", review)
 	}
 }
+
+func TestCaptureAbsenceReasonsExplainMissingItems(t *testing.T) {
+	store, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	for _, row := range []struct{ id, created, result string }{
+		{"job-old", "2026-01-01T00:00:00Z", `{"absences":["7.3.2: vieja"]}`},
+		{"job-new", "2026-01-02T00:00:00Z", `{"absences":["7.3.2: el selector requerido no apareció en la página destino (sin contenido en Zajuna): la sección no tiene actividades ni archivos","9.1.3: sin contenido válido en Zajuna: el foro no muestra fechas de apertura y cierre"]}`},
+		{"job-other", "2026-01-03T00:00:00Z", `{"absences":["9.1.6: otra ficha"]}`},
+	} {
+		ficha := "ficha-1"
+		if row.id == "job-other" {
+			ficha = "ficha-2"
+		}
+		if _, err := store.DB().ExecContext(ctx, `INSERT INTO jobs(id, type, status, input_json, result_json, progress, stage, message, attempt, max_attempts, created_at, updated_at)
+			VALUES (?, 'capture-checklist', 'completed', ?, ?, 100, '', '', 1, 3, ?, ?)`, row.id, `{"fichaId":"`+ficha+`"}`, row.result, row.created, row.created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reasons, err := store.CaptureAbsenceReasons(ctx, "ficha-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reasons["7.3.2"] != "la sección no tiene actividades ni archivos" || reasons["9.1.3"] != "el foro no muestra fechas de apertura y cierre" {
+		t.Fatalf("unexpected reasons: %#v", reasons)
+	}
+	if _, leaked := reasons["9.1.6"]; leaked {
+		t.Fatal("absences of another ficha must not leak")
+	}
+}

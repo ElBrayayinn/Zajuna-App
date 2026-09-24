@@ -182,3 +182,58 @@ func (s *Store) SetEvidenceReview(ctx context.Context, evidenceID, status, note 
 	}
 	return evidence.BuildReviewEntry(record, review, records), nil
 }
+
+// CaptureAbsenceReasons reads the absences reported by the recent checklist
+// captures of a ficha ("<itemCode>: <detalle>") and keeps, per item, the
+// newest plain-words reason. It implements evidence.AbsenceReasonStore.
+func (s *Store) CaptureAbsenceReasons(ctx context.Context, fichaID string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT input_json, COALESCE(result_json, '') FROM jobs
+		WHERE type = 'capture-checklist' AND status IN ('completed', 'failed') ORDER BY created_at DESC LIMIT 50`)
+	if err != nil {
+		return nil, fmt.Errorf("list capture jobs for absences: %w", err)
+	}
+	defer rows.Close()
+	reasons := map[string]string{}
+	for rows.Next() {
+		var inputJSON, resultJSON string
+		if err := rows.Scan(&inputJSON, &resultJSON); err != nil {
+			return nil, fmt.Errorf("scan capture job: %w", err)
+		}
+		var input struct {
+			FichaID string `json:"fichaId"`
+		}
+		var result struct {
+			Absences []string `json:"absences"`
+		}
+		if json.Unmarshal([]byte(inputJSON), &input) != nil || input.FichaID != fichaID || resultJSON == "" {
+			continue
+		}
+		if json.Unmarshal([]byte(resultJSON), &result) != nil {
+			continue
+		}
+		for _, absence := range result.Absences {
+			code, detail, ok := strings.Cut(absence, ": ")
+			code = strings.TrimSpace(code)
+			if !ok || code == "" {
+				continue
+			}
+			if _, seen := reasons[code]; seen {
+				continue
+			}
+			reasons[code] = plainAbsenceDetail(detail)
+		}
+	}
+	return reasons, rows.Err()
+}
+
+// plainAbsenceDetail drops the technical prefix of an absence and keeps the
+// part that says what is missing in Zajuna.
+func plainAbsenceDetail(detail string) string {
+	for _, marker := range []string{"Zajuna): ", "Zajuna: "} {
+		if index := strings.LastIndex(detail, marker); index >= 0 {
+			detail = detail[index+len(marker):]
+			break
+		}
+	}
+	return strings.TrimSpace(detail)
+}

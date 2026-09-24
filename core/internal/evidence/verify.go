@@ -92,6 +92,14 @@ type ReviewStore interface {
 	UpsertEvidenceReviews(ctx context.Context, reviews []Review) error
 }
 
+// AbsenceReasonStore is optional: it returns, per item code, why the latest
+// capture found nothing to show in Zajuna (e.g. an empty section or a forum
+// without instructor replies). Missing items then say what to fix in Zajuna
+// instead of suggesting a recapture that cannot help.
+type AbsenceReasonStore interface {
+	CaptureAbsenceReasons(ctx context.Context, fichaID string) (map[string]string, error)
+}
+
 // ReviewVerifier is optional on evidence stores: capture workers call it at the
 // end of a run so the review screen is ready.
 type ReviewVerifier interface {
@@ -488,7 +496,17 @@ func VerifyFicha(ctx context.Context, store ReviewStore, dataDir, fichaID string
 			return ReviewReport{}, err
 		}
 	}
-	return BuildReviewReport(fichaID, records, reviews), nil
+	report := BuildReviewReport(fichaID, records, reviews)
+	if reasonStore, ok := store.(AbsenceReasonStore); ok {
+		if reasons, reasonErr := reasonStore.CaptureAbsenceReasons(ctx, fichaID); reasonErr == nil {
+			for index, item := range report.MissingItems {
+				if reason := strings.TrimSpace(reasons[item.ItemCode]); reason != "" {
+					report.MissingItems[index].Reason = "Sin contenido en Zajuna: " + reason + ". Agrégalo en Zajuna y vuelve a capturar."
+				}
+			}
+		}
+	}
+	return report, nil
 }
 
 // BuildReviewReport assembles the API payload from records and their reviews.

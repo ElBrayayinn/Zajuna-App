@@ -417,6 +417,13 @@ func tallyTargetOutcomes(outcomes []targetOutcome) targetOutcomeTally {
 		case outcome.absent || absentContent(outcome.failure):
 			tally.absent++
 			tally.absences = append(tally.absences, outcome.failure)
+			if primary, detail, ok := strings.Cut(outcome.failure, ": "); ok {
+				for _, code := range outcome.coveredItemCodes {
+					if code != primary {
+						tally.absences = append(tally.absences, code+": "+detail)
+					}
+				}
+			}
 		default:
 			tally.failed++
 			if outcome.failure != "" {

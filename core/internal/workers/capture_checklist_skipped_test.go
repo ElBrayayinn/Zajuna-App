@@ -128,3 +128,10 @@ func TestLockFichaCaptureWaitIsCancellable(t *testing.T) {
 	}
 	again()
 }
+
+func TestAbsenceIsReportedForEveryCoveredItem(t *testing.T) {
+	tally := tallyTargetOutcomes([]targetOutcome{{absent: true, failure: "9.1.6: sin réplicas", coveredItemCodes: []string{"9.1.6", "9.1.7"}}})
+	if tally.absent != 1 || !reflect.DeepEqual(tally.absences, []string{"9.1.6: sin réplicas", "9.1.7: sin réplicas"}) {
+		t.Fatalf("every covered item must carry the absence: %#v", tally)
+	}
+}
