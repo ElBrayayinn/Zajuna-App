@@ -33,9 +33,13 @@ func protectLocalAPI(next http.Handler, capability string) http.Handler {
 			writeError(w, http.StatusBadRequest, errors.New("el core solo acepta solicitudes loopback"))
 			return
 		}
-		// Only document navigations receive the capability cookie. Emitting it
-		// on every API GET let any local process harvest it from /api/health.
-		if capability != "" && !strings.HasPrefix(r.URL.Path, "/api/") {
+		// Only browser document navigations receive the capability cookie.
+		// Emitting it on every GET let any local process harvest it with a
+		// plain request (curl /api/health or /). Browsers always send these
+		// fetch-metadata headers on a navigation and page scripts cannot set
+		// them; a deliberate local client could still forge them, so this
+		// raises the bar rather than closing it.
+		if capability != "" && !strings.HasPrefix(r.URL.Path, "/api/") && isDocumentNavigation(r) {
 			http.SetCookie(w, &http.Cookie{Name: capabilityCookieName, Value: capability, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 0})
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && isMutatingMethod(r.Method) {
@@ -57,6 +61,12 @@ func protectLocalAPI(next http.Handler, capability string) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isDocumentNavigation(r *http.Request) bool {
+	return r.Method == http.MethodGet &&
+		strings.EqualFold(r.Header.Get("Sec-Fetch-Mode"), "navigate") &&
+		strings.EqualFold(r.Header.Get("Sec-Fetch-Dest"), "document")
 }
 
 func hasCapability(r *http.Request, capability string) bool {

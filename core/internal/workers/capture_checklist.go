@@ -102,7 +102,10 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if input.FichaID == "" || input.Username == "" {
 		return jobs.Result{ErrorCode: "invalid_input", ErrorMessage: "fichaId y usuario de Zajuna son obligatorios"}
 	}
-	unlock := lockFichaCapture(input.FichaID)
+	unlock, lockErr := lockFichaCapture(ctx, input.FichaID)
+	if lockErr != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: lockErr.Error()}
+	}
 	defer unlock()
 	if input.DocumentType == "" {
 		input.DocumentType = "CC"
@@ -360,11 +363,18 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	return jobs.Result{Output: output}
 }
 
-func lockFichaCapture(fichaID string) func() {
-	value, _ := fichaCaptureLocks.LoadOrStore(fichaID, &sync.Mutex{})
-	mu := value.(*sync.Mutex)
-	mu.Lock()
-	return mu.Unlock
+// lockFichaCapture serializes captures of the same ficha (they write the same
+// slots). Waiting honours ctx, so a cancelled job does not hold a worker until
+// the running capture ends.
+func lockFichaCapture(ctx context.Context, fichaID string) (func(), error) {
+	value, _ := fichaCaptureLocks.LoadOrStore(fichaID, make(chan struct{}, 1))
+	slot := value.(chan struct{})
+	select {
+	case slot <- struct{}{}:
+		return func() { <-slot }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // captureChecklistPruneStore is optional (like evidence.GroupStore) so test

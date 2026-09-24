@@ -96,8 +96,10 @@ func main() {
 	} else if reset {
 		log.Printf("datos locales restablecidos antes de abrir SQLite")
 	}
-	if _, versionErr := backup.EnforceVersion(dataDir, appVersion); versionErr != nil {
-		log.Printf("no se pudo registrar la versión local: %v", versionErr)
+	if wiped, versionErr := backup.EnforceVersion(dataDir, appVersion); versionErr != nil {
+		log.Printf("limpieza por cambio de versión: %v", versionErr)
+	} else if wiped {
+		log.Printf("versión %s instalada: datos de la versión anterior borrados", appVersion)
 	}
 	restored, err := backup.ApplyPending(dataDir)
 	if err != nil {

@@ -43,7 +43,16 @@ func TestProtectLocalAPIDoesNotEmitCookieOnAPIGets(t *testing.T) {
 		t.Fatalf("API GET must not emit the capability cookie: %q", apiResponse.Header().Get("Set-Cookie"))
 	}
 
+	plainGet := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:43123/", nil)
+	plainResponse := httptest.NewRecorder()
+	handler.ServeHTTP(plainResponse, plainGet)
+	if plainResponse.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("a non-navigation GET / must not emit the capability cookie: %q", plainResponse.Header().Get("Set-Cookie"))
+	}
+
 	docGet := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:43123/", nil)
+	docGet.Header.Set("Sec-Fetch-Mode", "navigate")
+	docGet.Header.Set("Sec-Fetch-Dest", "document")
 	docResponse := httptest.NewRecorder()
 	handler.ServeHTTP(docResponse, docGet)
 	if !strings.Contains(docResponse.Header().Get("Set-Cookie"), capabilityCookieName) {

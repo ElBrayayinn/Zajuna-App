@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -108,4 +109,22 @@ func TestAbsenceMessage(t *testing.T) {
 	if !errors.Is(absent, capture.ErrSelectorNotFound) || !errors.Is(absent, capture.ErrContentAbsent) {
 		t.Fatal("an absence is still a selector miss for callers that only know that error")
 	}
+}
+
+func TestLockFichaCaptureWaitIsCancellable(t *testing.T) {
+	unlock, err := lockFichaCapture(context.Background(), "ficha-lock-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := lockFichaCapture(ctx, "ficha-lock-test"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancelled job must stop waiting for the ficha lock, got %v", err)
+	}
+	unlock()
+	again, err := lockFichaCapture(context.Background(), "ficha-lock-test")
+	if err != nil {
+		t.Fatalf("the lock must be free after unlock: %v", err)
+	}
+	again()
 }

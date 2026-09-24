@@ -62,24 +62,28 @@ func TestApplyPendingResetFullMarkerRemovesBackups(t *testing.T) {
 	}
 }
 
-func TestEnforceVersionKeepsDataAcrossVersions(t *testing.T) {
+func TestEnforceVersionWipesDataFromPreviousVersion(t *testing.T) {
 	dataDir := t.TempDir()
+	// Data from a release that never wrote the version marker (<= 0.1.2).
 	seedUserData(t, dataDir)
 	wiped, err := EnforceVersion(dataDir, "0.1.3")
-	if err != nil || wiped {
+	if err != nil || !wiped {
 		t.Fatalf("EnforceVersion = %v, %v", wiped, err)
 	}
-	if !exists(dataDir, "zajuna.db") || !exists(dataDir, "evidences") || !exists(dataDir, "backups") {
-		t.Fatal("upgrades must keep local data")
+	if exists(dataDir, "zajuna.db") || exists(dataDir, "evidences") || exists(dataDir, "backups") {
+		t.Fatal("stale data must be removed")
 	}
+	// Same version again: data created now must survive restarts.
+	seedUserData(t, dataDir)
 	if wiped, err := EnforceVersion(dataDir, "0.1.3"); err != nil || wiped {
 		t.Fatalf("same version must not wipe: %v, %v", wiped, err)
 	}
-	if wiped, err := EnforceVersion(dataDir, "0.1.4"); err != nil || wiped {
-		t.Fatalf("new version must not wipe: %v, %v", wiped, err)
-	}
 	if !exists(dataDir, "zajuna.db") {
-		t.Fatal("data of the previous version must be kept")
+		t.Fatal("data of the current version must be kept")
+	}
+	// A new version wipes again.
+	if wiped, err := EnforceVersion(dataDir, "0.1.4"); err != nil || !wiped {
+		t.Fatalf("new version must wipe: %v, %v", wiped, err)
 	}
 }
 

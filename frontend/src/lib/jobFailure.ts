@@ -136,7 +136,7 @@ export function explainJobFailure(job: Pick<Job, 'type' | 'status' | 'errorCode'
       return withTech({
         title: 'Falta el navegador interno de capturas',
         cause: 'La instalación de Zajuna App está incompleta: no se encontró el componente que toma las capturas.',
-        next: 'Descarga e instala de nuevo la última versión de Zajuna App. Tus evidencias y fichas se conservan; después vuelve a intentar el proceso.',
+        next: 'Descarga e instala de nuevo la última versión de Zajuna App. Ten en cuenta que instalar una versión nueva empieza desde cero: genera antes el reporte PDF si lo necesitas.',
         actions: [DIAGNOSTICS],
       })
     case 'credential_unavailable':

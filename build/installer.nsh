@@ -3,36 +3,37 @@
 ; copias y config.json; electron-builder no toca esa carpeta, por eso el
 ; checklist, las evidencias y los trabajos sobrevivían a una reinstalación.
 ;
-; Regla de producto: una instalación nueva o una desinstalación manual borra
-; los datos locales. Una actualización (${isUpdated}) los conserva: el
-; checklist, las evidencias y las copias siguen en %LOCALAPPDATA%\ZajunaApp.
+; Regla de producto: cada instalación de Zajuna App empieza desde cero. No se
+; pregunta: el instalador siempre ordena borrar los datos anteriores y el
+; desinstalador manual siempre los borra. El core aplica además la misma
+; regla por versión (backup.EnforceVersion), lo que cubre las actualizaciones
+; automáticas y Linux (AppImage no tiene instalador).
 ;
 ; Verificado contra las plantillas de app-builder-lib 26.15.3. makensis corre
 ; con -WX: no declarar Var/Function que no se usen.
 
-; ---- Primera instalación: empezar desde cero ------------------------------
-; En una actualización no tocamos los datos. En una instalación nueva, si
-; quedó una carpeta de una desinstalación incompleta, pedimos al core un
-; reset completo en el primer arranque.
+; ---- Instalación: siempre empezar desde cero ------------------------------
+; No borramos aquí (el core viejo podría estar terminando): escribimos
+; .reset-pending con "full" y el core lo aplica antes de abrir SQLite, en su
+; primer arranque tras la instalación. Corre después de desinstalar la
+; versión anterior y copiar archivos, antes de lanzar la app.
 !macro customInstall
-  ${ifNot} ${isUpdated}
-    Push $R0
-    ${if} $installMode == "all"
-      SetShellVarContext current
-    ${endif}
-    ${if} ${FileExists} "$LOCALAPPDATA\ZajunaApp\*.*"
-      ClearErrors
-      FileOpen $R0 "$LOCALAPPDATA\ZajunaApp\.reset-pending" w
-      ${ifNot} ${Errors}
-        FileWrite $R0 "full"
-        FileClose $R0
-      ${endif}
-    ${endif}
-    ${if} $installMode == "all"
-      SetShellVarContext all
-    ${endif}
-    Pop $R0
+  Push $R0
+  ${if} $installMode == "all"
+    SetShellVarContext current
   ${endif}
+  ${if} ${FileExists} "$LOCALAPPDATA\ZajunaApp\*.*"
+    ClearErrors
+    FileOpen $R0 "$LOCALAPPDATA\ZajunaApp\.reset-pending" w
+    ${ifNot} ${Errors}
+      FileWrite $R0 "full"
+      FileClose $R0
+    ${endif}
+  ${endif}
+  ${if} $installMode == "all"
+    SetShellVarContext all
+  ${endif}
+  Pop $R0
 !macroend
 
 ; ---- Desinstalación manual: borrar siempre los datos ----------------------

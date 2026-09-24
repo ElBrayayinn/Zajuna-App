@@ -6,12 +6,16 @@ interfaz integrada.
 
 ## Protección del origen local
 
-Al iniciar el core se genera una capability aleatoria por proceso. Las
-respuestas emiten la cookie `zajuna_capability` con `HttpOnly` y
-`SameSite=Strict`; el navegador integrado la reenvía automáticamente en las
-mutaciones. `POST`, `PUT`, `PATCH` y `DELETE` requieren además:
+Al iniciar el core se genera una capability aleatoria por proceso. Solo las
+navegaciones de documento del navegador (`GET` fuera de `/api/` con
+`Sec-Fetch-Mode: navigate` y `Sec-Fetch-Dest: document`) reciben la cookie
+`zajuna_capability` con `HttpOnly` y `SameSite=Strict`; un `GET` simple (por
+ejemplo `curl /` o `/api/health`) no la recibe. El navegador integrado la
+reenvía automáticamente en las mutaciones. Un cliente local deliberado podría
+falsificar esas cabeceras: es una barrera adicional, no un secreto fuera de
+banda. `POST`, `PUT`, `PATCH` y `DELETE` requieren además:
 
-- `Host` loopback y `Origin` coincidente cuando el navegador lo envía.
+- `Host` loopback y `Origin` loopback coincidente (obligatorio).
 - `Sec-Fetch-Site` que no sea `cross-site`.
 - `Content-Type` JSON para cuerpos JSON o `multipart/form-data` para uploads.
 - Límites de tamaño, headers y timeouts del servidor.
@@ -417,6 +421,19 @@ servidor valida la forma del documento y lo guarda en `app_settings`; las
 contraseñas siguen exclusivamente en el almacén seguro del sistema. El bloque
 `storage` contiene `retentionKeep` (1–1000 copias) y `retentionDays` (1–3650
 días), que alimentan la limpieza de backups desde Configuración.
+
+`POST /api/checklist/capture` toma de aquí, si la petición no los envía:
+
+- `capture.fullPage`: en `false` ningún objetivo se captura a página completa.
+- `capture.reuseSession`: en `true` los objetivos de una corrida comparten
+  sesiones de Chromium ya autenticadas; en `false` cada objetivo inicia sesión
+  y cierra su navegador.
+- `session.autoRenew`: si una captura cae en la página de login porque la
+  sesión expiró, se inicia sesión de nuevo y se reintenta el objetivo una vez.
+  En `false` ese objetivo falla como «sesión expirada».
+
+Dos capturas de la misma ficha nunca corren a la vez: la segunda espera, y
+cancelarla mientras espera la termina de inmediato.
 
 ### `GET /api/diagnostics`
 

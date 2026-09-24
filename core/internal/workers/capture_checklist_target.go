@@ -64,10 +64,7 @@ func (w *CaptureChecklistWorker) openChecklistBrowserSession(ctx context.Context
 // usable after a capture. "Selector not found" and empty row batches are
 // page-level outcomes; login redirects, challenges and navigation errors may
 // leave the session in an unknown state, so it is replaced.
-func reusableBrowserSession(captureErr error, finalURL string, autoRenew bool) bool {
-	if !autoRenew {
-		return false
-	}
+func reusableBrowserSession(captureErr error, finalURL string) bool {
 	if captureErr == nil {
 		return !isZajunaLoginURL(finalURL)
 	}
@@ -95,25 +92,36 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 	var captureResult capture.CaptureResult
 	var captureErr error
 	if params.UseBrowser {
-		var browserSession checklistBrowserSession
-		if params.Sessions != nil {
-			pooled, err := params.Sessions.acquire(ctx)
-			if err != nil {
-				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
-			}
-			browserSession = pooled
-		} else {
-			opened, err := w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
-			if err != nil {
-				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
-			}
-			browserSession = opened
+		// AutoRenew: a session that expired mid-run lands on the login page;
+		// log in again once and retry the target instead of failing it.
+		attempts := 1
+		if params.AutoRenew {
+			attempts = 2
 		}
-		captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
-		if params.Sessions != nil {
-			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL, params.AutoRenew))
-		} else {
-			browserSession.Close()
+		for attempt := 0; attempt < attempts; attempt++ {
+			var browserSession checklistBrowserSession
+			if params.Sessions != nil {
+				pooled, err := params.Sessions.acquire(ctx)
+				if err != nil {
+					return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
+				}
+				browserSession = pooled
+			} else {
+				opened, err := w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
+				if err != nil {
+					return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
+				}
+				browserSession = opened
+			}
+			captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
+			if params.Sessions != nil {
+				params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL))
+			} else {
+				browserSession.Close()
+			}
+			if !errors.Is(captureErr, capture.ErrLoginPage) || ctx.Err() != nil {
+				break
+			}
 		}
 	} else {
 		if params.CookieMu != nil {
