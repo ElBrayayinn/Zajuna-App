@@ -51,11 +51,14 @@ const (
 	reviewMinHeight = 120
 	// Moodle pages are white by design: 96 % flagged real text sections. Only
 	// a practically empty capture (≥ 99,5 % near-white) is reported.
-	reviewBlankRatio      = 0.995
-	reviewNearWhite       = 245
-	reviewMaxSamples      = 250_000
-	reviewMaxDecodePixels = 20_000_000
-	missingItemReason     = "No se capturó evidencia para este ítem."
+	reviewBlankRatio = 0.995
+	// A tall shot whose longest empty band covers this share is unrendered.
+	reviewBlankBandRatio     = 0.5
+	reviewBlankAreaMinHeight = 600
+	reviewNearWhite          = 245
+	reviewMaxSamples         = 250_000
+	reviewMaxDecodePixels    = 20_000_000
+	missingItemReason        = "No se capturó evidencia para este ítem."
 )
 
 var genericReviewSelectors = map[string]bool{
@@ -162,6 +165,11 @@ type ImageStats struct {
 	Width      int
 	Height     int
 	BlankRatio float64 // -1 when not analysed
+	// BlankBandRatio is the longest run of entirely near-white rows over the
+	// image height (-1 when not analysed). Text leaves many short gaps; one
+	// band covering most of a tall shot is an unrendered area (e.g. a Google
+	// Sheet that did not paint its grid).
+	BlankBandRatio float64
 }
 
 // ResolveEvidencePath returns the absolute path of an evidence file and whether
@@ -197,7 +205,7 @@ func ResolveEvidencePath(dataDir, path string) (string, bool) {
 // AnalyzeImage reads dimensions first and only decodes the image for the blank
 // analysis when it is small enough to keep memory bounded.
 func AnalyzeImage(path string) (ImageStats, error) {
-	stats := ImageStats{BlankRatio: -1}
+	stats := ImageStats{BlankRatio: -1, BlankBandRatio: -1}
 	file, err := os.Open(path)
 	if err != nil {
 		return stats, err
@@ -219,6 +227,7 @@ func AnalyzeImage(path string) (ImageStats, error) {
 		return stats, fmt.Errorf("decode image: %w", err)
 	}
 	stats.BlankRatio = blankRatio(img)
+	stats.BlankBandRatio = blankBandRatio(img)
 	return stats, nil
 }
 
@@ -245,6 +254,44 @@ func blankRatio(img image.Image) float64 {
 		return 1
 	}
 	return float64(blank) / float64(samples)
+}
+
+// blankBandRatio samples on the same grid as blankRatio and returns the
+// longest run of sampled rows whose samples are all near-white, over the
+// number of sampled rows.
+func blankBandRatio(img image.Image) float64 {
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return 1
+	}
+	step := int(math.Ceil(math.Sqrt(float64(width) * float64(height) / reviewMaxSamples)))
+	if step < 1 {
+		step = 1
+	}
+	rows, run, longest := 0, 0, 0
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += step {
+		rows++
+		blank := true
+		for x := bounds.Min.X; x < bounds.Max.X; x += step {
+			if !nearWhite(img.At(x, y)) {
+				blank = false
+				break
+			}
+		}
+		if blank {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	if rows == 0 {
+		return 1
+	}
+	return float64(longest) / float64(rows)
 }
 
 func nearWhite(c color.Color) bool {
@@ -367,7 +414,7 @@ func imageReasons(stats ImageStats) []ReviewReason {
 	if stats.Height < reviewMinHeight || stats.Width < reviewMinWidth {
 		reasons = append(reasons, ReviewReason{Code: ReasonTooSmall, Message: "Solo se capturó un encabezado o una línea: probablemente falta el contenido."})
 	}
-	if stats.BlankRatio >= reviewBlankRatio {
+	if stats.BlankRatio >= reviewBlankRatio || (stats.Height >= reviewBlankAreaMinHeight && stats.BlankBandRatio >= reviewBlankBandRatio) {
 		reasons = append(reasons, ReviewReason{Code: ReasonMostlyBlank, Message: "La imagen está casi en blanco."})
 	}
 	return reasons

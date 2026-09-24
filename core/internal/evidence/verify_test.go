@@ -273,3 +273,54 @@ func TestVerifyRecordFlagsEvidenceFromAnOlderSemanticRule(t *testing.T) {
 		}
 	}
 }
+
+// An unrendered Google Sheet: a header on top and a tall empty band below.
+// Text with many short gaps must not be flagged.
+func TestTallShotWithOneEmptyBandIsMostlyBlank(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, paint func(y int) bool) string {
+		img := image.NewNRGBA(image.Rect(0, 0, 800, 3000))
+		for y := 0; y < 3000; y++ {
+			for x := 0; x < 800; x++ {
+				if paint(y) && x < 400 {
+					img.Set(x, y, color.Black)
+				} else {
+					img.Set(x, y, color.White)
+				}
+			}
+		}
+		path := filepath.Join(dir, name)
+		file, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		if err := png.Encode(file, img); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	blank, err := AnalyzeImage(write("blank.png", func(y int) bool { return y < 200 && y%20 < 10 }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := AnalyzeImage(write("text.png", func(y int) bool { return y%60 < 20 }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasReason(imageReasons(blank), ReasonMostlyBlank) {
+		t.Fatalf("an empty band over most of a tall shot must be flagged: %#v", blank)
+	}
+	if hasReason(imageReasons(text), ReasonMostlyBlank) {
+		t.Fatalf("spaced text is not blank: %#v", text)
+	}
+}
+
+func hasReason(reasons []ReviewReason, code string) bool {
+	for _, reason := range reasons {
+		if reason.Code == code {
+			return true
+		}
+	}
+	return false
+}

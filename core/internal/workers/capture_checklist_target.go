@@ -149,7 +149,10 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 		OptionalSlot: target.OptionalSlot, RowMatch: target.RowMatch, RowRequireReply: target.RowRequireReply,
 		CourseLayout: target.CourseLayout, AbsenceSelector: target.AbsenceSelector,
 		MaxWidth: target.MaxCaptureWidth, ColumnBatch: target.ColumnBatch,
-		ExpandEmbeddedSheets: strings.HasPrefix(target.GroupName, "cronograma_"),
+		// ExpandEmbeddedSheets stays off: on real Google Sheets it resized the
+		// widget so the grid rendered blank (ficha 3135429, 1.1.x and 1.2.x);
+		// capturePage always runs prepareEmbeddedSheets, which grows the frame
+		// from the nested #pageswitcher-content and renders the whole sheet.
 	}
 
 	var captureResult capture.CaptureResult
