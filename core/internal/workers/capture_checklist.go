@@ -63,6 +63,8 @@ type CaptureChecklistWorker struct {
 	// It is never set in production: Zajuna routes must not resolve into the
 	// local network (see security.ValidateHTTPURL).
 	allowPrivateTargets bool
+
+	loadPreferences func(context.Context) CapturePreferences
 }
 
 func NewCaptureChecklistWorker(runtime capture.Runtime, dataDir string, client authenticatedCaptureClient, credentials secrets.Store, mapStore coursemaps.Store, fichaStore checklistCaptureFichaStore, evidenceStore evidence.Store) (*CaptureChecklistWorker, error) {
@@ -146,15 +148,22 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	} else {
 		targets = checklist.ApplyRouteReviews(targets, nil)
 	}
+	prefs := w.preferences(ctx)
+	// An explicit value in the request wins over the saved preference.
+	if input.FullPage != nil {
+		prefs.FullPage = *input.FullPage
+	}
+	if input.ReuseSession != nil {
+		prefs.ReuseSession = *input.ReuseSession
+	}
+	if input.AutoRenew != nil {
+		prefs.AutoRenew = *input.AutoRenew
+	}
+	targets = applyCapturePreferences(targets, prefs)
 	plannedTargets := targets
 	targets = filterCaptureTargets(targets, input.ItemCodes)
 	if input.MaxTargets > 0 && len(targets) > input.MaxTargets {
 		targets = targets[:input.MaxTargets]
-	}
-	if input.FullPage != nil && !*input.FullPage {
-		for index := range targets {
-			targets[index].FullPage = false
-		}
 	}
 	summary.CaptureUnitCount = len(targets)
 	summary.CoverageCount = captureTargetCoverageCount(targets)
@@ -164,6 +173,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if err := reporter.Progress(ctx, "credentials", 5, "Preparando captura dirigida por checklist"); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
+	_ = reporter.Event(ctx, "capture_preferences", "Preferencias de captura aplicadas", prefs)
 	password, err := w.credentials.Get(input.Username)
 	if err != nil || password == "" {
 		return jobs.Result{ErrorCode: "credential_unavailable", ErrorMessage: "no se encontró la contraseña de Zajuna en el almacén seguro"}
@@ -217,16 +227,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	// safe to share across goroutines. Trade-off: up to C parallel logins.
 	var cookieMu sync.Mutex
 	var sessions *browserSessionPool
-	reuseSession := true
-	if input.ReuseSession != nil {
-		reuseSession = *input.ReuseSession
-	}
-	autoRenew := true
-	if input.AutoRenew != nil {
-		autoRenew = *input.AutoRenew
-	}
 	if useBrowser {
-		if reuseSession {
+		if prefs.ReuseSession {
 			sessions = newBrowserSessionPool(func(openCtx context.Context) (checklistBrowserSession, error) {
 				return w.openChecklistBrowserSession(openCtx, baseURL, input, password)
 			})
@@ -260,7 +262,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			UseBrowser: useBrowser,
 			CookieMu:   &cookieMu,
 			Sessions:   sessions,
-			AutoRenew:  autoRenew,
+			AutoRenew:  prefs.AutoRenew,
 		})
 		outcomes[index] = outcome
 		done := int(atomic.AddInt64(&completed, 1))
@@ -324,7 +326,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
 		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
 		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
-		"absent": tally.absent, "absences": tally.absences,
+		"absent": tally.absent, "absences": tally.absences, "preferences": prefs,
 	}
 	if ctx.Err() != nil {
 		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: ctx.Err().Error(), Output: output}

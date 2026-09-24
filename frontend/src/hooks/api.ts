@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../api/client'
+import { readStoredConnectionTest, writeStoredConnectionTest, type StoredConnectionTest } from '../lib/connectionStatus'
 import type { Job, JobStatus } from '../types'
 
 const POLL_MS = 5000
@@ -105,6 +106,34 @@ export function useSaveSetup() {
     mutationFn: api.saveSetup,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['setup'] }),
   })
+}
+
+/**
+ * Encola la prueba real de conexión (`test-zajuna-connection`) y sigue el
+ * resultado del último job. El id se recuerda en este equipo para que el
+ * estado sobreviva a recargas; se olvida al guardar credenciales nuevas.
+ */
+export function useZajunaConnectionTest(username?: string) {
+  const queryClient = useQueryClient()
+  const [stored, setStored] = useState<StoredConnectionTest | null>(() => readStoredConnectionTest())
+  const jobId = stored && stored.username === (username || '') ? stored.jobId : undefined
+  const jobQuery = useJob(jobId)
+  const mutation = useMutation({
+    mutationFn: api.testZajunaConnection,
+    onSuccess: (job) => {
+      const next = { jobId: job.id, username: username || '' }
+      writeStoredConnectionTest(next)
+      setStored(next)
+      queryClient.setQueryData(['job', job.id], job)
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    },
+  })
+  const forget = useCallback(() => {
+    writeStoredConnectionTest(null)
+    setStored(null)
+  }, [])
+  const job = jobQuery.isError ? undefined : jobQuery.data
+  return { job, start: mutation.mutateAsync, isStarting: mutation.isPending, forget }
 }
 
 export function useFichas() {

@@ -31,13 +31,13 @@ export function statusClass(value: string) {
 
 const JOB_TYPE_LABELS: Record<JobType, string> = {
   'sync-fichas': 'Actualizar fichas',
+  'test-zajuna-connection': 'Probar conexión con Zajuna',
   'discover-course-maps': 'Revisar contenido del curso',
   'capture-checklist': 'Preparar evidencias',
   'capture-evidence': 'Guardar evidencia',
   'capture-browser': 'Preparar captura',
   'export-report': 'Generar reporte',
   backup: 'Crear copia de respaldo',
-  'test-zajuna-connection': 'Probar conexión Zajuna',
 }
 
 export function friendlyJobType(value: JobType) {

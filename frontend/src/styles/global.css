@@ -680,6 +680,47 @@ a:focus-visible {
   border: 1px solid transparent;
   border-radius: 7px;
 }
+.settings-row > .status-chip {
+  flex: none;
+  margin-top: 0;
+  white-space: nowrap;
+}
+.settings-inline-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 700;
+}
+.failed-items {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafcfc;
+}
+.failed-items ul {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.failed-items a {
+  color: var(--navy);
+  font-weight: 750;
+}
+.failed-items-slots {
+  color: var(--muted);
+  font-size: 12px;
+}
+.failed-items p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
 .settings-tab:hover {
   color: var(--navy);
   background: rgba(255, 255, 255, .65);

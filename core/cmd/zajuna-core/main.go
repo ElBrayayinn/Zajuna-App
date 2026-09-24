@@ -170,6 +170,7 @@ func main() {
 		log.Fatalf("no se pudo crear CaptureChecklistWorker: %v", err)
 	}
 	checklistCaptureWorker.SetConcurrency(concurrency)
+	checklistCaptureWorker.SetPreferences(capturePreferencesLoader(localStore))
 	if err := jobRuntime.Register(checklistCaptureWorker); err != nil {
 		log.Fatalf("no se pudo registrar CaptureChecklistWorker: %v", err)
 	}

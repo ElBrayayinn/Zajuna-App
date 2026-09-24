@@ -119,8 +119,8 @@ export const api = {
   saveSetup: (input: { zajunaUsername: string; zajunaDocumentType: string; zajunaPassword: string }) =>
     request<SetupSaveResponse>('/api/setup', json(input)),
 
-  testConnection: (input: { username?: string; documentType?: string } = {}) =>
-    request<Job>('/api/zajuna/test-connection', json(input)),
+  /** Sin cuerpo, el core usa la cuenta configurada (usuario y tipo de documento). */
+  testZajunaConnection: () => request<Job>('/api/zajuna/test-connection', json({})),
 
   listFichas: (limit = 100) => request<Ficha[]>(`/api/fichas?limit=${limit}`),
 
