@@ -314,7 +314,7 @@
       .route-action-status.ok { color:var(--brand-action); }
       .route-action-status.error { color:var(--no); }
       .onboarding-card { max-width:900px; margin:24px auto; }
-      .onboarding-steps { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:22px 0; }
+      .onboarding-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:22px 0; }
       .onboarding-step { display:grid; grid-template-columns:auto 1fr; column-gap:9px; align-items:center; padding:13px; border:1px solid var(--line); border-radius:10px; background:#fbfdfd; }
       .onboarding-step b { grid-row:span 2; display:grid; place-items:center; width:28px; height:28px; border-radius:50%; color:var(--navy); background:#e8eff2; font-size:12px; }
       .onboarding-step.active { border-color:#b9d7ac; background:var(--brand-soft); }

@@ -229,6 +229,11 @@ export function useDashboard(fichaId?: string) {
     queryKey: ['dashboard', fichaId ?? 'active'],
     queryFn: () => api.getDashboard(fichaId),
     retry: retryTransient,
+    // Sin ficha activa el core responde 404. Volver a pedirlo cada vez que se
+    // monta un componente que lo usa devolvía la consulta a «cargando», el
+    // Resumen desmontaba y montaba sus botones y eso entraba en bucle (cientos
+    // de peticiones por segundo). Elegir una ficha invalida 'dashboard'.
+    retryOnMount: false,
     refetchInterval: (query) => (isNotFound(query.state.error) ? false : POLL_MS),
   })
 }

@@ -201,7 +201,9 @@ export function Overview() {
             <div className="onboarding-steps" aria-label="Flujo recomendado">
               <span className="onboarding-step active"><b>1</b><strong>Sincronizar fichas</strong><small>Traer tus cursos de Zajuna</small></span>
               <span className="onboarding-step"><b>2</b><strong>Buscar rutas</strong><small>Encontrar las secciones del curso</small></span>
-              <span className="onboarding-step"><b>3</b><strong>Preparar evidencias</strong><small>Capturar y revisar resultados</small></span>
+              <span className="onboarding-step"><b>3</b><strong>Seleccionar actividades</strong><small>Marcar tus actividades técnicas</small></span>
+              <span className="onboarding-step"><b>4</b><strong>Preparar evidencias</strong><small>Capturar en Zajuna</small></span>
+              <span className="onboarding-step"><b>5</b><strong>Revisar evidencias</strong><small>Aprobar y corregir</small></span>
             </div>
             <SyncFichasAction />
             {jobs.some((job) => job.type === 'sync-fichas' && ['queued', 'running', 'retrying'].includes(job.status)) ? <p className="helper" style={{ marginTop: 10 }}>La sincronización está en curso. Puedes abrir Trabajos para ver el avance.</p> : null}
