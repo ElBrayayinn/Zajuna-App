@@ -276,3 +276,31 @@ func TestEmptyCourseSectionIsAnAbsenceSmoke(t *testing.T) {
 		t.Fatalf("a section with an activity must be captured: %v %#v", err, result)
 	}
 }
+
+// 10.1.x keep only graded submissions of a grading table; a table without
+// any is a typed absence.
+func TestGradingTableKeepsOnlyGradedRowsSmoke(t *testing.T) {
+	_, page := browserSmokePage(t)
+	graded := true
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		status := "Sin entrega"
+		if graded {
+			status = "Enviado para calificar Calificado"
+		}
+		_, _ = w.Write([]byte(`<html><body><div id="region-main"><table class="generaltable"><thead><tr><th>Nombre</th><th>Estado</th></tr></thead><tbody>` +
+			`<tr><td>Aprendiz 1</td><td>Sin entrega</td></tr>` +
+			`<tr><td>Aprendiz 2</td><td>` + status + `</td></tr>` +
+			`<tr><td>Aprendiz 3</td><td>Enviado para calificar</td></tr>` +
+			`</tbody></table></div></body></html>`))
+	}))
+	defer server.Close()
+	options := CaptureOptions{Selector: "#region-main table.generaltable", RequireSelector: true, RowSelector: "tbody tr", RowsPerShot: 2, RowMatch: []string{"calificado"}}
+	result, err := capturePage(context.Background(), page, server.URL, filepath.Join(t.TempDir(), "graded.png"), options)
+	if err != nil || result.RowsTotal != 1 {
+		t.Fatalf("only the graded row must count: %v %#v", err, result)
+	}
+	graded = false
+	if _, err := capturePage(context.Background(), page, server.URL, filepath.Join(t.TempDir(), "none.png"), options); !errors.Is(err, ErrContentAbsent) {
+		t.Fatalf("a table without graded rows must be an absence, got %v", err)
+	}
+}

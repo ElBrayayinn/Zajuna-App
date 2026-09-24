@@ -3,6 +3,7 @@ package checklist
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/zajuna-app/core/internal/coursemaps"
@@ -135,23 +136,50 @@ func TestRestrictedForumIsNeverATarget(t *testing.T) {
 	}
 }
 
-// MDL-218: each 5.1 slot is a width-bounded window of grader columns over
-// the first rows, instead of a ~28.000 px wide shot per pair of students.
-func TestGraderSlotsAreBoundedColumnWindows(t *testing.T) {
+// MDL-218: the grader URL is rewritten to the gradebook setup, which lists
+// the grade items vertically: each 5.1 slot is a batch of rows of that list,
+// together covering it, never the ~28.000 px wide grader.
+func TestGradebookSlotsAreRowBatchesOfTheSetupList(t *testing.T) {
 	record := coursemaps.Record{
 		ByItemCode: map[string]json.RawMessage{"5.1": json.RawMessage(`["https://zajuna.sena.edu.co/zajuna/grade/report/grader/index.php?id=41080"]`)},
 		Routes:     []coursemaps.Route{{Kind: "grading", URL: "https://zajuna.sena.edu.co/zajuna/grade/report/grader/index.php?id=41080"}},
 	}
 	targets := targetsFor(t, record, "5.1")
 	if len(targets) != 5 {
-		t.Fatalf("expected 5 grader slots, got %d", len(targets))
+		t.Fatalf("expected 5 gradebook slots, got %d", len(targets))
 	}
 	for index, target := range targets {
-		if target.ColumnBatch != index || target.RowBatch != 0 || target.RowsPerShot != RowsPerShot || target.MaxCaptureWidth != MaxCaptureWidth || target.SlotNumber != index+1 {
-			t.Fatalf("grader slot %d is not a bounded column window: %#v", index+1, target)
+		if !strings.Contains(target.URL, "/grade/edit/tree/") || target.RowBatch != index || target.RowsPerShot != GradebookRowsPerShot || target.MaxCaptureWidth != 0 || target.SlotNumber != index+1 {
+			t.Fatalf("gradebook slot %d is not a row batch of the setup list: %#v", index+1, target)
 		}
 	}
 	if captureUnitKey(targets[0]) == captureUnitKey(targets[1]) {
-		t.Fatal("column windows must be distinct capture units")
+		t.Fatal("row batches must be distinct capture units")
+	}
+}
+
+func TestGradingTargetsShowOnlyGradedSubmissions(t *testing.T) {
+	record := coursemaps.Record{
+		ByItemCode: map[string]json.RawMessage{"10.1.1": json.RawMessage(`["https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301"]`)},
+		Routes: []coursemaps.Route{
+			{Kind: "assign", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301", ActivityID: "301", Title: "Storyboard", Technical: true},
+			{Kind: "grading", URL: "https://zajuna.sena.edu.co/zajuna/mod/assign/view.php?id=301&action=grading", ActivityID: "301", Title: "Calificación: Storyboard", Technical: true},
+		},
+	}
+	targets, _, err := BuildCaptureTargetsForActivities(record, map[string]bool{"301": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, target := range targets {
+		if target.ItemCode == "10.1.1" {
+			found = true
+			if strings.Join(target.RowMatch, "|") != GradedRowTerm {
+				t.Fatalf("10.1.1 must keep only graded rows: %#v", target)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("10.1.1 target was not generated")
 	}
 }

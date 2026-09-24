@@ -497,6 +497,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 			}
 		}
 	}
+	if batching && options.RowBatch == 0 && !options.OwnerOnly && len(options.RowMatch) > 0 && emptyPrimaryContainer {
+		// The table exists but no row shows the required state (e.g. no
+		// graded submission): a real absence, not a capture failure.
+		return CaptureResult{}, fmt.Errorf("%w (%w): la tabla no tiene filas «%s»", ErrSelectorNotFound, ErrContentAbsent, strings.Join(options.RowMatch, "» o «"))
+	}
 	if batching && options.RowBatch == 0 && options.OwnerOnly && emptyPrimaryContainer {
 		// The list exists but none of its rows is by the instructor: a real
 		// absence of evidence, reported in plain words.

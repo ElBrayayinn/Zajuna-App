@@ -421,12 +421,16 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				if target.SemanticCheck == SemanticForumDates {
 					target.AbsenceSelector = forumPageSelector
 				}
-				if spec.GroupName == "calificaciones" {
-					// The grader has one column per grade item (~28.000 px on
-					// a real course). 5.1 proves which activities are in the
-					// gradebook, so each slot shows the first rows and the
-					// next window of columns, never wider than the limit.
+				if spec.GroupName == "calificaciones" && !strings.Contains(target.URL, "/grade/edit/tree/") {
+					// The grader report has one column per grade item (~28.000
+					// px on a real course): each slot shows the first rows and
+					// the next window of columns, never wider than the limit.
 					target.RowBatch, target.ColumnBatch, target.MaxCaptureWidth = 0, batch, MaxCaptureWidth
+				} else if spec.GroupName == "calificaciones" {
+					// The gradebook setup lists every grade item vertically
+					// (146 rows on ficha 3135429): the slots split it into
+					// readable row batches that together cover the list.
+					target.RowsPerShot = GradebookRowsPerShot
 				}
 				targets = append(targets, target)
 				addedCount++
@@ -1146,6 +1150,11 @@ const RowsPerShot = 2
 // wider shots become unreadable once scaled into the report.
 const MaxCaptureWidth = 2560
 
+// GradebookRowsPerShot is the rows of the gradebook setup list per 5.1 slot:
+// five slots cover 150 grade items, each shot stays well under the review's
+// height limit.
+const GradebookRowsPerShot = 30
+
 // batchesForList splits an item's evidence limit among its lists. Integer
 // division alone left slots unplanned (5 slots over 2 lists planned 4): the
 // remainder goes to the first lists, so every slot up to the limit exists.
@@ -1207,6 +1216,9 @@ func distributeSlotBatches(maxSlots, n int) []int {
 
 const gradingTableSelector = "#region-main table.generaltable"
 
+// GradedRowTerm is Moodle's status text of a graded submission.
+const GradedRowTerm = "calificado"
+
 // appendGradingBatchTargets captures each selected activity's grading table
 // (grade, feedback and modification date) in row batches, splitting the
 // item's evidence limit among the activities.
@@ -1243,6 +1255,10 @@ func appendGradingBatchTargets(targets *[]CaptureTarget, record coursemaps.Recor
 				CSSSelectorFallbacks: []string{gradingTableSelector, "#region-main .gradingtable table", "#region-main table"},
 				RouteKind:            "grading", RequireSelector: true,
 				RowSelector: "tbody tr:not(.emptyrow)", RowsPerShot: RowsPerShot, RowBatch: batch,
+				// 10.1.x prove feedback and grading: only graded submissions
+				// ("Calificado" in the status column), never the first rows
+				// of students without a submission.
+				RowMatch: []string{GradedRowTerm},
 			})
 		}
 	}
