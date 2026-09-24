@@ -475,7 +475,7 @@ las tablas mínimas (`schema_migrations`, `jobs`, `fichas`, `evidences`)
 antes de marcar `.restore-pending`. El swap es atómico. Si `sqlite.Open`
 falla después del swap, el core restaura `*.restore-old`, registra
 `.restore-applied.json` y reintenta abrir la base anterior. Un ZIP corrupto,
-con hash incorrecto o schema fuera de 1…12 se rechaza y no toca la DB activa.
+con hash incorrecto o schema fuera de 1…13 se rechaza y no toca la DB activa.
 
 ## Evidencias y reportes
 
@@ -484,6 +484,14 @@ con hash incorrecto o schema fuera de 1…12 se rechaza y no toca la DB activa.
 Lista evidencias locales con formato, origen, fecha, SHA-256 y metadatos de
 ficha/ítem. `fichaId` limita la consulta a una ficha y alimenta la galería de
 miniaturas seleccionables; la agrupación para reportes se conserva aparte.
+
+Sin `fichaId`, `limit` va de 1 a 100 (50 por defecto). Con `fichaId` la
+respuesta incluye todas las evidencias de la ficha (`limit` acepta hasta
+10000, que es también el valor por defecto), así la galería no se trunca.
+
+Las vistas de evidencias no exponen la ruta absoluta del archivo. En su lugar
+devuelven `fileKey`, un identificador opaco: dos filas con el mismo `fileKey`
+comparten archivo. Para leer el contenido se usa `/download`.
 
 ### `GET /api/evidences/{id}/download`
 
@@ -499,7 +507,11 @@ previa de cada grupo sin salir de la aplicación.
 Recibe un formulario `multipart/form-data` con `file`, `fichaId` y, de forma
 opcional, `itemCode`. Acepta PNG, JPG, PDF y HTML hasta 25 MB. El archivo se
 guarda dentro del almacenamiento local, se calcula su SHA-256 y se registra
-con origen `manual`.
+con origen `manual`. El identificador depende de ficha, ítem, ranura y
+contenido: el mismo archivo subido para dos ítems crea dos filas, y volver a
+subir el mismo contenido en la misma ranura reutiliza la fila (`200`) sin
+dejar archivos huérfanos. Tras cada subida se reconstruyen los grupos de la
+ficha, de modo que la galería y el reporte la ven sin pasos manuales.
 
 ### `POST /api/evidences/clear`
 
@@ -515,9 +527,12 @@ endpoint (o Ajustes) es la forma explícita de hacerlo. Ver
 
 ### `DELETE /api/evidences/{id}`
 
-Elimina con una operación explícita el archivo y su registro local. La API
-solo permite eliminar artefactos que estén dentro de la carpeta local de
-evidencias.
+Elimina el registro local de la evidencia. El archivo solo se borra cuando
+ninguna otra fila lo referencia: una misma captura puede respaldar varios
+ítems y seguir siendo evidencia de los demás. La API rechaza (`403`) archivos
+existentes fuera de la carpeta local de evidencias; si el archivo ya no
+existe, la fila se retira igualmente. Después se reconstruyen los grupos de la
+ficha.
 
 ### `GET /api/evidences/groups?fichaId=<id>`
 
@@ -558,9 +573,15 @@ Encola la generación de un reporte mediante `export-report`.
 `format` puede ser `pdf` o `html`. El PDF se renderiza con el Chromium
 empaquetado; el HTML se genera directamente en el core.
 
+`evidenceLimit` (100 por defecto) también se aplica al reporte agrupado por
+`fichaId`: cuenta entradas del reporte (una por imagen única, aunque cubra
+varios ítems). Si se omiten entradas, el reporte lo indica en el resumen y el
+resultado del job incluye `omittedGroups`.
+
 ### `GET /api/reports?limit=20`
 
-Lista reportes locales terminados.
+Lista reportes locales terminados. La vista no incluye la ruta del archivo;
+se descarga con `/api/reports/{id}/download`.
 
 ### `GET /api/reports/{id}/download`
 

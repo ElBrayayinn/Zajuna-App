@@ -13,10 +13,10 @@ const row = (id: string, itemCode: string, extra: Partial<Evidence> = {}): Evide
 describe('dedupeEvidencesByContent', () => {
   it('collapses rows with the same sha256 and lists every covered item', () => {
     const rows = [
-      row('a', '1.2.2', { sha256: 'AAA', filePath: 'x.png' }),
-      row('b', '1.2.1', { sha256: 'aaa', filePath: 'x.png' }),
-      row('c', '10.1.1', { sha256: 'aaa', filePath: 'y.png' }),
-      row('d', '6.1', { sha256: 'bbb', filePath: 'z.png' }),
+      row('a', '1.2.2', { sha256: 'AAA', fileKey: 'k1' }),
+      row('b', '1.2.1', { sha256: 'aaa', fileKey: 'k1' }),
+      row('c', '10.1.1', { sha256: 'aaa', fileKey: 'k2' }),
+      row('d', '6.1', { sha256: 'bbb', fileKey: 'k3' }),
     ]
     const result = dedupeEvidencesByContent(rows)
     expect(result).toHaveLength(2)
@@ -26,10 +26,10 @@ describe('dedupeEvidencesByContent', () => {
     expect(result[1].itemCodes).toEqual(['6.1'])
   })
 
-  it('falls back to the file path when sha256 is missing', () => {
+  it('falls back to the opaque file key when sha256 is missing', () => {
     const rows = [
-      row('a', '2.1.1', { filePath: 'C:\\data\\p.png' }),
-      row('b', '2.1.2', { filePath: 'c:/data/p.png' }),
+      row('a', '2.1.1', { fileKey: 'shared' }),
+      row('b', '2.1.2', { fileKey: 'shared' }),
       row('c', '2.1.3'),
     ]
     const result = dedupeEvidencesByContent(rows)

@@ -27,6 +27,7 @@ export interface AppSettings {
 
 export interface AppInfo {
   version: string
+  /** Environment-relative location (e.g. %LOCALAPPDATA%\ZajunaApp), never absolute. */
   dataDir: string
   supervised: boolean
   resetPending: boolean
@@ -86,7 +87,8 @@ export interface Evidence {
   itemCode?: string
   name: string
   slotNumber?: number
-  filePath?: string
+  /** Opaque identifier of the stored file; equal keys mean the same file. */
+  fileKey?: string
   format?: string
   source?: string
   sha256?: string

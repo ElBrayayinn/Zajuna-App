@@ -68,6 +68,7 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 	}
 	var evidences []evidence.Record
 	var groups []evidence.Group
+	totalGroups := 0
 	var err error
 	if strings.TrimSpace(input.FichaID) != "" {
 		if groupStore, ok := w.evidenceStore.(evidence.GroupStore); ok {
@@ -77,6 +78,13 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 			groups, err = groupStore.ListEvidenceGroups(ctx, input.FichaID)
 			if err != nil {
 				return jobs.Result{ErrorCode: "evidence_group_read_failed", ErrorMessage: err.Error()}
+			}
+			// Each merged group is one image in the report, so the limit
+			// counts report entries rather than the rows folded into them.
+			groups = mergeReportGroupsByImage(groups)
+			totalGroups = len(groups)
+			if len(groups) > limit {
+				groups = groups[:limit]
 			}
 			for _, group := range groups {
 				evidences = append(evidences, group.Evidences...)
@@ -106,9 +114,10 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 	if err := reporter.Progress(ctx, "rendering", 25, fmt.Sprintf("Preparando reporte con %d evidencias", len(evidences))); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
+	omittedGroups := totalGroups - len(groups)
 	htmlContent := buildReportHTML(input.Title, evidences)
 	if len(groups) > 0 {
-		htmlContent = buildGroupedReportHTML(w.dataDir, input.Title, input.FichaID, groups)
+		htmlContent = buildGroupedReportHTML(w.dataDir, input.Title, input.FichaID, groups, omittedGroups)
 	}
 	if format == "html" {
 		if err := os.WriteFile(outputPath, []byte(htmlContent), 0o600); err != nil {
@@ -127,14 +136,14 @@ func (w *ExportReportWorker) Execute(ctx context.Context, job jobs.Job, reporter
 		return jobs.Result{ErrorCode: "report_hash_failed", ErrorMessage: err.Error()}
 	}
 	reportID := artifactID("report", "", input.Title, hash)
-	metadata, _ := json.Marshal(map[string]any{"title": input.Title, "fichaId": input.FichaID, "evidenceCount": len(evidences), "groupCount": len(groups), "jobId": job.ID})
+	metadata, _ := json.Marshal(map[string]any{"title": input.Title, "fichaId": input.FichaID, "evidenceCount": len(evidences), "groupCount": len(groups), "evidenceLimit": limit, "omittedGroups": omittedGroups, "jobId": job.ID})
 	if err := w.reportStore.CreateReport(ctx, reports.Record{ID: reportID, Name: input.Title, FilePath: outputPath, Format: format, Status: "completed", SHA256: hash, Metadata: metadata, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}); err != nil {
 		return jobs.Result{ErrorCode: "report_persist_failed", ErrorMessage: err.Error()}
 	}
 	if err := reporter.Progress(ctx, "completed", 100, "Reporte local generado"); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
-	return jobs.Result{Output: map[string]any{"reportId": reportID, "path": outputPath, "format": format, "sha256": hash, "evidenceCount": len(evidences), "groupCount": len(groups)}}
+	return jobs.Result{Output: map[string]any{"reportId": reportID, "path": outputPath, "format": format, "sha256": hash, "evidenceCount": len(evidences), "groupCount": len(groups), "omittedGroups": omittedGroups}}
 }
 
 // reportImageKey identifies the visual content of a record so the report never
@@ -195,7 +204,7 @@ func appendUniqueString(values []string, value string) []string {
 	return append(values, value)
 }
 
-func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Group) string {
+func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Group, omitted int) string {
 	var summaryRows strings.Builder
 	var sections strings.Builder
 	groups = mergeReportGroupsByImage(groups)
@@ -263,6 +272,9 @@ func buildGroupedReportHTML(dataDir, title, fichaID string, groups []evidence.Gr
 	}
 	if len(groups) == 0 {
 		summaryRows.WriteString(`<tr><td colspan="4">No hay grupos de evidencia locales.</td></tr>`)
+	}
+	if omitted > 0 {
+		summaryRows.WriteString(fmt.Sprintf(`<tr><td colspan="4" class="file-note">Se omitieron %d evidencias por el límite configurado del reporte.</td></tr>`, omitted))
 	}
 	return fmt.Sprintf(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>%s</title><style>
 body{font-family:Arial,sans-serif;color:#172033;margin:36px}h1{color:#145d5a;margin-bottom:6px}h2{color:#145d5a;font-size:18px;margin:0 0 8px}p{color:#526173}.meta{font-size:11px;line-height:1.5}table{width:100%%;border-collapse:collapse;margin-top:20px}th,td{text-align:left;border-bottom:1px solid #d9e1ea;padding:9px;font-size:11px;vertical-align:top}th{background:#edf5f4}.evidence-group{break-inside:avoid;border-top:2px solid #d9e1ea;margin-top:28px;padding-top:16px}.evidence-image{display:block;max-width:100%%;max-height:720px;object-fit:contain;border:1px solid #d9e1ea;margin-top:12px}.evidence-figure{margin:0}.file-note{background:#f5f7fa;padding:10px}

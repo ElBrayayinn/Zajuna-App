@@ -20,6 +20,11 @@ Desde el esquema v13, la base guarda **una evidencia actual** por
 mismo slot; el checklist muestra solo las vigentes y respeta `max_evidences`
 del catálogo.
 
+Una misma captura puede respaldar varios ítems (varias filas con el mismo
+archivo). Al reemplazar, recortar por `max_evidences`, podar el checklist o
+eliminar con `DELETE /api/evidences/{id}`, el archivo solo se borra cuando ya
+ninguna fila lo referencia.
+
 ## Cómo reiniciar evidencias
 
 Si un docente necesita partir de cero (sin desinstalar):

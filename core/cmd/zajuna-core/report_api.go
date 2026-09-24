@@ -14,7 +14,6 @@ import (
 type reportView struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	FilePath  string `json:"filePath"`
 	Format    string `json:"format"`
 	Status    string `json:"status"`
 	SHA256    string `json:"sha256"`
@@ -94,5 +93,5 @@ func registerReportRoutes(mux *http.ServeMux, store reports.Store, runtime *jobs
 }
 
 func toReportView(item reports.Record) reportView {
-	return reportView{ID: item.ID, Name: item.Name, FilePath: item.FilePath, Format: item.Format, Status: item.Status, SHA256: item.SHA256, CreatedAt: item.CreatedAt.Format("2006-01-02T15:04:05.999Z07:00"), UpdatedAt: item.UpdatedAt.Format("2006-01-02T15:04:05.999Z07:00")}
+	return reportView{ID: item.ID, Name: item.Name, Format: item.Format, Status: item.Status, SHA256: item.SHA256, CreatedAt: item.CreatedAt.Format("2006-01-02T15:04:05.999Z07:00"), UpdatedAt: item.UpdatedAt.Format("2006-01-02T15:04:05.999Z07:00")}
 }
