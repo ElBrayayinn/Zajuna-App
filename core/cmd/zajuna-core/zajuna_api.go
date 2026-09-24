@@ -36,6 +36,9 @@ func registerZajunaRoutes(mux *http.ServeMux, runtime *jobs.Runtime, dataDir str
 				return
 			}
 			request.Username = config.ZajunaUsername
+			if request.DocumentType == "" {
+				request.DocumentType = config.ZajunaDocumentType
+			}
 		}
 		if request.Username == "" {
 			writeError(w, http.StatusBadRequest, errors.New("configura primero el usuario de Zajuna"))

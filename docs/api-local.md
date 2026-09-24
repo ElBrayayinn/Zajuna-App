@@ -54,7 +54,15 @@ configuración no sensible se guarda localmente.
 
 Encola una prueba real de autenticación contra Zajuna y validación de `Mis
 cursos`. No devuelve ni persiste cookies o contraseñas; el resultado se
-consulta como cualquier otro job.
+consulta como cualquier otro job. Con cuerpo vacío (`{}`) usa el usuario y el
+tipo de documento guardados en la configuración local.
+
+Configuración › Cuenta Zajuna ofrece la acción **Probar conexión**. Guardar
+credenciales (`setupComplete`) solo las marca como *Configurada*; el estado
+*Verificada* aparece únicamente cuando el job `test-zajuna-connection` termina
+en `completed` (con el número de fichas de `result.fichas`), y un job `failed`
+muestra el motivo y el siguiente paso. La interfaz recuerda el id del último
+job en este equipo y lo olvida al guardar credenciales nuevas.
 
 La sesión HTTP envía `documentType` (por defecto `CC`) y tolera las dos
 variantes actuales del formulario de Zajuna: `logintoken` solo, o
@@ -289,6 +297,13 @@ bloque requerido, el objetivo falla y no se guarda una página genérica como si
 fuera la evidencia correcta. Las capturas repetidas actualizan el mismo slot
 de checklist en lugar de crear duplicados.
 
+Si falla al menos un objetivo, el job termina `failed` con
+`capture_partial_failure`; las evidencias guardadas se conservan. El mensaje
+resume los conteos y los ítems afectados, y cada objetivo fallido deja un
+evento `evidence_failed` en `/api/jobs/{id}/events` con `itemCode`,
+`coveredItemCodes`, `slotNumber` y el motivo. El detalle del trabajo agrupa
+esos eventos por ítem y espacio.
+
 Los objetivos de perfil usan la página completa. En foros y anuncios, la
 captura de configuración usa el contenedor completo sin la tabla de respuestas;
 los objetivos de contenido exigen un post o fila asociado al instructor
@@ -414,9 +429,30 @@ Habilita o pausa un schedule sin eliminar su configuración.
 
 Lee o reemplaza preferencias no sensibles de sesión, captura y avisos. El
 servidor valida la forma del documento y lo guarda en `app_settings`; las
-contraseñas siguen exclusivamente en el almacén seguro del sistema. El bloque
-`storage` contiene `retentionKeep` (1–1000 copias) y `retentionDays` (1–3650
-días), que alimentan la limpieza de backups desde Configuración.
+contraseñas siguen exclusivamente en el almacén seguro del sistema.
+
+```json
+{
+  "session": { "autoRenew": true },
+  "capture": { "fullPage": true, "reuseSession": true, "motion": true },
+  "notifications": { "jobCompleted": true, "needsReview": true },
+  "storage": { "retentionKeep": 5, "retentionDays": 30 }
+}
+```
+
+`capture-checklist` (y `capture-checklist-target`) leen las preferencias al
+empezar cada ejecución, así que un cambio aplica al siguiente trabajo sin
+reiniciar el core. El job emite el evento `capture_preferences` con los
+valores aplicados y los repite en `result.preferences` cuando termina bien.
+
+| Campo | Efecto |
+|---|---|
+| `capture.fullPage` | `true` conserva la regla de página completa del perfil del instructor y de los cronogramas. `false` captura solo el bloque detectado. |
+| `capture.reuseSession` | `true` comparte sesiones Chromium autenticadas entre los objetivos de una ejecución. `false` abre y cierra una sesión (un login) por objetivo. |
+| `session.autoRenew` | `true` reintenta una vez el objetivo con un login nuevo cuando la captura cae en la página de login de Zajuna. `false` deja ese objetivo como fallido. |
+| `capture.motion` | Solo afecta a las animaciones de la interfaz. |
+| `notifications.*` | Controla qué avisos locales generan los jobs. |
+| `storage.retentionKeep` / `retentionDays` | 1–1000 copias y 1–3650 días. Solo los usa la acción **Limpiar antiguas** de Copias de seguridad (`POST /api/backups/cleanup`); no hay limpieza automática. |
 
 ### `GET /api/diagnostics`
 

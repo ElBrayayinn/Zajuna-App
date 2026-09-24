@@ -54,6 +54,8 @@ type CaptureChecklistWorker struct {
 	fichaStore  checklistCaptureFichaStore
 	evidence    evidence.Store
 	concurrency int
+
+	loadPreferences func(context.Context) CapturePreferences
 }
 
 func NewCaptureChecklistWorker(runtime capture.Runtime, dataDir string, client authenticatedCaptureClient, credentials secrets.Store, mapStore coursemaps.Store, fichaStore checklistCaptureFichaStore, evidenceStore evidence.Store) (*CaptureChecklistWorker, error) {
@@ -132,6 +134,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	} else {
 		targets = checklist.ApplyRouteReviews(targets, nil)
 	}
+	prefs := w.preferences(ctx)
+	targets = applyCapturePreferences(targets, prefs)
 	plannedTargets := targets
 	targets = filterCaptureTargets(targets, input.ItemCodes)
 	if input.MaxTargets > 0 && len(targets) > input.MaxTargets {
@@ -145,6 +149,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if err := reporter.Progress(ctx, "credentials", 5, "Preparando captura dirigida por checklist"); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
+	_ = reporter.Event(ctx, "capture_preferences", "Preferencias de captura aplicadas", prefs)
 	password, err := w.credentials.Get(input.Username)
 	if err != nil || password == "" {
 		return jobs.Result{ErrorCode: "credential_unavailable", ErrorMessage: "no se encontró la contraseña de Zajuna en el almacén seguro"}
@@ -198,7 +203,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	// safe to share across goroutines. Trade-off: up to C parallel logins.
 	var cookieMu sync.Mutex
 	var sessions *browserSessionPool
-	if useBrowser {
+	if useBrowser && prefs.ReuseSession {
 		sessions = newBrowserSessionPool(func(openCtx context.Context) (checklistBrowserSession, error) {
 			return w.openChecklistBrowserSession(openCtx, baseURL, input, password)
 		})
@@ -228,6 +233,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			UseBrowser: useBrowser,
 			CookieMu:   &cookieMu,
 			Sessions:   sessions,
+			AutoRenew:  prefs.AutoRenew,
 		})
 		outcomes[index] = outcome
 		done := int(atomic.AddInt64(&completed, 1))
@@ -305,6 +311,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
 		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
 		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
+		"preferences": prefs,
 	}}
 }
 

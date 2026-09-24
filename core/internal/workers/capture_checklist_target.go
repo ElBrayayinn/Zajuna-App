@@ -31,8 +31,12 @@ type checklistTargetParams struct {
 	UseBrowser bool
 	CookieMu   *sync.Mutex
 	// Sessions reuses authenticated Chromium sessions across targets of one
-	// run. Nil (single-target jobs) opens and closes a session per target.
+	// run. Nil (single-target jobs or reuseSession off) opens and closes a
+	// session per target.
 	Sessions *browserSessionPool
+	// AutoRenew retries the target once with a fresh login when the capture
+	// lands on the Zajuna login page.
+	AutoRenew bool
 }
 
 type targetOutcome struct {
@@ -67,6 +71,48 @@ func reusableBrowserSession(captureErr error, finalURL string) bool {
 	return errors.Is(captureErr, capture.ErrSelectorNotFound) || errors.Is(captureErr, capture.ErrNoRowsInBatch)
 }
 
+// browserSessionExpired tells whether a capture failed only because Zajuna
+// closed the session, so a fresh login can recover the target.
+func browserSessionExpired(captureErr error, finalURL string) bool {
+	if captureErr != nil {
+		return errors.Is(captureErr, capture.ErrLoginPage)
+	}
+	return isZajunaLoginURL(finalURL)
+}
+
+// captureWithBrowserSession returns openErr when no authenticated session
+// could be opened, and captureErr for the capture itself.
+func (w *CaptureChecklistWorker) captureWithBrowserSession(ctx context.Context, params checklistTargetParams, outputPath string, options capture.CaptureOptions) (result capture.CaptureResult, captureErr error, openErr error) {
+	attempts := 1
+	if params.AutoRenew {
+		attempts = 2
+	}
+	for attempt := 0; attempt < attempts; attempt++ {
+		var browserSession checklistBrowserSession
+		switch {
+		case params.Sessions != nil && attempt > 0:
+			browserSession, openErr = params.Sessions.acquireFresh(ctx)
+		case params.Sessions != nil:
+			browserSession, openErr = params.Sessions.acquire(ctx)
+		default:
+			browserSession, openErr = w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
+		}
+		if openErr != nil {
+			return capture.CaptureResult{}, nil, openErr
+		}
+		result, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, params.Target.URL, outputPath, options)
+		if params.Sessions != nil {
+			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, result.FinalURL))
+		} else {
+			browserSession.Close()
+		}
+		if !browserSessionExpired(captureErr, result.FinalURL) || ctx.Err() != nil {
+			break
+		}
+	}
+	return result, captureErr, nil
+}
+
 func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, params checklistTargetParams) targetOutcome {
 	target := params.Target
 	parsedTarget, parseErr := security.ValidateHTTPURL(target.URL, []string{params.BaseURL.String()}, false)
@@ -87,25 +133,10 @@ func (w *CaptureChecklistWorker) captureChecklistTarget(ctx context.Context, par
 	var captureResult capture.CaptureResult
 	var captureErr error
 	if params.UseBrowser {
-		var browserSession checklistBrowserSession
-		if params.Sessions != nil {
-			pooled, err := params.Sessions.acquire(ctx)
-			if err != nil {
-				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
-			}
-			browserSession = pooled
-		} else {
-			opened, err := w.openChecklistBrowserSession(ctx, params.BaseURL, params.Input, params.Password)
-			if err != nil {
-				return targetOutcome{failure: target.ItemCode + ": " + err.Error()}
-			}
-			browserSession = opened
-		}
-		captureResult, captureErr = browserSession.CaptureURLWithMetadataAndOptions(ctx, target.URL, outputPath, options)
-		if params.Sessions != nil {
-			params.Sessions.release(browserSession, reusableBrowserSession(captureErr, captureResult.FinalURL))
-		} else {
-			browserSession.Close()
+		var openErr error
+		captureResult, captureErr, openErr = w.captureWithBrowserSession(ctx, params, outputPath, options)
+		if openErr != nil {
+			return targetOutcome{failure: target.ItemCode + ": " + openErr.Error()}
 		}
 	} else {
 		if params.CookieMu != nil {
@@ -239,11 +270,12 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 	if err := reporter.Progress(ctx, "capture", 20, fmt.Sprintf("Capturando objetivo %s", input.Target.ItemCode)); err != nil {
 		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
 	}
+	prefs := w.parent.preferences(ctx)
 	outcome := w.parent.captureChecklistTarget(ctx, checklistTargetParams{
 		JobID: job.ID,
 		Input: CaptureChecklistInput{FichaID: input.FichaID, Username: input.Username, DocumentType: input.DocumentType},
-		Target: input.Target, BaseURL: baseURL, Session: session, Password: password,
-		OwnerName: input.OwnerName, UseBrowser: useBrowser,
+		Target: applyCapturePreferences([]checklist.CaptureTarget{input.Target}, prefs)[0], BaseURL: baseURL, Session: session, Password: password,
+		OwnerName: input.OwnerName, UseBrowser: useBrowser, AutoRenew: prefs.AutoRenew,
 	})
 	if outcome.skipped {
 		// Empty row batch: the slot is not needed. Drop any evidence a previous

@@ -183,6 +183,7 @@ export type JobStatus = 'queued' | 'running' | 'waiting_user' | 'retrying' | 'co
 
 export type JobType =
   | 'sync-fichas'
+  | 'test-zajuna-connection'
   | 'discover-course-maps'
   | 'capture-checklist'
   | 'capture-evidence'
