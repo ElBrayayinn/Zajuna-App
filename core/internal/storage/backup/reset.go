@@ -87,8 +87,10 @@ func EnforceVersion(dataDir, version string) (bool, error) {
 	return wiped, nil
 }
 
+// hasUserData reports whether anything a reset would remove is on disk, so
+// data from a release without the version marker is never left behind.
 func hasUserData(dataDir string) bool {
-	for _, name := range []string{"zajuna.db", "config.json", "evidences", "reports"} {
+	for _, name := range append(append([]string{}, resetTargets...), "backups") {
 		if _, err := os.Stat(filepath.Join(dataDir, name)); err == nil {
 			return true
 		}

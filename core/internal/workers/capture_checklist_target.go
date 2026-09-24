@@ -255,6 +255,12 @@ func (w *CaptureChecklistTargetWorker) Execute(ctx context.Context, job jobs.Job
 	if input.FichaID == "" || input.Username == "" || strings.TrimSpace(input.Target.URL) == "" {
 		return jobs.Result{ErrorCode: "invalid_input", ErrorMessage: "fichaId, usuario y objetivo son obligatorios"}
 	}
+	// Same ficha lock as the full capture: both write the same slot files.
+	unlock, lockErr := lockFichaCapture(ctx, input.FichaID)
+	if lockErr != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: lockErr.Error()}
+	}
+	defer unlock()
 	password, err := w.parent.credentials.Get(input.Username)
 	if err != nil || password == "" {
 		return jobs.Result{ErrorCode: "credential_unavailable", ErrorMessage: "no se encontró la contraseña de Zajuna en el almacén seguro"}
