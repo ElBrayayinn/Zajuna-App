@@ -114,6 +114,9 @@ export const api = {
   saveSetup: (input: { zajunaUsername: string; zajunaDocumentType: string; zajunaPassword: string }) =>
     request<SetupSaveResponse>('/api/setup', json(input)),
 
+  testConnection: (input: { username?: string; documentType?: string } = {}) =>
+    request<Job>('/api/zajuna/test-connection', json(input)),
+
   listFichas: (limit = 100) => request<Ficha[]>(`/api/fichas?limit=${limit}`),
 
   syncFichas: (input: { username: string; documentType: string }) =>
@@ -179,7 +182,7 @@ export const api = {
     request<EvidenceGroup[]>(`/api/evidences/groups?fichaId=${encodeURIComponent(fichaId)}`),
 
   listEvidences: (fichaId?: string) =>
-    request<Evidence[]>(`/api/evidences?limit=100${fichaId ? `&fichaId=${encodeURIComponent(fichaId)}` : ''}`),
+    request<Evidence[]>(`/api/evidences?limit=1000${fichaId ? `&fichaId=${encodeURIComponent(fichaId)}` : ''}`),
 
   rebuildEvidenceGroups: (fichaId: string) =>
     request<EvidenceGroup[]>('/api/evidences/groups/rebuild', json({ fichaId })),

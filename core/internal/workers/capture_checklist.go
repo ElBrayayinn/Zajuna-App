@@ -31,7 +31,12 @@ type CaptureChecklistInput struct {
 	DocumentType string   `json:"documentType"`
 	ItemCodes    []string `json:"itemCodes,omitempty"`
 	MaxTargets   int      `json:"maxTargets,omitempty"`
+	FullPage     *bool    `json:"fullPage,omitempty"`
+	ReuseSession *bool    `json:"reuseSession,omitempty"`
+	AutoRenew    *bool    `json:"autoRenew,omitempty"`
 }
+
+var fichaCaptureLocks sync.Map
 
 type checklistCaptureFichaStore interface {
 	GetFicha(context.Context, string) (sqlite.FichaRecord, error)
@@ -93,6 +98,8 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if input.FichaID == "" || input.Username == "" {
 		return jobs.Result{ErrorCode: "invalid_input", ErrorMessage: "fichaId y usuario de Zajuna son obligatorios"}
 	}
+	unlock := lockFichaCapture(input.FichaID)
+	defer unlock()
 	if input.DocumentType == "" {
 		input.DocumentType = "CC"
 	}
@@ -136,6 +143,11 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	targets = filterCaptureTargets(targets, input.ItemCodes)
 	if input.MaxTargets > 0 && len(targets) > input.MaxTargets {
 		targets = targets[:input.MaxTargets]
+	}
+	if input.FullPage != nil && !*input.FullPage {
+		for index := range targets {
+			targets[index].FullPage = false
+		}
 	}
 	summary.CaptureUnitCount = len(targets)
 	summary.CoverageCount = captureTargetCoverageCount(targets)
@@ -198,15 +210,28 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	// safe to share across goroutines. Trade-off: up to C parallel logins.
 	var cookieMu sync.Mutex
 	var sessions *browserSessionPool
+	reuseSession := true
+	if input.ReuseSession != nil {
+		reuseSession = *input.ReuseSession
+	}
+	autoRenew := true
+	if input.AutoRenew != nil {
+		autoRenew = *input.AutoRenew
+	}
 	if useBrowser {
-		sessions = newBrowserSessionPool(func(openCtx context.Context) (checklistBrowserSession, error) {
-			return w.openChecklistBrowserSession(openCtx, baseURL, input, password)
-		})
-		defer sessions.closeAll()
-		if identitySeed != nil {
-			// The identity check already logged in: reuse that session.
-			sessions.all = append(sessions.all, identitySeed)
-			sessions.release(identitySeed, true)
+		if reuseSession {
+			sessions = newBrowserSessionPool(func(openCtx context.Context) (checklistBrowserSession, error) {
+				return w.openChecklistBrowserSession(openCtx, baseURL, input, password)
+			})
+			defer sessions.closeAll()
+			if identitySeed != nil {
+				// The identity check already logged in: reuse that session.
+				sessions.all = append(sessions.all, identitySeed)
+				sessions.release(identitySeed, true)
+			}
+		} else if identitySeed != nil {
+			identitySeed.Close()
+			identitySeed = nil
 		}
 	} else if identitySeed != nil {
 		identitySeed.Close()
@@ -228,6 +253,7 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 			UseBrowser: useBrowser,
 			CookieMu:   &cookieMu,
 			Sessions:   sessions,
+			AutoRenew:  autoRenew,
 		})
 		outcomes[index] = outcome
 		done := int(atomic.AddInt64(&completed, 1))
@@ -257,37 +283,46 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 	if fanoutErr != nil && ctx.Err() == nil && !errors.Is(fanoutErr, context.Canceled) {
 		return jobs.Result{ErrorCode: "capture_fanout_failed", ErrorMessage: fanoutErr.Error()}
 	}
-	if err := ctx.Err(); err != nil {
-		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: err.Error()}
-	}
 
 	tally := tallyTargetOutcomes(outcomes)
 	captured, skipped, failed, evidenceRecords, failures := tally.captured, tally.skipped, tally.failed, tally.evidenceRecords, tally.failures
+	finishCtx := ctx
+	if ctx.Err() != nil {
+		finishCtx = context.Background()
+	}
 
 	prunedEvidences := 0
 	if pruneStore, ok := w.evidence.(captureChecklistPruneStore); ok {
 		itemCodes, keep := captureChecklistPrunePlan(plannedTargets, targets, outcomes)
-		pruned, pruneErr := pruneStore.PruneCaptureChecklistEvidence(ctx, input.FichaID, itemCodes, keep)
+		pruned, pruneErr := pruneStore.PruneCaptureChecklistEvidence(finishCtx, input.FichaID, itemCodes, keep)
 		if pruneErr != nil {
 			return jobs.Result{ErrorCode: "evidence_prune_failed", ErrorMessage: fmt.Sprintf("no se pudieron retirar las evidencias obsoletas: %v", pruneErr), Retryable: true}
 		}
 		prunedEvidences = pruned
 		if pruned > 0 {
-			_ = reporter.Event(ctx, "evidence_pruned", "Evidencias obsoletas retiradas", map[string]any{"fichaId": input.FichaID, "pruned": pruned})
+			_ = reporter.Event(finishCtx, "evidence_pruned", "Evidencias obsoletas retiradas", map[string]any{"fichaId": input.FichaID, "pruned": pruned})
 		}
 	}
 
 	groupCount := 0
 	if groupStore, ok := w.evidence.(evidence.GroupStore); ok {
-		groups, groupErr := groupStore.RebuildEvidenceGroups(ctx, input.FichaID)
+		groups, groupErr := groupStore.RebuildEvidenceGroups(finishCtx, input.FichaID)
 		if groupErr != nil {
 			return jobs.Result{ErrorCode: "evidence_group_failed", ErrorMessage: fmt.Sprintf("no se pudieron construir los grupos de evidencia: %v", groupErr), Retryable: true}
 		}
 		groupCount = len(groups)
-		_ = reporter.Event(ctx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
+		_ = reporter.Event(finishCtx, "evidence_groups_rebuilt", "Evidencias agrupadas para evitar duplicados", map[string]any{"fichaId": input.FichaID, "groupCount": groupCount})
+	}
+	output := map[string]any{
+		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
+		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
+		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
+	}
+	if ctx.Err() != nil {
+		return jobs.Result{ErrorCode: "capture_cancelled", ErrorMessage: ctx.Err().Error(), Output: output}
 	}
 	if err := reporter.Progress(ctx, "completed", 100, fmt.Sprintf("Captura dirigida terminada: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)); err != nil {
-		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error()}
+		return jobs.Result{ErrorCode: "progress_failed", ErrorMessage: err.Error(), Output: output}
 	}
 	if failed > 0 {
 		message := fmt.Sprintf("captura incompleta: %d guardadas, %d omitidas, %d con error", captured, skipped, failed)
@@ -299,13 +334,16 @@ func (w *CaptureChecklistWorker) Execute(ctx context.Context, job jobs.Job, repo
 		if len(failures) > 0 {
 			message += ". Primer error: " + failures[0]
 		}
-		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message}
+		return jobs.Result{ErrorCode: "capture_partial_failure", ErrorMessage: message, Output: output}
 	}
-	return jobs.Result{Output: map[string]any{
-		"fichaId": input.FichaID, "courseId": ficha.CourseID, "targets": len(targets), "captured": captured,
-		"failed": failed, "skipped": skipped, "prunedEvidences": prunedEvidences, "unresolved": summary.UnresolvedItems, "slotCount": len(targets), "captureUnitCount": len(targets), "coverageCount": evidenceRecords,
-		"targetItems": len(targetItemCodes), "itemCount": summary.ItemCount, "groupCount": groupCount, "failures": failures,
-	}}
+	return jobs.Result{Output: output}
+}
+
+func lockFichaCapture(fichaID string) func() {
+	value, _ := fichaCaptureLocks.LoadOrStore(fichaID, &sync.Mutex{})
+	mu := value.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // captureChecklistPruneStore is optional (like evidence.GroupStore) so test

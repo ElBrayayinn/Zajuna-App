@@ -675,7 +675,7 @@ a:focus-visible {
   background: #eef3f5;
 }
 .settings-tab {
-  min-height: 40px;
+  min-height: 44px;
   padding: 9px 13px;
   border: 1px solid transparent;
   border-radius: 7px;

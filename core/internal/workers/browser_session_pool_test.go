@@ -85,16 +85,19 @@ func TestBrowserSessionPoolDoesNotRetryChallenges(t *testing.T) {
 }
 
 func TestReusableBrowserSession(t *testing.T) {
-	if !reusableBrowserSession(nil, "https://zajuna.sena.edu.co/zajuna/course/view.php?id=1") {
+	if !reusableBrowserSession(nil, "https://zajuna.sena.edu.co/zajuna/course/view.php?id=1", true) {
 		t.Fatal("a successful capture keeps the session")
 	}
-	if reusableBrowserSession(nil, "https://zajuna.sena.edu.co/zajuna/login/index.php") {
+	if reusableBrowserSession(nil, "https://zajuna.sena.edu.co/zajuna/login/index.php", true) {
 		t.Fatal("a login redirect means the session expired")
 	}
-	if !reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrSelectorNotFound), "") {
+	if !reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrSelectorNotFound), "", true) {
 		t.Fatal("selector not found is a page outcome, the session is still valid")
 	}
-	if reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrLoginPage), "") {
+	if reusableBrowserSession(fmt.Errorf("%w: x", capture.ErrLoginPage), "", true) {
 		t.Fatal("a login page error invalidates the session")
+	}
+	if reusableBrowserSession(nil, "https://zajuna.sena.edu.co/zajuna/course/view.php?id=1", false) {
+		t.Fatal("disabled auto-renew must not keep the session")
 	}
 }

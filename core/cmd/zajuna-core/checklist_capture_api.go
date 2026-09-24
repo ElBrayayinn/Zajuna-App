@@ -32,6 +32,9 @@ type checklistCaptureRequest struct {
 	DocumentType string   `json:"documentType,omitempty"`
 	ItemCodes    []string `json:"itemCodes,omitempty"`
 	MaxTargets   int      `json:"maxTargets,omitempty"`
+	FullPage     *bool    `json:"fullPage,omitempty"`
+	ReuseSession *bool    `json:"reuseSession,omitempty"`
+	AutoRenew    *bool    `json:"autoRenew,omitempty"`
 }
 
 var errChecklistCourseMapMissing = errors.New("checklist course map is missing")
@@ -368,6 +371,22 @@ func registerChecklistCaptureRoutes(mux *http.ServeMux, store checklistCaptureSt
 		if request.MaxTargets < 0 || request.MaxTargets > 200 {
 			writeError(w, http.StatusBadRequest, errors.New("maxTargets debe estar entre 0 y 200"))
 			return
+		}
+		if settingsStore, ok := store.(appSettingsStore); ok {
+			if settings, settingsErr := loadSettings(r.Context(), settingsStore); settingsErr == nil {
+				if request.FullPage == nil {
+					value := settings.Capture.FullPage
+					request.FullPage = &value
+				}
+				if request.ReuseSession == nil {
+					value := settings.Capture.ReuseSession
+					request.ReuseSession = &value
+				}
+				if request.AutoRenew == nil {
+					value := settings.Session.AutoRenew
+					request.AutoRenew = &value
+				}
+			}
 		}
 		job, err := runtime.Submit(r.Context(), "capture-checklist", request)
 		if err != nil {

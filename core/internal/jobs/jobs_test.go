@@ -363,3 +363,37 @@ func TestRuntimeSubmitPreservesFIFOStartOrderWithConcurrency2(t *testing.T) {
 	}
 }
 
+func TestSubmitFailsQueuedJobWhenContextCancels(t *testing.T) {
+	store := newMemoryStore()
+	runtime, err := NewRuntime(store, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Register(demoWorker{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.Start(context.Background())
+	defer runtime.Close()
+
+	blocked, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = runtime.Submit(blocked, "demo", map[string]string{"fixture": "ok"})
+	if err == nil {
+		t.Fatal("expected cancelled submit to fail")
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	foundFailed := false
+	for _, job := range store.jobs {
+		if job.Status == StatusFailed && job.ErrorCode == "enqueue_cancelled" {
+			foundFailed = true
+		}
+		if job.Status == StatusQueued {
+			t.Fatalf("cancelled submit left a queued zombie: %#v", job)
+		}
+	}
+	if !foundFailed {
+		t.Fatalf("expected failed job after cancelled enqueue, got %#v", store.jobs)
+	}
+}
+

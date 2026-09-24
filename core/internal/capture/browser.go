@@ -8,10 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mxschmitt/playwright-go"
 )
+
+var playwrightEnvMu sync.Mutex
 
 type Runtime struct {
 	Root        string
@@ -123,6 +126,8 @@ func (r Runtime) Start() (*playwright.Playwright, error) {
 	if !r.Installed() {
 		return nil, fmt.Errorf("runtime Chromium no instalado en %s; ejecuta npm run browser:install", r.Root)
 	}
+	playwrightEnvMu.Lock()
+	defer playwrightEnvMu.Unlock()
 	if err := os.Setenv("PLAYWRIGHT_DRIVER_PATH", r.DriverDir); err != nil {
 		return nil, fmt.Errorf("configurar driver de Playwright: %w", err)
 	}
@@ -254,6 +259,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 		return CaptureResult{}, blockedErr
 	}
 	prepareCourseMenu(page, options)
+	prepareEmbeddedSheets(page)
 	prepareHiddenEvidenceRegions(page, options.HideSelectors)
 	// Moodle flash notifications (e.g. "No dispone de permiso para ver los
 	// debates de este foro") must never leak into evidence.
@@ -396,7 +402,7 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	if options.OptionalSlot && matchedCandidates == 0 {
 		return CaptureResult{}, fmt.Errorf("%w: el espacio opcional no existe en esta página", ErrNoRowsInBatch)
 	}
-	if options.RequireSelector {
+	if options.RequireSelector || len(selectors) > 0 {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)
 		if len(selectorDiagnostics) > 0 {
 			diagnostics += ", selectores=" + strings.Join(selectorDiagnostics, " | ")
@@ -598,9 +604,57 @@ func captureRowBatch(page playwright.Page, container playwright.Locator, absolut
 		restore()
 		return rowBatchOutcome{handled: true, total: total}, fmt.Errorf("%w: lote %d con %d filas por captura, %d filas en total", ErrNoRowsInBatch, options.RowBatch+1, options.RowsPerShot, total)
 	}
-	_, captureErr := container.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
 	restore()
-	return rowBatchOutcome{handled: true, total: total, start: start}, captureErr
+	return rowBatchOutcome{handled: true, total: total, start: start}, screenshotCaptureTarget(page, container, absoluteOutput, timeout, options)
+}
+
+func screenshotCaptureTarget(page playwright.Page, container playwright.Locator, absoluteOutput string, timeout float64, options CaptureOptions) error {
+	box, err := container.BoundingBox()
+	if err == nil && box != nil {
+		width := box.Width
+		maxWidth := 1600.0
+		if options.ViewportWidth > 0 && float64(options.ViewportWidth) < maxWidth {
+			maxWidth = float64(options.ViewportWidth)
+		}
+		if width > maxWidth {
+			width = maxWidth
+		}
+		height := box.Height
+		if options.ViewportHeight > 0 && height > float64(options.ViewportHeight) {
+			height = float64(options.ViewportHeight)
+		}
+		_, captureErr := page.Screenshot(playwright.PageScreenshotOptions{
+			Path:    playwright.String(absoluteOutput),
+			Timeout: playwright.Float(timeout),
+			Clip:    &playwright.Rect{X: box.X, Y: box.Y, Width: width, Height: height},
+		})
+		return captureErr
+	}
+	_, captureErr := container.Screenshot(playwright.LocatorScreenshotOptions{Path: playwright.String(absoluteOutput), Timeout: playwright.Float(timeout)})
+	return captureErr
+}
+
+func prepareEmbeddedSheets(page playwright.Page) {
+	_, _ = page.Evaluate(`() => {
+		document.querySelectorAll('iframe[src*="docs.google.com/spreadsheets"], iframe[src*="docs.google.com/spreadsheet"]').forEach((iframe) => {
+			iframe.style.width = '100%';
+			iframe.style.minHeight = '2400px';
+			iframe.style.height = '2400px';
+		});
+	}`)
+	for _, frame := range page.Frames() {
+		if !strings.Contains(strings.ToLower(frame.URL()), "docs.google.com") {
+			continue
+		}
+		_, _ = frame.Evaluate(`() => {
+			const root = document.documentElement;
+			if (root) {
+				root.style.height = 'auto';
+				root.style.overflow = 'visible';
+			}
+			window.scrollTo(0, 0);
+		}`)
+	}
 }
 
 func evaluatedInt(raw any, key string) int {

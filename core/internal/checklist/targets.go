@@ -268,12 +268,12 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			continue
 		}
 		rows, batched := rowBatchPlanFor(spec.ItemCode, spec.GroupName)
-		batchesPerURL := 1
+		batchCounts := make([]int, len(eligible))
+		for i := range batchCounts {
+			batchCounts[i] = 1
+		}
 		if batched && len(eligible) > 0 {
-			batchesPerURL = spec.MaxSlots / len(eligible)
-			if batchesPerURL < 1 {
-				batchesPerURL = 1
-			}
+			batchCounts = distributeSlotBatches(spec.MaxSlots, len(eligible))
 		}
 		addedCount := 0
 		for index, entry := range eligible {
@@ -297,7 +297,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				selector = rows.container
 				fallbacks = append([]string{rows.container}, fallbacks...)
 			}
-			for batch := 0; batch < batchesPerURL; batch++ {
+			for batch := 0; batch < batchCounts[index]; batch++ {
 				// Slots are contiguous: skipped routes never leave holes
 				// (a gap used to leave items with only "slot 2").
 				slot := addedCount + 1
@@ -882,12 +882,18 @@ func viewportWidthForGroup(groupName string) int {
 	if groupName == "cronograma_general" || groupName == "cronograma_vigente" {
 		return 2560
 	}
+	if groupName == "calificaciones" {
+		return 1440
+	}
 	return 0
 }
 
 func viewportHeightForGroup(groupName string) int {
 	if groupName == "cronograma_general" || groupName == "cronograma_vigente" {
 		return 1200
+	}
+	if groupName == "calificaciones" {
+		return 900
 	}
 	return 0
 }
@@ -932,6 +938,32 @@ func rowBatchPlanFor(itemCode, groupName string) (rowBatchPlan, bool) {
 	return rowBatchPlan{}, false
 }
 
+// distributeSlotBatches splits MaxSlots among n lists, giving leftover
+// slots to the first lists so 8 slots and 3 lists become 3,3,2 — not 2,2,2.
+func distributeSlotBatches(maxSlots, n int) []int {
+	if n <= 0 {
+		return nil
+	}
+	if n > maxSlots {
+		n = maxSlots
+	}
+	base := maxSlots / n
+	if base < 1 {
+		base = 1
+	}
+	counts := make([]int, n)
+	used := 0
+	for i := 0; i < n; i++ {
+		counts[i] = base
+		used += base
+	}
+	for i := 0; used < maxSlots && i < n; i++ {
+		counts[i]++
+		used++
+	}
+	return counts
+}
+
 const gradingTableSelector = "#region-main table.generaltable"
 
 // appendGradingBatchTargets captures each selected activity's grading table
@@ -957,13 +989,10 @@ func appendGradingBatchTargets(targets *[]CaptureTarget, record coursemaps.Recor
 	if len(withGrading) == 0 {
 		return 0
 	}
-	batches := spec.MaxSlots / len(withGrading)
-	if batches < 1 {
-		batches = 1
-	}
+	batchCounts := distributeSlotBatches(spec.MaxSlots, len(withGrading))
 	added := 0
-	for _, entry := range withGrading {
-		for batch := 0; batch < batches; batch++ {
+	for index, entry := range withGrading {
+		for batch := 0; batch < batchCounts[index]; batch++ {
 			added++
 			*targets = append(*targets, CaptureTarget{
 				ItemCode: spec.ItemCode, CoveredItemCodes: []string{spec.ItemCode}, GroupName: spec.GroupName,

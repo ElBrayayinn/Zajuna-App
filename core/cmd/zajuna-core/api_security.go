@@ -33,7 +33,9 @@ func protectLocalAPI(next http.Handler, capability string) http.Handler {
 			writeError(w, http.StatusBadRequest, errors.New("el core solo acepta solicitudes loopback"))
 			return
 		}
-		if capability != "" {
+		// Only document navigations receive the capability cookie. Emitting it
+		// on every API GET let any local process harvest it from /api/health.
+		if capability != "" && !strings.HasPrefix(r.URL.Path, "/api/") {
 			http.SetCookie(w, &http.Cookie{Name: capabilityCookieName, Value: capability, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 0})
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") && isMutatingMethod(r.Method) {
@@ -90,7 +92,7 @@ func validateLocalRequestOrigin(r *http.Request) error {
 	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
-		return nil
+		return errors.New("las mutaciones locales requieren un origen loopback")
 	}
 	parsed, err := url.Parse(origin)
 	if err != nil || parsed.Scheme != "http" || parsed.Host == "" || !isLoopbackHost(parsed.Host) {

@@ -189,6 +189,7 @@ export type JobType =
   | 'capture-browser'
   | 'export-report'
   | 'backup'
+  | 'test-zajuna-connection'
 
 export interface Job {
   id: string
