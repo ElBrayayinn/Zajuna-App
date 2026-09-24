@@ -571,9 +571,18 @@ ejecuta la verificación al terminar (sin hacer fallar la captura).
 | 14.1.1, 14.1.2 | `forum-conclusion` | Debate del instructor cuyo título contiene «conclusión». |
 | 9.1.3, 9.1.4 | `forum-dates` | Página del foro que muestra sus fechas (apertura, cierre, vencimiento). |
 
-Si Zajuna no tiene contenido que cumpla la regla, el slot queda **ausente**
-(«sin contenido en Zajuna»), no fallido, y la evidencia que dejó una corrida
-anterior en ese slot se retira.
+Si la página correcta cargó (la lista de debates, un foro con su formulario
+de búsqueda) y no tiene contenido que cumpla la regla, el slot queda
+**ausente** («sin contenido en Zajuna», `capture.ErrContentAbsent`), no
+fallido, y se retira la evidencia que dejó una corrida anterior en ese slot.
+Una página de error o de permisos, una navegación fallida o una actividad
+renombrada siguen siendo fallos y conservan la evidencia anterior. La
+ausencia de tabla de calificación en 10.1.x se informa como ausente, pero
+tampoco retira evidencia, porque se reconoce solo por el mensaje.
+
+Una verificación automática nunca reemplaza una decisión manual sobre el
+mismo archivo (`sha256`), aunque se haya guardado mientras la verificación
+corría. «pending» retira la decisión manual de forma explícita.
 
 - `GET /api/evidences/review?fichaId=<id>`: estado guardado (solo verifica las
   evidencias sin revisión). Responde `{fichaId, verifiedAt, summary,

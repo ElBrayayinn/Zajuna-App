@@ -45,6 +45,14 @@ var ErrSelectorNotFound = errors.New("el selector requerido no apareció en la p
 // capture. Callers must treat it as "slot not needed", not as a failure.
 var ErrNoRowsInBatch = errors.New("no quedan filas para este lote")
 
+// ErrContentAbsent means the expected page loaded (the list or page that
+// holds the evidence is there) but nothing on it proves the item: no
+// instructor reply, no conclusion, a forum without dates. It is always
+// wrapped together with ErrSelectorNotFound. Only this error lets a capture
+// retire the evidence a previous run left in the slot; an error page, a
+// renamed activity or a navigation problem stay ordinary failures.
+var ErrContentAbsent = errors.New("sin contenido en Zajuna")
+
 // Default capture viewport, used when a target does not set its own. It is
 // the size the cronogramas use, which gives course sections a readable width.
 const (
@@ -82,6 +90,10 @@ type CaptureOptions struct {
 	// RowRequireReply keeps only discussions with one or more replies whose
 	// last message is by OwnerName (see checklist.CaptureTarget).
 	RowRequireReply bool
+	// AbsenceSelector identifies the right page when no selector matched:
+	// if it is present, the failure is ErrContentAbsent instead of a plain
+	// ErrSelectorNotFound (e.g. a forum page that shows no dates).
+	AbsenceSelector string
 	// CourseLayout puts the course sections in a known state before the
 	// capture (CourseLayoutMenu, CourseLayoutFirstSection or "" to keep them).
 	CourseLayout string
@@ -424,12 +436,12 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 		// The list exists but none of its rows is by the instructor: a real
 		// absence of evidence, reported in plain words.
 		if options.RowRequireReply {
-			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene respuestas del instructor autenticado (debates con réplicas cuyo último mensaje sea suyo)", ErrSelectorNotFound)
+			return CaptureResult{}, fmt.Errorf("%w (%w): la lista no tiene respuestas del instructor autenticado (debates con réplicas cuyo último mensaje sea suyo)", ErrSelectorNotFound, ErrContentAbsent)
 		}
 		if len(options.RowMatch) > 0 {
-			return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado sobre «%s»", ErrSelectorNotFound, strings.Join(options.RowMatch, "» o «"))
+			return CaptureResult{}, fmt.Errorf("%w (%w): la lista no tiene publicaciones del instructor autenticado sobre «%s»", ErrSelectorNotFound, ErrContentAbsent, strings.Join(options.RowMatch, "» o «"))
 		}
-		return CaptureResult{}, fmt.Errorf("%w: la lista no tiene publicaciones del instructor autenticado", ErrSelectorNotFound)
+		return CaptureResult{}, fmt.Errorf("%w (%w): la lista no tiene publicaciones del instructor autenticado", ErrSelectorNotFound, ErrContentAbsent)
 	}
 	if batching && options.RowBatch > 0 && emptyPrimaryContainer {
 		// The real list container rendered but holds no (owner) rows: later
@@ -438,6 +450,11 @@ func capturePage(ctx context.Context, page playwright.Page, targetURL, absoluteO
 	}
 	if options.OptionalSlot && matchedCandidates == 0 {
 		return CaptureResult{}, fmt.Errorf("%w: el espacio opcional no existe en esta página", ErrNoRowsInBatch)
+	}
+	if options.RequireSelector && matchedCandidates == 0 && strings.TrimSpace(options.AbsenceSelector) != "" {
+		if count, countErr := page.Locator(strings.TrimSpace(options.AbsenceSelector)).Count(); countErr == nil && count > 0 {
+			return CaptureResult{}, fmt.Errorf("%w (%w): la página cargó pero no muestra %s", ErrSelectorNotFound, ErrContentAbsent, strings.TrimSpace(options.Selector))
+		}
 	}
 	if options.RequireSelector {
 		diagnostics := fmt.Sprintf("candidatos=%d", matchedCandidates)

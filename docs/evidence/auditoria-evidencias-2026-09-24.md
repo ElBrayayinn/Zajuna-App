@@ -133,6 +133,15 @@ son ítems que apuntan a propósito a la misma sección.
 Smoke tests nuevos: `TestCourseLayoutNeverClicksMoodleTogglesSmoke`, que
 falla si se guarda alguna preferencia, y `TestLoginNoticeDoesNotBlockSubmitSmoke`.
 
+## Revisión independiente (sesión de integración)
+
+| Hallazgo | Corrección |
+|---|---|
+| Media: la ausencia se deducía del texto del error, así que una página de error o de permisos se tomaba como ausencia y podaba evidencia válida. | Error tipado `capture.ErrContentAbsent`, emitido solo cuando la página correcta cargó: la lista existe pero no hay filas del instructor o respuestas, o el foro renderizado no muestra fechas (`AbsenceSelector`). Solo esa señal retira evidencia; 10.1.x solo se informa. |
+| Media: `VerifyFicha` podía pisar una decisión manual guardada mientras verificaba. | El upsert no reemplaza una revisión `manual` con una `auto` del mismo `sha256`; «pending» borra la manual de forma explícita. |
+| Baja: con una selección solo transversal, todos los foros ligados a actividades pasaban el filtro. | `eligibleRouteForGroup` recibe `selectionGiven`: sin actividad técnica elegida, solo pasan los foros genéricos. |
+| Baja: 6.1 sin actividades técnicas no se contaba en el resumen del plan. | Cuenta como no resuelto. |
+
 ## Riesgo detectado
 
 El core no bloquea su carpeta de datos. Electron impide dos instancias de la

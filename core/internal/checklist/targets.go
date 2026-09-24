@@ -76,6 +76,10 @@ type CaptureTarget struct {
 	// whole-course capture ("menu" or "first-section"), so the evidence does
 	// not depend on what the instructor left open in Zajuna.
 	CourseLayout string `json:"courseLayout,omitempty"`
+	// AbsenceSelector proves the right page loaded when the evidence
+	// selector did not match, so the slot is a real absence (see
+	// capture.ErrContentAbsent) and not a failure.
+	AbsenceSelector string `json:"absenceSelector,omitempty"`
 }
 
 // courseLayoutForGroup: 4.1 proves the menu (every section closed) and 3.1
@@ -115,10 +119,14 @@ func SemanticCheckForItem(itemCode string) string {
 	return ""
 }
 
+// forumPageSelector recognises a rendered forum view (its discussion list
+// or search form), not a Moodle error or permission page.
+const forumPageSelector = `#page-mod-forum-view #region-main form[action*="/mod/forum/search.php"], #page-mod-forum-view #region-main [data-region="discussion-list-container"], #page-mod-forum-view #region-main table.discussion-list`
+
 // ForumDatesSelector matches a forum page only when Moodle shows its activity
 // dates ("Apertura:", "Cierre:", "Vencimiento:", "Fecha límite:"). A forum
 // without configured dates is not evidence of 9.1.3/9.1.4.
-const ForumDatesSelector = `#page-mod-forum-view #region-main:has([data-region="activity-dates"], .activity-dates, :text-matches("^\\s*(Apertura|Abri[óo]|Cierre|Cierra|Vencimiento|Vence|Fecha l[ií]mite|Fecha de corte)\\s*:", "i"))`
+const ForumDatesSelector =`#page-mod-forum-view #region-main:has([data-region="activity-dates"], .activity-dates, :text-matches("^\\s*(Apertura|Abri[óo]|Cierre|Cierra|Vencimiento|Vence|Fecha l[ií]mite|Fecha de corte)\\s*:", "i"))`
 
 type CapturePlanSummary struct {
 	ItemCount        int `json:"itemCount"`
@@ -281,6 +289,10 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 			if len(selected) > 0 {
 				summary.ResolvedItems++
 				summary.SlotCount += len(selected)
+			} else {
+				// A selection with no technical activity leaves 6.1 without
+				// targets: it is unresolved, not silently uncounted.
+				summary.UnresolvedItems++
 			}
 			summary.MaxSlotCount += spec.MaxSlots
 			continue
@@ -306,7 +318,7 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				candidate = gradebookSetupURL(candidate)
 			}
 			route := routeForURL(record, candidate)
-			if route != nil && !eligibleRouteForGroup(spec.GroupName, *route, selectedActivityIDs, activitiesByID) {
+			if route != nil && !eligibleRouteForGroup(spec.GroupName, *route, selectionGiven, selectedActivityIDs, activitiesByID) {
 				continue
 			}
 			activityID := activityIDForURL(record, candidate)
@@ -400,6 +412,9 @@ func BuildCaptureTargetsForActivities(record coursemaps.Record, selectedActivity
 				}
 				target.SemanticCheck = SemanticCheckForItem(spec.ItemCode)
 				target.CourseLayout = courseLayoutForGroup(spec.GroupName)
+				if target.SemanticCheck == SemanticForumDates {
+					target.AbsenceSelector = forumPageSelector
+				}
 				targets = append(targets, target)
 				addedCount++
 			}
@@ -470,6 +485,7 @@ func captureUnitKey(target CaptureTarget) string {
 		strconv.FormatBool(target.RowRequireReply),
 		strings.TrimSpace(target.SemanticCheck),
 		strings.TrimSpace(target.CourseLayout),
+		strings.TrimSpace(target.AbsenceSelector),
 	}, "\x1f")
 }
 
@@ -680,7 +696,7 @@ func canonicalRouteURL(raw string) string {
 // are not explicitly transversal. If a route has an activity code, it must
 // match one of the instructor-selected activities; generic named forums and
 // announcements remain eligible because their author is checked in Chromium.
-func eligibleRouteForGroup(groupName string, route coursemaps.Route, selectedActivityIDs map[string]bool, activitiesByID map[string]coursemaps.Activity) bool {
+func eligibleRouteForGroup(groupName string, route coursemaps.Route, selectionGiven bool, selectedActivityIDs map[string]bool, activitiesByID map[string]coursemaps.Activity) bool {
 	if !ownerFilteredGroup(groupName) {
 		return true
 	}
@@ -703,7 +719,10 @@ func eligibleRouteForGroup(groupName string, route coursemaps.Route, selectedAct
 		return false
 	}
 	if len(selectedActivityIDs) == 0 {
-		return true
+		// No selection: every forum qualifies. A saved selection that only
+		// held transversal activities is empty here too, but then a forum
+		// bound to an activity must not qualify (the instructor chose none).
+		return !selectionGiven || (strings.TrimSpace(route.ActivityID) == "" && !routeHasActivityCode(title))
 	}
 	if activityID := strings.TrimSpace(route.ActivityID); activityID != "" {
 		return selectedActivityIDs[activityID]

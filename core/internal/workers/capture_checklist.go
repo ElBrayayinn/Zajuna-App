@@ -358,7 +358,7 @@ func tallyTargetOutcomes(outcomes []targetOutcome) targetOutcomeTally {
 			tally.evidenceRecords += outcome.evidenceRecords
 		case outcome.skipped:
 			tally.skipped++
-		case absentContent(outcome.failure):
+		case outcome.absent || absentContent(outcome.failure):
 			tally.absent++
 			tally.absences = append(tally.absences, outcome.failure)
 		default:
@@ -406,10 +406,13 @@ func captureChecklistPrunePlan(planned, executed []checklist.CaptureTarget, outc
 				itemCodes = append(itemCodes, itemCode)
 			}
 		}
-		// An absent slot is a definitive "Zajuna has nothing for this": the
-		// evidence an earlier run (or an older, weaker rule) left there is
-		// stale and must not keep the item looking covered.
-		if index < len(outcomes) && (outcomes[index].skipped || absentContent(outcomes[index].failure)) {
+		// A typed absence (capture.ErrContentAbsent: the right page loaded
+		// and has nothing that proves the item) retires the evidence an
+		// earlier run or an older rule left there. Absences recognised only by
+		// their message (10.1.x without a grading table) are reported but
+		// keep the previous evidence: that message is also what an error or
+		// permission page produces.
+		if index < len(outcomes) && (outcomes[index].skipped || outcomes[index].absent) {
 			continue
 		}
 		mark(target)
