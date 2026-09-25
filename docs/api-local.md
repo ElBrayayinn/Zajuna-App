@@ -768,6 +768,15 @@ corría. «pending» retira la decisión manual de forma explícita.
   guarda la decisión manual (`pending` la borra y vuelve a la verificación
   automática). Devuelve la evidencia actualizada.
 
+`POST /api/evidences/verify`, `PUT /api/evidences/{id}/review` y la revisión
+automática al terminar `capture-checklist` sincronizan el checklist: un ítem
+«PENDIENTE» cuyas evidencias están todas aprobadas pasa a «SI», y un «SI»
+puesto por esta sincronización vuelve a «PENDIENTE» si una evidencia deja de
+estar aprobada. Un «SI» o «NO» manual nunca se cambia. Cada cambio queda en el
+historial del ítem con `source: "revision-automatica"`. Los ítems sin
+evidencia de `missingItems` explican la ausencia de la última captura
+(«Sin contenido en Zajuna: …») cuando la hubo.
+
 ### `POST /api/reports`
 
 Encola la generación de un reporte mediante `export-report`.

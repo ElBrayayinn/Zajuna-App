@@ -199,3 +199,64 @@ func TestCaptureAbsenceReasonsExplainMissingItems(t *testing.T) {
 		t.Fatal("absences of another ficha must not leak")
 	}
 }
+
+func TestApprovedItemsAreMarkedInTheChecklistAutomatically(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if _, err := store.UpsertFichas(ctx, []zajuna.Ficha{{ExternalID: "200", Name: "Ficha", CourseID: "c2"}}); err != nil {
+		t.Fatal(err)
+	}
+	fichas, _ := store.ListFichas(ctx, 10)
+	fichaID := fichas[0].ID
+	add := func(id, item string) {
+		path := filepath.Join(dataDir, "evidences", id+".png")
+		writeReviewPNG(t, path, 800, 600, true)
+		if err := store.CreateEvidence(ctx, evidence.Record{ID: id, FichaID: fichaID, ItemCode: item, SlotNumber: 1, Name: id, FilePath: path, Format: "png", Source: "capture-checklist", SHA256: "sha-" + id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("a", "2.1.1") // approved automatically
+	add("b", "4.1")   // approved, but the person set "No" by hand
+	add("c", "3.1")   // left pending by hand
+	if err := store.SetChecklistItemStatus(ctx, fichaID, "4.1", "NO"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.VerifyEvidenceReviews(ctx, fichaID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetEvidenceReview(ctx, "c", evidence.ReviewRejected, "falta"); err != nil {
+		t.Fatal(err)
+	}
+	status := func(code string) string {
+		var value string
+		if err := store.DB().QueryRowContext(ctx, `SELECT status FROM checklist_items WHERE ficha_id = ? AND item_code = ?`, fichaID, code).Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	if status("2.1.1") != "SI" || status("4.1") != "NO" || status("3.1") != "PENDIENTE" {
+		t.Fatalf("unexpected statuses 2.1.1=%s 4.1=%s 3.1=%s", status("2.1.1"), status("4.1"), status("3.1"))
+	}
+	// An automatic "Sí" goes back to pending when its evidence stops being approved.
+	if _, err := store.SetEvidenceReview(ctx, "a", evidence.ReviewRejected, "no corresponde"); err != nil {
+		t.Fatal(err)
+	}
+	if status("2.1.1") != "PENDIENTE" {
+		t.Fatalf("an automatic Sí must be withdrawn, got %s", status("2.1.1"))
+	}
+	// A "Sí" set by hand is never withdrawn.
+	if err := store.SetChecklistItemStatus(ctx, fichaID, "2.1.1", "SI"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SyncApprovedChecklistItems(ctx, fichaID); err != nil {
+		t.Fatal(err)
+	}
+	if status("2.1.1") != "SI" {
+		t.Fatalf("a manual Sí must be kept, got %s", status("2.1.1"))
+	}
+}

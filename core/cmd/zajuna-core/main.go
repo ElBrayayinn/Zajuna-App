@@ -28,6 +28,7 @@ import (
 	"github.com/zajuna-app/core/internal/scheduler"
 	"github.com/zajuna-app/core/internal/secrets"
 	"github.com/zajuna-app/core/internal/storage/backup"
+	"github.com/zajuna-app/core/internal/storage/datalock"
 	"github.com/zajuna-app/core/internal/storage/sqlite"
 	"github.com/zajuna-app/core/internal/workers"
 	"github.com/zajuna-app/core/internal/zajuna"
@@ -91,6 +92,13 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("no se pudo crear la carpeta local de datos: %v", err)
 	}
+	// One core per data folder, taken before a pending reset runs. A
+	// supervisor restart may overlap the previous process for a moment.
+	dataLock, err := datalock.Acquire(dataDir, 15*time.Second)
+	if err != nil {
+		log.Fatalf("no se pudo usar la carpeta local de datos: %v", err)
+	}
+	defer dataLock.Release()
 	if reset, resetErr := backup.ApplyPendingReset(dataDir); resetErr != nil {
 		log.Printf("restablecimiento de datos locales: %v", resetErr)
 	} else if reset {

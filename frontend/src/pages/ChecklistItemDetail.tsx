@@ -211,7 +211,7 @@ export function ChecklistItemDetail() {
                   <span className={`diagnostic-icon ${event.toStatus === 'SI' ? 'ok' : event.toStatus === 'NO' ? 'error' : 'warn'}`} aria-hidden="true" />
                   <div>
                     <strong>{event.fromStatus ? `${event.fromStatus} → ${event.toStatus}` : `Estado inicial: ${event.toStatus}`}</strong>
-                    <small>{event.source === 'manual' ? 'Decisión manual' : event.source} · {formatDate(event.createdAt)}</small>
+                    <small>{event.source === 'manual' ? 'Decisión manual' : event.source === 'revision-automatica' ? 'Revisión automática' : event.source} · {formatDate(event.createdAt)}</small>
                   </div>
                 </div>
               ))}

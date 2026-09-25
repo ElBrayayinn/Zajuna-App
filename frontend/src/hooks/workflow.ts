@@ -1,5 +1,5 @@
 import { useActivities, useDashboard, useEvidenceReview, useFichas, useJobs, useTargets } from './api'
-import { computeWorkflow, currentWorkflowStep, type WorkflowStep, type WorkflowStepKey } from '../lib/workflow'
+import { approvedItemsNotMarked, computeWorkflow, currentWorkflowStep, type WorkflowStep, type WorkflowStepKey } from '../lib/workflow'
 
 const ACTIVE = ['queued', 'running', 'waiting_user', 'retrying']
 
@@ -27,6 +27,7 @@ export function useWorkflow() {
     captureRunning: running('capture-checklist'),
     reviewOpen: summary ? (Number(summary.pending) || 0) + (Number(summary.rejected) || 0) : undefined,
     reviewTotal: summary ? Number(summary.total) || 0 : undefined,
+    unmarkedApproved: reviewQuery.data ? approvedItemsNotMarked(reviewQuery.data.evidences ?? [], dashboardQuery.data?.items ?? []).length : undefined,
   })
   const current = currentWorkflowStep(steps)
   const step = (key: WorkflowStepKey) => steps.find((entry) => entry.key === key) as WorkflowStep

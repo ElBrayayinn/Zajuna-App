@@ -22,6 +22,26 @@ export interface WorkflowInput {
   /** Evidencias con problemas (pendientes + rechazadas); undefined si aún no hay revisión. */
   reviewOpen?: number
   reviewTotal?: number
+  /** Ítems con toda su evidencia aprobada que aún no están marcados como cumplidos. */
+  unmarkedApproved?: number
+}
+
+/**
+ * Items whose every evidence is approved and that are still pending in the
+ * checklist. A "Sí" or "No" set by the person is never counted (nor
+ * overwritten by "Marcar como cumplidos").
+ */
+export function approvedItemsNotMarked(
+  evidences: ReadonlyArray<{ itemCode?: string; status: string }>,
+  items: ReadonlyArray<{ itemCode: string; status?: string }>,
+): string[] {
+  const byItem = new Map<string, boolean>()
+  for (const entry of evidences) {
+    if (!entry.itemCode) continue
+    byItem.set(entry.itemCode, (byItem.get(entry.itemCode) ?? true) && entry.status === 'approved')
+  }
+  const marked = new Set(items.filter((item) => item.status === 'SI' || item.status === 'NO').map((item) => item.itemCode))
+  return [...byItem.entries()].filter(([code, ok]) => ok && !marked.has(code)).map(([code]) => code)
 }
 
 /**
@@ -35,7 +55,9 @@ export function computeWorkflow(input: WorkflowInput): WorkflowStep[] {
     routes: input.mapReady,
     activities: input.selectedActivities > 0,
     capture: input.evidenceCount > 0,
-    review: (input.reviewTotal ?? 0) > 0 && input.reviewOpen === 0,
+    // Reviewed means nothing left to fix and the approved items already count
+    // in the checklist (otherwise the PDF shows 0 %).
+    review: (input.reviewTotal ?? 0) > 0 && input.reviewOpen === 0 && (input.unmarkedApproved ?? 0) === 0,
   }
   const running: Record<WorkflowStepKey, boolean> = {
     sync: input.syncRunning,
@@ -57,7 +79,11 @@ export function computeWorkflow(input: WorkflowInput): WorkflowStep[] {
     {
       key: 'review',
       label: 'Revisar evidencias',
-      hint: input.reviewOpen ? `${input.reviewOpen} evidencias necesitan tu revisión.` : 'Aprueba las correctas y corrige las que fallaron.',
+      hint: input.reviewOpen
+        ? `${input.reviewOpen} evidencias necesitan tu revisión.`
+        : input.unmarkedApproved
+          ? `Marca los ${input.unmarkedApproved} ítems aprobados como cumplidos.`
+          : 'Aprueba las correctas y corrige las que fallaron.',
       to: '/revision',
     },
   ]

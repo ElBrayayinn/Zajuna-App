@@ -380,13 +380,21 @@ function setupAutoUpdater() {
   autoUpdater.on('update-not-available', (info) => {
     void appendCoreLog(`[updater] Sin actualizaciones (actual ${info.version}).\n`);
   });
-  autoUpdater.on('error', (error) => {
-    void appendCoreLog(
-      `[updater] Error al actualizar: ${error.message}. ` +
-        'En Windows sin firma Authenticode SmartScreen puede bloquear la descarga/aplicación; ' +
-        'CSC_LINK sigue siendo opcional.\n',
-    );
-  });
+  // electron-updater emits 'error' and also rejects checkForUpdates() with the
+  // same error, whose message carries every HTTP header: log it once, on one
+  // line, in plain words.
+  let lastUpdaterError = '';
+  const logUpdaterError = (error) => {
+    const message = String((error && error.message) || error || '');
+    if (message === lastUpdaterError) return;
+    lastUpdaterError = message;
+    const firstLine = message.split('\n')[0].slice(0, 300);
+    const detail = /latest(-linux)?\.yml/.test(message) && /404/.test(message)
+      ? 'la publicación más reciente de GitHub no incluye latest.yml; no hay actualización automática disponible.'
+      : `${firstLine}. En Windows sin firma Authenticode SmartScreen puede bloquear la descarga/aplicación.`;
+    void appendCoreLog(`[updater] Error al actualizar: ${detail}\n`);
+  };
+  autoUpdater.on('error', logUpdaterError);
   autoUpdater.on('download-progress', (progress) => {
     const pct = Number.isFinite(progress.percent) ? progress.percent.toFixed(1) : '?';
     void appendCoreLog(`[updater] Descarga ${pct}%\n`);
@@ -398,9 +406,7 @@ function setupAutoUpdater() {
     );
   });
 
-  void autoUpdater.checkForUpdates().catch((error) => {
-    void appendCoreLog(`[updater] checkForUpdates falló: ${error.message}\n`);
-  });
+  void autoUpdater.checkForUpdates().catch(logUpdaterError);
 }
 
 if (!hasSingleInstanceLock) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zajuna-app/core/internal/checklist"
 	"github.com/zajuna-app/core/internal/evidence"
 )
 
@@ -130,7 +131,99 @@ func (s *Store) UpsertEvidenceReviews(ctx context.Context, reviews []evidence.Re
 // VerifyEvidenceReviews re-runs the automatic verification for the whole ficha,
 // keeping manual decisions whose sha256 is unchanged.
 func (s *Store) VerifyEvidenceReviews(ctx context.Context, fichaID string) (evidence.ReviewReport, error) {
-	return evidence.VerifyFicha(ctx, s, s.dataDir, fichaID, false, time.Now().UTC())
+	report, err := evidence.VerifyFicha(ctx, s, s.dataDir, fichaID, false, time.Now().UTC())
+	if err != nil {
+		return report, err
+	}
+	if _, err := s.SyncApprovedChecklistItems(ctx, fichaID); err != nil {
+		return report, err
+	}
+	return report, nil
+}
+
+// AutoReviewSource marks checklist changes made by SyncApprovedChecklistItems.
+const AutoReviewSource = "revision-automatica"
+
+// SyncApprovedChecklistItems marks as fulfilled ("SI") every pending item of
+// the ficha whose evidences are all approved, and returns to pending an item
+// it marked earlier whose evidence is no longer all approved. A status the
+// person set by hand is never changed. It returns how many items changed.
+func (s *Store) SyncApprovedChecklistItems(ctx context.Context, fichaID string) (int, error) {
+	fichaID = strings.TrimSpace(fichaID)
+	if fichaID == "" {
+		return 0, nil
+	}
+	if err := s.EnsureChecklistItems(ctx, fichaID); err != nil {
+		return 0, err
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT e.item_code, MIN(CASE WHEN r.status = 'approved' THEN 1 ELSE 0 END)
+		FROM evidences e LEFT JOIN evidence_reviews r ON r.evidence_id = e.id
+		WHERE e.ficha_id = ? AND e.item_code <> ''
+		GROUP BY e.item_code`, fichaID)
+	if err != nil {
+		return 0, fmt.Errorf("list reviewed checklist items: %w", err)
+	}
+	approved := map[string]bool{}
+	for rows.Next() {
+		var code string
+		var allApproved int
+		if err := rows.Scan(&code, &allApproved); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan reviewed checklist item: %w", err)
+		}
+		approved[code] = allApproved == 1
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	transaction, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin checklist auto review: %w", err)
+	}
+	defer transaction.Rollback()
+	items, err := transaction.QueryContext(ctx, `
+		SELECT c.item_code, c.status, COALESCE((SELECT source FROM checklist_item_events ev
+			WHERE ev.ficha_id = c.ficha_id AND ev.item_code = c.item_code ORDER BY ev.id DESC LIMIT 1), '')
+		FROM checklist_items c WHERE c.ficha_id = ?`, fichaID)
+	if err != nil {
+		return 0, fmt.Errorf("list checklist items for auto review: %w", err)
+	}
+	type change struct{ code, from, to, note string }
+	changes := []change{}
+	for items.Next() {
+		var code, status, lastSource string
+		if err := items.Scan(&code, &status, &lastSource); err != nil {
+			items.Close()
+			return 0, fmt.Errorf("scan checklist item for auto review: %w", err)
+		}
+		switch {
+		case status == string(checklist.StatusPending) && approved[code]:
+			changes = append(changes, change{code, status, string(checklist.StatusYes), "Todas sus evidencias quedaron aprobadas en Revisión."})
+		case status == string(checklist.StatusYes) && lastSource == AutoReviewSource && !approved[code]:
+			changes = append(changes, change{code, status, string(checklist.StatusPending), "Una de sus evidencias ya no está aprobada."})
+		}
+	}
+	items.Close()
+	if err := items.Err(); err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, item := range changes {
+		if _, err := transaction.ExecContext(ctx, `UPDATE checklist_items SET status = ?, updated_at = ? WHERE ficha_id = ? AND item_code = ?`, item.to, now, fichaID, item.code); err != nil {
+			return 0, fmt.Errorf("update checklist item from review: %w", err)
+		}
+		if _, err := transaction.ExecContext(ctx, `
+			INSERT INTO checklist_item_events(ficha_id, item_code, from_status, to_status, source, note, created_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?)`, fichaID, item.code, item.from, item.to, AutoReviewSource, item.note, now); err != nil {
+			return 0, fmt.Errorf("record checklist auto review event: %w", err)
+		}
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, fmt.Errorf("commit checklist auto review: %w", err)
+	}
+	return len(changes), nil
 }
 
 // EvidenceReviewReport returns the saved review state, verifying only the
@@ -179,6 +272,11 @@ func (s *Store) SetEvidenceReview(ctx context.Context, evidenceID, status, note 
 	}
 	if err := s.UpsertEvidenceReviews(ctx, []evidence.Review{review}); err != nil {
 		return evidence.ReviewEntry{}, err
+	}
+	if record.FichaID != "" {
+		if _, err := s.SyncApprovedChecklistItems(ctx, record.FichaID); err != nil {
+			return evidence.ReviewEntry{}, err
+		}
 	}
 	return evidence.BuildReviewEntry(record, review, records), nil
 }

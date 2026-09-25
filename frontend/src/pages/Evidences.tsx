@@ -6,6 +6,7 @@ import {
   useDeleteEvidence,
   useEvidences,
   useEvidenceGroups,
+  useEvidenceReview,
   useRebuildEvidenceGroups,
   useSetItemStatus,
   useUploadEvidence,
@@ -14,14 +15,11 @@ import {
 import { useToast } from '../hooks/useToast'
 import { friendlyError } from '../lib/friendlyError'
 import { confidenceFor, formatDate } from '../lib/format'
+import { groupState, type ReviewStatusById } from '../lib/evidenceGroupState'
 import type { DashboardItem, Evidence, EvidenceGroup } from '../types'
 
 type GroupFilter = 'all' | 'review' | 'high' | 'manual'
 
-interface GroupConfidence {
-  key: 'manual' | 'high' | 'review' | 'empty'
-  label: string
-}
 
 const EMPTY_GROUPS: EvidenceGroup[] = []
 
@@ -75,17 +73,6 @@ function usedInLabel(itemCodes: string[]) {
   return `Usada en ${itemCodes.length} ítem${itemCodes.length === 1 ? '' : 's'}`
 }
 
-function groupConfidence(value?: string): GroupConfidence {
-  const raw = String(value || '').toLowerCase()
-  if (raw.includes('manual')) return { key: 'manual', label: 'Agregada por ti' }
-  if (raw.includes('confirm') || raw.includes('high') || raw.includes('alta')) {
-    return { key: 'high', label: 'Confirmada' }
-  }
-  if (raw.includes('suggest') || raw.includes('review') || raw.includes('revis')) {
-    return { key: 'review', label: 'Por revisar' }
-  }
-  return { key: 'review', label: 'Por revisar' }
-}
 
 export function Evidences() {
   const dashboardQuery = useDashboard()
@@ -93,6 +80,11 @@ export function Evidences() {
   const activeFichaId = dashboard?.activeFichaId
   const groupsQuery = useEvidenceGroups(activeFichaId)
   const evidencesQuery = useEvidences(activeFichaId)
+  const reviewQuery = useEvidenceReview(activeFichaId)
+  const reviewStatus = useMemo<ReviewStatusById>(
+    () => new Map((reviewQuery.data?.evidences ?? []).map((entry) => [entry.evidenceId, entry.status])),
+    [reviewQuery.data],
+  )
   const evidenceGroups = groupsQuery.data
   const evidences = evidencesQuery.data
   const rebuildGroups = useRebuildEvidenceGroups()
@@ -206,6 +198,7 @@ export function Evidences() {
       <div className="grid">
         <EvidenceGallery
           groups={groups}
+          reviewStatus={reviewStatus}
           query={query}
           onQueryChange={setQuery}
           filter={filter}
@@ -302,6 +295,7 @@ export function Evidences() {
 
 interface EvidenceGalleryProps {
   groups: EvidenceGroup[]
+  reviewStatus: ReviewStatusById
   query: string
   onQueryChange: (value: string) => void
   filter: GroupFilter
@@ -409,6 +403,7 @@ function EvidenceMiniatures({
 
 function EvidenceGallery({
   groups,
+  reviewStatus,
   query,
   onQueryChange,
   filter,
@@ -436,7 +431,7 @@ function EvidenceGallery({
   }, [groups])
 
   const matches = groups.filter((group) => {
-    const confidence = groupConfidence(group.confidence).key
+    const confidence = groupState(group, reviewStatus).key
     const haystack = [group.title, ...(group.itemCodes || []), group.reason].join(' ').toLowerCase()
     const formatOk =
       formatFilter === 'all' ||
@@ -478,8 +473,8 @@ function EvidenceGallery({
             onChange={(event) => onFilterChange(event.target.value as GroupFilter)}
           >
             <option value="all">Todos los estados</option>
-            <option value="review">Por revisar</option>
-            <option value="high">Confirmadas</option>
+            <option value="review">Por revisar o rechazadas</option>
+            <option value="high">Aprobadas</option>
             <option value="manual">Agregadas por ti</option>
           </select>
         </div>
@@ -506,7 +501,7 @@ function EvidenceGallery({
         <div className="evidence-gallery-grid">
           {visible.length ? (
             visible.map((group, index) => (
-              <EvidenceGroupCard key={group.id || `${group.title || 'grupo'}-${index}`} group={group} onPreview={onPreview} />
+              <EvidenceGroupCard key={group.id || `${group.title || 'grupo'}-${index}`} group={group} reviewStatus={reviewStatus} onPreview={onPreview} />
             ))
           ) : (
             <div className="empty">
@@ -532,10 +527,10 @@ function EvidenceGallery({
   )
 }
 
-function EvidenceGroupCard({ group, onPreview }: { group: EvidenceGroup; onPreview: (evidence: Evidence) => void }) {
+function EvidenceGroupCard({ group, reviewStatus, onPreview }: { group: EvidenceGroup; reviewStatus: ReviewStatusById; onPreview: (evidence: Evidence) => void }) {
   const evidences = group.evidences ?? []
   const evidence = evidences[0]
-  const confidence = groupConfidence(group.confidence)
+  const confidence = groupState(group, reviewStatus)
   const codes = [...(group.itemCodes || [])].sort(compareItemCodes)
   const itemsLabel = codes.slice(0, 5).join(' · ') + (codes.length > 5 ? ' · …' : '')
   // Rows that share the same bytes count as one file.

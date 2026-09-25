@@ -509,6 +509,8 @@ export function useVerifyEvidences() {
     onSuccess: (data, fichaId) => {
       queryClient.setQueryData(['evidenceReview', fichaId], data)
       queryClient.invalidateQueries({ queryKey: ['evidenceReview'] })
+      // Verifying marks fully approved items as fulfilled in the checklist.
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }
@@ -518,6 +520,10 @@ export function useSetEvidenceReview() {
   return useMutation({
     mutationFn: ({ evidenceId, ...input }: { evidenceId: string; status: 'approved' | 'pending' | 'rejected'; note?: string }) =>
       api.setEvidenceReview(evidenceId, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['evidenceReview'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['evidenceReview'] })
+      // A decision can mark (or withdraw) the item in the checklist.
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
   })
 }

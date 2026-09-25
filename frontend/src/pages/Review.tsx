@@ -15,6 +15,7 @@ import {
 import { useToast } from '../hooks/useToast'
 import { formatDate } from '../lib/format'
 import { friendlyError } from '../lib/friendlyError'
+import { approvedItemsNotMarked } from '../lib/workflow'
 import type {
   EvidenceReviewEntry,
   EvidenceReviewMissingItem,
@@ -223,17 +224,10 @@ export function Review() {
   const [preview, setPreview] = useState<EvidenceReviewEntry | null>(null)
   const [markingDone, setMarkingDone] = useState(false)
   const setItemStatus = useSetItemStatus()
-  const approvedNotMarked = useMemo(() => {
-    const byItem = new Map<string, boolean>()
-    for (const entry of reviewQuery.data?.evidences ?? []) {
-      if (!entry.itemCode) continue
-      byItem.set(entry.itemCode, (byItem.get(entry.itemCode) ?? true) && entry.status === 'approved')
-    }
-    // Solo ítems pendientes: nunca sobrescribir un "Sí" o un "No" que la
-    // persona marcó a mano.
-    const marked = new Set((dashboardQuery.data?.items ?? []).filter((item) => item.status === 'SI' || item.status === 'NO').map((item) => item.itemCode))
-    return [...byItem.entries()].filter(([code, ok]) => ok && !marked.has(code)).map(([code]) => code)
-  }, [reviewQuery.data, dashboardQuery.data])
+  const approvedNotMarked = useMemo(
+    () => approvedItemsNotMarked(reviewQuery.data?.evidences ?? [], dashboardQuery.data?.items ?? []),
+    [reviewQuery.data, dashboardQuery.data],
+  )
   const closePreview = useCallback(() => setPreview(null), [])
 
   const review = reviewQuery.data
