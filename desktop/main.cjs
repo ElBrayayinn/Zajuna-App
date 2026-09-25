@@ -85,10 +85,11 @@ function appendCoreLog(chunk) {
 async function openExternalBrowser(url) {
   if (skipExternalOpen) return;
   try {
-    const opened = await shell.openExternal(url);
-    if (!opened) {
-      await appendCoreLog(`[shell] El sistema no confirmó la apertura del navegador externo para ${url}.\n`);
-    }
+    // shell.openExternal resolves with no value when the OS accepted the URL
+    // and rejects when it could not. The URL carries a one-time session token:
+    // it is never written to the log.
+    await shell.openExternal(url);
+    await appendCoreLog('[shell] Navegador externo abierto con el enlace de sesión local.\n');
   } catch (error) {
     // A browser association can be missing on a fresh machine. Keep the core
     // alive so the user can still open the endpoint from the diagnostic log.
