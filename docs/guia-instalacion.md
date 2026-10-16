@@ -35,7 +35,7 @@ descargado).
 ## 2. Descargar el instalador
 
 1. Abre la página de
-   [versiones publicadas (Releases)](https://github.com/medialabctm-hub/Zajuna-App/releases/latest).
+   [versiones publicadas (Releases)](https://github.com/ElBrayayinn/Zajuna-App/releases/latest).
 2. Baja hasta la sección **Assets** y descarga:
    - **Windows:** el archivo `.exe`, por ejemplo `Zajuna.Sync.Setup-0.1.6.exe`.
      (Las versiones antiguas se llamaban `Zajuna.App.Setup-<versión>.exe`.)
@@ -316,7 +316,7 @@ u otro compatible con *Secret Service*); debe estar disponible en tu sesión.
 ### Primera ejecución
 
 1. Descarga el `.AppImage` desde la
-   [página de versiones](https://github.com/medialabctm-hub/Zajuna-App/releases/latest).
+   [página de versiones](https://github.com/ElBrayayinn/Zajuna-App/releases/latest).
    Se llama `Zajuna.Sync-<versión>.AppImage` (las versiones antiguas se
    llamaban `Zajuna.App-<versión>.AppImage`). Si quieres, comprueba su SHA256
    con `sha256sum` y el `release-manifest-linux.json`.

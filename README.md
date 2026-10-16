@@ -16,7 +16,7 @@ soportado.
 ## Instalar en 3 pasos
 
 1. **Descarga el instalador.** Entra a la página de
-   [versiones publicadas (Releases)](https://github.com/medialabctm-hub/Zajuna-App/releases/latest)
+   [versiones publicadas (Releases)](https://github.com/ElBrayayinn/Zajuna-App/releases/latest)
    y, en la sección *Assets*, descarga:
    - Windows: el archivo que termina en **`.exe`** (por ejemplo
      `Zajuna.Sync.Setup-<versión>.exe`).
